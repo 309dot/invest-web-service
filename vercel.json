@@ -1,6 +1,3 @@
 {
-  "framework": null,
-  "installCommand": "cd mgk-dashboard && npm install",
-  "buildCommand": "cd mgk-dashboard && npm run build",
-  "outputDirectory": "mgk-dashboard/.next"
+  "rootDirectory": "mgk-dashboard"
 }
