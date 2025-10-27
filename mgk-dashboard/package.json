@@ -10,6 +10,9 @@
     "advisor:test": "curl -s -X POST http://localhost:3000/api/ai-advisor -H \"Content-Type: application/json\" -d '{\"periodDays\":7,\"store\":false}' | jq"
   },
   "dependencies": {
+    "@radix-ui/react-alert-dialog": "^1.1.15",
+    "@radix-ui/react-slot": "^1.2.3",
+    "@radix-ui/react-tabs": "^1.1.13",
     "axios": "^1.12.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
