@@ -15,6 +15,8 @@ import {
   QueryConstraint,
   DocumentData,
   setDoc,
+  runTransaction,
+  type Transaction,
 } from 'firebase/firestore';
 import { db } from './firebase';
 
@@ -212,6 +214,20 @@ export async function getDocumentsByDateRange<T>(
   return queryCollection<T>(collectionName, constraints);
 }
 
+export async function getDocumentsSince<T>(
+  collectionName: string,
+  timestampField: string,
+  startDate: Date,
+  orderDirection: 'asc' | 'desc' = 'desc'
+): Promise<T[]> {
+  const constraints: QueryConstraint[] = [
+    where(timestampField, '>=', Timestamp.fromDate(startDate)),
+    orderBy(timestampField, orderDirection),
+  ];
+
+  return queryCollection<T>(collectionName, constraints);
+}
+
 // Count documents in collection
 export async function countDocuments(
   collectionName: string,
@@ -219,4 +235,16 @@ export async function countDocuments(
 ): Promise<number> {
   const docs = await queryCollection(collectionName, constraints);
   return docs.length;
+}
+
+// Transaction helper
+export async function runFirestoreTransaction<T>(
+  updater: (transaction: Transaction) => Promise<T>
+): Promise<T> {
+  try {
+    return await runTransaction(db, async (transaction) => updater(transaction));
+  } catch (error) {
+    console.error('Firestore transaction error:', error);
+    throw error;
+  }
 }

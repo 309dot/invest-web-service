@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -8,10 +8,15 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { formatInputDate } from '@/lib/utils/formatters';
 import { isValidDate, isPositiveNumber, isTodayOrPastDate } from '@/lib/utils/validators';
+import { addDocument } from '@/lib/firestore';
+import type { DollarChargeForm, ManualPurchaseForm } from '@/types';
+
+type SubmissionMessage = { type: 'success' | 'error'; text: string };
 
 export function ManualEntry() {
   const [activeTab, setActiveTab] = useState('charge');
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [message, setMessage] = useState<SubmissionMessage | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // 달러 충전 폼
   const [chargeForm, setChargeForm] = useState({
@@ -29,11 +34,35 @@ export function ManualEntry() {
     purchaseAmount: '',
   });
 
+  const chargeSummary = useMemo(() => {
+    if (!chargeForm.amount || !chargeForm.exchangeRate) return null;
+
+    const amount = parseFloat(chargeForm.amount);
+    const rate = parseFloat(chargeForm.exchangeRate);
+    const fee = chargeForm.fee ? parseFloat(chargeForm.fee) : 0;
+
+    if ([amount, rate, fee].some((value) => Number.isNaN(value))) {
+      return null;
+    }
+
+    const krwAmount = amount * rate;
+    const netKrwAmount = krwAmount - fee;
+
+    return {
+      amount,
+      rate,
+      fee,
+      krwAmount,
+      netKrwAmount,
+    };
+  }, [chargeForm]);
+
   const handleChargeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
     setMessage(null);
 
-    // 검증
     if (!isValidDate(chargeForm.chargeDate) || !isTodayOrPastDate(chargeForm.chargeDate)) {
       setMessage({ type: 'error', text: '유효한 날짜를 입력하세요 (오늘 또는 과거 날짜)' });
       return;
@@ -43,38 +72,77 @@ export function ManualEntry() {
     const rate = parseFloat(chargeForm.exchangeRate);
     const fee = parseFloat(chargeForm.fee);
 
+    if ([amount, rate, fee].some((value) => Number.isNaN(value))) {
+      setMessage({ type: 'error', text: '모든 금액에 올바른 숫자를 입력하세요' });
+      return;
+    }
+
     if (!isPositiveNumber(amount) || !isPositiveNumber(rate) || !isPositiveNumber(fee)) {
       setMessage({ type: 'error', text: '모든 금액은 0보다 커야 합니다' });
       return;
     }
 
-    // Firestore에 저장 (Firebase 설정 후 활성화)
-    console.log('달러 충전 데이터:', {
+    const payload: (DollarChargeForm & { krwAmount: number }) = {
       chargeDate: chargeForm.chargeDate,
       amount,
       exchangeRate: rate,
-      krwAmount: amount * rate,
       fee,
-      memo: chargeForm.memo,
-    });
+      memo: chargeForm.memo.trim() ? chargeForm.memo.trim() : undefined,
+      krwAmount: chargeSummary?.krwAmount ?? amount * rate,
+    };
 
-    setMessage({ type: 'success', text: '✅ 달러 충전 기록이 저장되었습니다!' });
+    setIsSubmitting(true);
 
-    // 폼 초기화
-    setChargeForm({
-      chargeDate: formatInputDate(),
-      amount: '',
-      exchangeRate: '',
-      fee: '',
-      memo: '',
-    });
+    try {
+      await addDocument('dollarCharges', payload);
+      setMessage({ type: 'success', text: '✅ 달러 충전 기록이 저장되었습니다!' });
+      setChargeForm({
+        chargeDate: formatInputDate(),
+        amount: '',
+        exchangeRate: '',
+        fee: '',
+        memo: '',
+      });
+    } catch (error) {
+      console.error('달러 충전 저장 실패:', error);
+      const errorMessage =
+        error instanceof Error
+          ? error.message.includes('Firebase')
+            ? 'Firebase 설정을 확인해주세요. 환경 변수를 세팅한 뒤 다시 시도하세요.'
+            : error.message
+          : '알 수 없는 오류가 발생했습니다.';
+      setMessage({ type: 'error', text: errorMessage });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
+
+  const purchaseSummary = useMemo(() => {
+    if (!purchaseForm.price || !purchaseForm.purchaseAmount) return null;
+
+    const price = parseFloat(purchaseForm.price);
+    const purchaseAmount = parseFloat(purchaseForm.purchaseAmount);
+
+    if ([price, purchaseAmount].some((value) => Number.isNaN(value))) {
+      return null;
+    }
+
+    const shares = purchaseAmount / price;
+
+    return {
+      price,
+      purchaseAmount,
+      shares,
+      totalValue: shares * price,
+    };
+  }, [purchaseForm]);
 
   const handlePurchaseSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
     setMessage(null);
 
-    // 검증
     if (!isValidDate(purchaseForm.date) || !isTodayOrPastDate(purchaseForm.date)) {
       setMessage({ type: 'error', text: '유효한 날짜를 입력하세요 (오늘 또는 과거 날짜)' });
       return;
@@ -83,6 +151,11 @@ export function ManualEntry() {
     const price = parseFloat(purchaseForm.price);
     const purchaseAmount = parseFloat(purchaseForm.purchaseAmount);
 
+    if ([price, purchaseAmount].some((value) => Number.isNaN(value))) {
+      setMessage({ type: 'error', text: '주가와 매수 금액에 올바른 숫자를 입력하세요' });
+      return;
+    }
+
     if (!isPositiveNumber(price) || !isPositiveNumber(purchaseAmount)) {
       setMessage({ type: 'error', text: '주가와 매수 금액은 0보다 커야 합니다' });
       return;
@@ -90,22 +163,36 @@ export function ManualEntry() {
 
     const shares = purchaseAmount / price;
 
-    // Firestore에 저장 (Firebase 설정 후 활성화)
-    console.log('매수 기록 데이터:', {
+    const payload: (ManualPurchaseForm & { shares: number; totalValue: number }) = {
       date: purchaseForm.date,
       price,
       purchaseAmount,
       shares,
-    });
+      totalValue: shares * price,
+    };
 
-    setMessage({ type: 'success', text: '✅ 매수 기록이 저장되었습니다!' });
+    setIsSubmitting(true);
 
-    // 폼 초기화
-    setPurchaseForm({
-      date: formatInputDate(),
-      price: '',
-      purchaseAmount: '',
-    });
+    try {
+      await addDocument('manualPurchases', payload);
+      setMessage({ type: 'success', text: '✅ 매수 기록이 저장되었습니다!' });
+      setPurchaseForm({
+        date: formatInputDate(),
+        price: '',
+        purchaseAmount: '',
+      });
+    } catch (error) {
+      console.error('매수 기록 저장 실패:', error);
+      const errorMessage =
+        error instanceof Error
+          ? error.message.includes('Firebase')
+            ? 'Firebase 설정을 확인해주세요. 환경 변수를 세팅한 뒤 다시 시도하세요.'
+            : error.message
+          : '알 수 없는 오류가 발생했습니다.';
+      setMessage({ type: 'error', text: errorMessage });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -118,7 +205,15 @@ export function ManualEntry() {
       </CardHeader>
       <CardContent>
         {message && (
-          <Alert className={`mb-4 ${message.type === 'success' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+          <Alert
+            className={`mb-4 ${
+              message.type === 'success'
+                ? 'bg-green-50 border-green-200'
+                : 'bg-red-50 border-red-200'
+            }`}
+            role="status"
+            aria-live="polite"
+          >
             <AlertDescription className={message.type === 'success' ? 'text-green-800' : 'text-red-800'}>
               {message.text}
             </AlertDescription>
@@ -197,15 +292,20 @@ export function ManualEntry() {
                 />
               </div>
 
-              {chargeForm.amount && chargeForm.exchangeRate && (
-                <div className="p-3 bg-muted rounded-md">
+              {chargeSummary && (
+                <div className="p-3 bg-muted rounded-md space-y-1">
                   <p className="text-sm text-muted-foreground">
-                    원화 금액: <Badge variant="secondary">₩{(parseFloat(chargeForm.amount) * parseFloat(chargeForm.exchangeRate)).toLocaleString()}</Badge>
+                    총 원화 환산: <Badge variant="secondary">₩{chargeSummary.krwAmount.toLocaleString()}</Badge>
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    수수료 차감 후: <Badge variant="outline">₩{chargeSummary.netKrwAmount.toLocaleString()}</Badge>
                   </p>
                 </div>
               )}
 
-              <Button type="submit" className="w-full">충전 기록 저장</Button>
+              <Button type="submit" className="w-full" disabled={isSubmitting}>
+                {isSubmitting ? '충전 기록 저장 중...' : '충전 기록 저장'}
+              </Button>
             </form>
           </TabsContent>
 
@@ -251,15 +351,20 @@ export function ManualEntry() {
                 </div>
               </div>
 
-              {purchaseForm.price && purchaseForm.purchaseAmount && (
+              {purchaseSummary && (
                 <div className="p-3 bg-muted rounded-md space-y-1">
                   <p className="text-sm text-muted-foreground">
-                    매수 주식 수: <Badge variant="secondary">{(parseFloat(purchaseForm.purchaseAmount) / parseFloat(purchaseForm.price)).toFixed(4)} 주</Badge>
+                    매수 주식 수: <Badge variant="secondary">{purchaseSummary.shares.toFixed(4)} 주</Badge>
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    평가 금액: <Badge variant="outline">{purchaseSummary.totalValue.toFixed(2)} USD</Badge>
                   </p>
                 </div>
               )}
 
-              <Button type="submit" className="w-full">매수 기록 저장</Button>
+              <Button type="submit" className="w-full" disabled={isSubmitting}>
+                {isSubmitting ? '매수 기록 저장 중...' : '매수 기록 저장'}
+              </Button>
             </form>
           </TabsContent>
         </Tabs>

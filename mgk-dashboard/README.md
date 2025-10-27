@@ -43,6 +43,24 @@ cp .env.local.example .env.local
 
 Firebase Console에서 프로젝트를 생성하고 설정 값을 `.env.local` 파일에 입력하세요.
 
+### 4. AI 어드바이저 환경 변수
+
+GPT-oss 기반 AI 어드바이저 기능을 사용하려면 다음 환경 변수를 추가로 설정하세요.
+
+```
+GPT_OSS_API_KEY="발급받은 API 키"
+GPT_OSS_MODEL=gpt-oss-20b
+AI_ADVISOR_DEFAULT_PERIOD=7
+
+# (선택) 클라이언트에서 기본 기간을 노출하려면 아래도 설정
+NEXT_PUBLIC_AI_ADVISOR_DEFAULT_PERIOD=7
+```
+
+> **주의**
+> - GPT-oss 계정에서 API 키를 발급받은 뒤 `.env.local`에 추가합니다.
+> - 환경 변수를 수정한 뒤에는 `npm run dev`를 재시작해야 적용됩니다.
+> - 키가 없으면 `/api/ai-advisor` 호출 시 500 에러가 발생합니다.
+
 ### 3. 개발 서버 실행
 
 ```bash
@@ -59,10 +77,12 @@ mgk-dashboard/
 │   ├── globals.css        # 글로벌 스타일
 │   ├── layout.tsx         # 루트 레이아웃
 │   ├── page.tsx           # 메인 대시보드
-│   └── api/               # API Routes (향후 구현)
+│   ├── weekly-reports/    # 주간 리포트 & AI 타임라인
+│   └── api/               # API Routes
 │       ├── collect-price/ # 주가 수집 API
-│       ├── collect-news/  # 뉴스 수집 API
-│       └── stats/         # 통계 API
+│       ├── stats/         # 통계 API
+│       ├── ai-advisor/    # AI 어드바이저 실행 & 히스토리 (history/)
+│       └── weekly-reports/# 주간 리포트 목록 API
 ├── components/            # React 컴포넌트
 │   └── ui/               # shadcn/ui 컴포넌트
 ├── lib/                   # 라이브러리 및 유틸리티
@@ -95,6 +115,7 @@ mgk-dashboard/
 - `npm run build` - 프로덕션 빌드
 - `npm run start` - 프로덕션 서버 시작
 - `npm run lint` - ESLint 실행
+- `npm run advisor:test` - 로컬 서버 구동 중 `/api/ai-advisor` 호출 테스트 (curl & jq 필요)
 
 ## 추가 컴포넌트 설치
 
@@ -103,6 +124,14 @@ shadcn/ui에서 추가 컴포넌트가 필요한 경우:
 ```bash
 npx shadcn@latest add [component-name]
 ```
+
+## 배포 및 테스트
+
+1. 환경 변수 설정 (`.env.local`, Firebase Functions config)
+2. `npm install && npm run build`
+3. Functions: `cd functions && npm install && npm run deploy`
+4. 스케줄러 검증: Firebase console에서 실행 로그 확인
+5. 로컬 테스트: `npm run advisor:test`, `/api/generate-report` 호출로 AI 파이프라인 확인
 
 ## Learn More
 

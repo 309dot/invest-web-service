@@ -63,6 +63,13 @@ export interface WeeklyReport {
   generatedAt: Timestamp;
 }
 
+export interface WeeklyReportWithAI extends WeeklyReport {
+  aiAdvice?: AIAdvisorResult & {
+    generatedAt?: Timestamp;
+    sourceInsightId?: string;
+  };
+}
+
 // App Settings
 export interface AppSettings {
   id?: string;
@@ -75,6 +82,7 @@ export interface AppSettings {
   autoCollectNews: boolean;
   newsImportanceThreshold: number; // News collection volatility threshold
   monitoringStocks: string[]; // Stock ticker symbols
+  watchlist?: WatchlistItem[]; // Detailed watchlist entries
 }
 
 // Automation Log
@@ -154,4 +162,80 @@ export interface SettingsForm {
   autoCollectNews: boolean;
   newsImportanceThreshold: number;
   monitoringStocks: string[];
+  watchlist: WatchlistItem[];
+}
+
+export interface WatchlistItem {
+  id: string;
+  symbol: string;
+  targetPrice?: number;
+  memo?: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+// AI Advisor Context
+export interface AIAdvisorContext {
+  periodDays: number;
+  startDate: string;
+  endDate: string;
+  tickers: string[];
+  summary: {
+    totalInvested: number;
+    totalValue: number;
+    averagePrice: number;
+    returnRate: number;
+  };
+  purchases: Array<
+    Pick<
+      DailyPurchase,
+      'date' | 'price' | 'purchaseAmount' | 'shares' | 'totalValue' | 'returnRate'
+    >
+  >;
+  news: Array<
+    Pick<
+      NewsItem,
+      'title' | 'source' | 'importance' | 'matchDate' | 'relevanceScore' | 'category'
+    > & { publishedAt: string }
+  >;
+  settings: Partial<AppSettings> | null;
+}
+
+export interface AIAdvisorPromptPayload {
+  context: AIAdvisorContext;
+  latestStats?: Partial<DashboardStats>;
+}
+
+export interface AIAdvisorResult {
+  weeklySummary: string;
+  newsHighlights: string[];
+  signals: {
+    sellSignal: boolean;
+    reason: string;
+    [key: string]: any;
+  };
+  recommendations: string[];
+  confidenceScore?: number;
+  rawText?: string;
+}
+
+export interface AIInsight extends AIAdvisorResult {
+  id?: string;
+  generatedAt: Timestamp;
+  period: string;
+  model: string;
+  sourceReportId?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface WeeklySummary {
+  week: string;
+  period: string;
+  totalInvested: number;
+  totalValue: number;
+  averagePrice: number;
+  returnRate: number;
+  volatility: number;
+  highestPrice: number;
+  lowestPrice: number;
 }

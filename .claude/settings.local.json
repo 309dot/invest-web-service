@@ -15,7 +15,11 @@
       "Bash(npm run build)",
       "Bash(git init)",
       "Bash(git add .)",
-      "Bash(git reset .DS_Store)"
+      "Bash(git reset .DS_Store)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nInitial commit: MGK Dashboard investment service setup\n\n- Set up Next.js 14 dashboard with TypeScript and Tailwind CSS\n- Configure Firebase integration for backend services\n- Add PRD documentation for investment web service\n- Set up project structure with app directory\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git remote add origin https://github.com/309dot/invest-web-service.git)",
+      "Bash(git branch -M main)",
+      "Bash(git push -u origin main)"
     ],
     "deny": [],
     "ask": []

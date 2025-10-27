@@ -5,10 +5,24 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import dynamic from "next/dynamic";
+const AIAdvisorCard = dynamic(
+  () => import("@/components/AIAdvisorCard").then((mod) => mod.AIAdvisorCard),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="rounded-md border border-dashed border-muted-foreground/30 bg-muted/40 p-6 text-center text-sm text-muted-foreground">
+        AI 어드바이저 카드를 불러오는 중입니다...
+      </div>
+    ),
+  }
+);
 import { PriceChart } from "@/components/PriceChart";
 import { ManualEntry } from "@/components/ManualEntry";
+import { WatchlistManager } from "@/components/WatchlistManager";
+import Link from "next/link";
 import { formatCurrency, formatPercent, formatDate, formatShares } from "@/lib/utils/formatters";
-import { TrendingUp, TrendingDown, DollarSign, PieChart, AlertTriangle } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, PieChart, AlertTriangle, Calendar } from 'lucide-react';
 
 // 샘플 데이터 생성
 function generateSampleData() {
@@ -95,6 +109,11 @@ export default function Dashboard() {
           <p className="text-muted-foreground">
             실시간 투자 추적 및 분석 시스템
           </p>
+          <div className="flex flex-wrap items-center gap-3 pt-2">
+            <Link href="/weekly-reports" className="inline-flex items-center text-sm font-medium text-primary hover:underline">
+              <Calendar className="mr-1 h-4 w-4" /> 주간 리포트 보기
+            </Link>
+          </div>
         </div>
 
         {/* Alert */}
@@ -195,38 +214,11 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        {/* Info Cards */}
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">다음 충전 필요</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">약 15일 후</p>
-              <p className="text-xs text-muted-foreground mt-1">현재 잔고: $150</p>
-            </CardContent>
-          </Card>
+        {/* AI Advisor */}
+        <AIAdvisorCard />
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">평균 매수가</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{formatCurrency(510.20)}</p>
-              <p className="text-xs text-muted-foreground mt-1">총 90회 매수</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">매도 신호</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold text-muted-foreground">대기</p>
-              <p className="text-xs text-muted-foreground mt-1">목표 수익률: 5%</p>
-            </CardContent>
-          </Card>
-        </div>
+        {/* Watchlist */}
+        <WatchlistManager />
 
         {/* Manual Entry */}
         <ManualEntry />
