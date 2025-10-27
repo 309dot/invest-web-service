@@ -1,0 +1,12 @@
+{
+  "framework": "nextjs",
+  "installCommand": "cd mgk-dashboard && npm install",
+  "buildCommand": "cd mgk-dashboard && npm run build",
+  "outputDirectory": "mgk-dashboard/.next",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/$1"
+    }
+  ]
+}
