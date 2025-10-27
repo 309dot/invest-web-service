@@ -1,3 +1,8 @@
 {
-  "rootDirectory": "mgk-dashboard"
+  "builds": [
+    { "src": "mgk-dashboard/package.json", "use": "@vercel/next" }
+  ],
+  "routes": [
+    { "src": "/(.*)", "dest": "mgk-dashboard/$1" }
+  ]
 }
