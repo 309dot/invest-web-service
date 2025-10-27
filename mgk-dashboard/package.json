@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "advisor:test": "curl -s -X POST http://localhost:3000/api/ai-advisor -H 'Content-Type: application/json' -d '{\\"periodDays\\":7,\\"store\\":false}' | jq"
+    "advisor:test": "curl -s -X POST http://localhost:3000/api/ai-advisor -H \"Content-Type: application/json\" -d '{\"periodDays\":7,\"store\":false}' | jq"
   },
   "dependencies": {
     "axios": "^1.12.2",
