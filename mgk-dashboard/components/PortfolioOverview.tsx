@@ -193,7 +193,10 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                     <Card key={position.id} className="overflow-hidden">
                       <CardContent className="p-4">
                         <div className="flex items-start justify-between mb-3">
-                          <div>
+                          <div 
+                            className="cursor-pointer hover:opacity-75"
+                            onClick={() => router.push(`/portfolio/position/${position.id}`)}
+                          >
                             <h4 className="font-semibold text-lg">{position.symbol}</h4>
                             <Badge variant="outline" className="text-xs">
                               {position.purchaseMethod === 'auto' ? '자동투자' : '일괄투자'}
@@ -277,7 +280,11 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                     </thead>
                     <tbody>
                       {positions.map((position) => (
-                        <tr key={position.id} className="border-b hover:bg-muted/50">
+                        <tr 
+                          key={position.id} 
+                          className="border-b hover:bg-muted/50 cursor-pointer"
+                          onClick={() => router.push(`/portfolio/position/${position.id}`)}
+                        >
                           <td className="py-3 px-4">
                             <div className="font-semibold">{position.symbol}</div>
                           </td>
