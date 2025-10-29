@@ -503,7 +503,7 @@ function buildStockAnalysisPrompt(
     totalInvested: position.totalInvested,
     totalValue: position.totalValue,
     returnRate: position.returnRate,
-    profitLoss: position.unrealizedProfitLoss,
+    profitLoss: position.profitLoss,
     firstPurchaseDate: position.firstPurchaseDate,
     transactionCount: position.transactionCount,
   };
