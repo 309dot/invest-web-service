@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { Header } from '@/components/Header';
@@ -28,7 +28,7 @@ import { Loader2, AlertCircle, ArrowLeft, Check } from 'lucide-react';
 import type { Stock, PurchaseMethod, PurchaseUnit, AutoInvestFrequency } from '@/types';
 import { formatInputDate } from '@/lib/utils/formatters';
 
-export default function AddStockPage() {
+function AddStockContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, loading: authLoading } = useAuth();
@@ -513,6 +513,18 @@ export default function AddStockPage() {
         </div>
       </div>
     </>
+  );
+}
+
+export default function AddStockPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    }>
+      <AddStockContent />
+    </Suspense>
   );
 }
 
