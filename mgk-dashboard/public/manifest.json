@@ -1,78 +1,9 @@
 {
-  "name": "Personal Stock Tracker",
+  "name": "개인 주식 관리 시스템",
   "short_name": "Stock Tracker",
-  "description": "개인 주식 포트폴리오 관리 시스템",
+  "description": "AI 기반 다중 종목 포트폴리오 관리 및 투자 인사이트 플랫폼",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#3b82f6",
-  "orientation": "portrait-primary",
-  "icons": [
-    {
-      "src": "/icon-192x192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/icon-512x512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
-    }
-  ],
-  "categories": ["finance", "productivity"],
-  "screenshots": [
-    {
-      "src": "/screenshot-mobile.png",
-      "sizes": "390x844",
-      "type": "image/png",
-      "form_factor": "narrow"
-    },
-    {
-      "src": "/screenshot-desktop.png",
-      "sizes": "1920x1080",
-      "type": "image/png",
-      "form_factor": "wide"
-    }
-  ],
-  "shortcuts": [
-    {
-      "name": "대시보드",
-      "short_name": "대시보드",
-      "description": "포트폴리오 대시보드 보기",
-      "url": "/",
-      "icons": [
-        {
-          "src": "/icon-192x192.png",
-          "sizes": "192x192"
-        }
-      ]
-    },
-    {
-      "name": "뉴스",
-      "short_name": "뉴스",
-      "description": "개인화 뉴스 보기",
-      "url": "/news",
-      "icons": [
-        {
-          "src": "/icon-192x192.png",
-          "sizes": "192x192"
-        }
-      ]
-    },
-    {
-      "name": "거래 추가",
-      "short_name": "거래",
-      "description": "새 거래 추가",
-      "url": "/transactions",
-      "icons": [
-        {
-          "src": "/icon-192x192.png",
-          "sizes": "192x192"
-        }
-      ]
-    }
-  ]
+  "theme_color": "#3b82f6"
 }
-
