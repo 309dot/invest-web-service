@@ -30,21 +30,6 @@ export function debounce<T extends (...args: any[]) => any>(
 /**
  * Build period range for date queries
  */
-export function buildPeriodRange(days: number): { startDate: string; endDate: string } {
-  const endDate = new Date();
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - days);
-
-  return {
-    startDate: startDate.toISOString().split('T')[0],
-    endDate: endDate.toISOString().split('T')[0],
-  };
-}
-
-export function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
 export function buildPeriodRange(periodDays: number) {
   const end = new Date()
   const start = new Date()
@@ -57,4 +42,8 @@ export function buildPeriodRange(periodDays: number) {
     endDate: toDateString(end),
     periodLabel: `${toDateString(start)}_${toDateString(end)}`,
   }
+}
+
+export function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
