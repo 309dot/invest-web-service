@@ -61,11 +61,13 @@ export function MultiStockChart({ positions }: MultiStockChartProps) {
     const dataPoints: { [key: string]: any } = {};
     
     positions.forEach((position) => {
-      if (!position.priceHistory) return;
+      // priceHistory는 아직 구현되지 않았으므로 스킵
+      const priceHistory = (position as any).priceHistory;
+      if (!priceHistory) return;
 
       const startPrice = position.averagePrice;
       
-      position.priceHistory.forEach((point) => {
+      priceHistory.forEach((point: any) => {
         const date = new Date(point.date);
         if (date < startDate) return;
 
