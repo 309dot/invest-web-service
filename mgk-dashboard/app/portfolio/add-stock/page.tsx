@@ -72,8 +72,13 @@ function AddStockContent() {
         );
         const data = await response.json();
 
+        console.log('Historical price response:', data);
+
         if (data.success && data.price) {
           setPurchasePrice(data.price.toFixed(2));
+          console.log(`✅ 가격 자동 입력: ${data.price}`);
+        } else {
+          console.warn('가격 조회 실패:', data.error);
         }
       } catch (err) {
         console.error('Failed to fetch historical price:', err);
