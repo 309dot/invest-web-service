@@ -49,7 +49,9 @@ export async function createTransaction(
     const transactionRef = doc(transactionsRef);
 
     const transaction: Omit<Transaction, 'id'> = {
+      portfolioId,
       positionId,
+      stockId: transactionData.stockId || transactionData.symbol,
       type: transactionData.type,
       symbol: transactionData.symbol,
       shares: transactionData.shares,
