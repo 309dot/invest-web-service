@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { Stock } from '@/types';
 import { Timestamp } from 'firebase/firestore';
+import { searchKoreanStocks as searchYahooKR } from '@/lib/apis/yahoo-finance';
 
 // Alpha Vantage API를 사용한 주식 검색
 const ALPHA_VANTAGE_API_KEY = process.env.ALPHA_VANTAGE_API_KEY || process.env.NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY || 'demo';
@@ -113,69 +114,29 @@ async function searchAlphaVantage(keyword: string): Promise<Omit<Stock, 'id'>[]>
 }
 
 /**
- * 한국 주식 검색 (샘플 데이터 - 실제로는 KIS API 또는 다른 API 사용)
+ * 한국 주식 검색 (Yahoo Finance API 사용)
  */
 async function searchKoreanStocks(keyword: string): Promise<Omit<Stock, 'id'>[]> {
-  // TODO: KIS API 또는 다른 한국 주식 API 연동
-  // 현재는 샘플 데이터 반환
-  const koreanStocks: Omit<Stock, 'id'>[] = [
-    {
-      symbol: '005930',
-      name: '삼성전자',
+  try {
+    const yahooResults = await searchYahooKR(keyword);
+    
+    // Yahoo Finance 결과를 Stock 타입으로 변환
+    return yahooResults.map((result: any) => ({
+      symbol: result.symbol,
+      name: result.name,
       market: 'KR',
-      assetType: 'stock',
-      sector: 'technology',
+      assetType: result.assetType === 'ETF' ? 'etf' : 'stock',
+      sector: result.sector || '미분류',
       currency: 'KRW',
-      exchange: 'KOSPI',
-      description: '삼성전자 - 대한민국 대표 전자 기업',
+      exchange: result.exchange,
+      description: `${result.name} (${result.symbol})`,
       searchCount: 0,
       createdAt: Timestamp.now(),
-    },
-    {
-      symbol: '000660',
-      name: 'SK하이닉스',
-      market: 'KR',
-      assetType: 'stock',
-      sector: 'technology',
-      currency: 'KRW',
-      exchange: 'KOSPI',
-      description: 'SK하이닉스 - 반도체 제조 기업',
-      searchCount: 0,
-      createdAt: Timestamp.now(),
-    },
-    {
-      symbol: '035420',
-      name: 'NAVER',
-      market: 'KR',
-      assetType: 'stock',
-      sector: 'technology',
-      currency: 'KRW',
-      exchange: 'KOSPI',
-      description: 'NAVER - 인터넷 포털 및 검색 서비스',
-      searchCount: 0,
-      createdAt: Timestamp.now(),
-    },
-    {
-      symbol: '035720',
-      name: '카카오',
-      market: 'KR',
-      assetType: 'stock',
-      sector: 'communication',
-      currency: 'KRW',
-      exchange: 'KOSPI',
-      description: '카카오 - 모바일 메신저 및 플랫폼',
-      searchCount: 0,
-      createdAt: Timestamp.now(),
-    },
-  ];
-
-  // 키워드로 필터링
-  const lowerKeyword = keyword.toLowerCase();
-  return koreanStocks.filter(
-    (stock) =>
-      stock.symbol.includes(lowerKeyword) ||
-      stock.name.toLowerCase().includes(lowerKeyword)
-  );
+    }));
+  } catch (error) {
+    console.error('Korean stock search error:', error);
+    return [];
+  }
 }
 
 /**
