@@ -1,10 +1,16 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/lib/contexts/AuthContext';
+import { Header } from '@/components/Header';
+import { PortfolioOverview } from '@/components/PortfolioOverview';
+import { BalanceDashboard } from '@/components/BalanceDashboard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import dynamic from "next/dynamic";
 const AIAdvisorCard = dynamic(
   () => import("@/components/AIAdvisorCard").then((mod) => mod.AIAdvisorCard),
@@ -22,7 +28,7 @@ import { ManualEntry } from "@/components/ManualEntry";
 import { WatchlistManager } from "@/components/WatchlistManager";
 import Link from "next/link";
 import { formatCurrency, formatPercent, formatDate, formatShares } from "@/lib/utils/formatters";
-import { TrendingUp, TrendingDown, DollarSign, PieChart, AlertTriangle, Calendar } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, PieChart, AlertTriangle, Calendar, Loader2 } from 'lucide-react';
 
 // 샘플 데이터 생성
 function generateSampleData() {
@@ -68,6 +74,8 @@ const sampleNews = [
 ];
 
 export default function Dashboard() {
+  const { user, loading } = useAuth();
+  const router = useRouter();
   const [chartData, setChartData] = useState<any[]>([]);
   const [stats, setStats] = useState({
     currentPrice: 525.50,
@@ -79,8 +87,29 @@ export default function Dashboard() {
   });
 
   useEffect(() => {
+    if (!loading && !user) {
+      router.push('/login');
+    }
+  }, [user, loading, router]);
+
+  useEffect(() => {
     setChartData(generateSampleData());
   }, []);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">로딩 중...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return null;
+  }
 
   const StatCard = ({ title, value, change, icon: Icon, trend }: any) => (
     <Card>
@@ -101,29 +130,53 @@ export default function Dashboard() {
   );
 
   return (
-    <div className="min-h-screen p-4 md:p-8">
-      <main className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="space-y-2">
-          <h1 className="text-3xl md:text-4xl font-bold tracking-tight">MGK Investment Dashboard</h1>
-          <p className="text-muted-foreground">
-            실시간 투자 추적 및 분석 시스템
-          </p>
-          <div className="flex flex-wrap items-center gap-3 pt-2">
-            <Link href="/weekly-reports" className="inline-flex items-center text-sm font-medium text-primary hover:underline">
-              <Calendar className="mr-1 h-4 w-4" /> 주간 리포트 보기
-            </Link>
+    <>
+      <Header />
+      <div className="min-h-screen p-4 md:p-8">
+        <main className="max-w-7xl mx-auto space-y-6">
+          {/* Header */}
+          <div className="space-y-2">
+            <h1 className="text-3xl md:text-4xl font-bold tracking-tight">포트폴리오 대시보드</h1>
+            <p className="text-muted-foreground">
+              실시간 투자 추적 및 AI 기반 분석 시스템
+            </p>
+            <div className="flex flex-wrap items-center gap-3 pt-2">
+              <Link href="/weekly-reports" className="inline-flex items-center text-sm font-medium text-primary hover:underline">
+                <Calendar className="mr-1 h-4 w-4" /> 주간 리포트 보기
+              </Link>
+            </div>
           </div>
-        </div>
 
-        {/* Alert */}
-        <Alert>
-          <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>데모 모드</AlertTitle>
-          <AlertDescription>
-            현재 샘플 데이터를 표시하고 있습니다. Firebase를 설정하면 실제 데이터가 표시됩니다.
-          </AlertDescription>
-        </Alert>
+          {/* Tabs for Multi-Portfolio Support */}
+          <Tabs defaultValue="main" className="space-y-6">
+            <TabsList>
+              <TabsTrigger value="main">메인 포트폴리오</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="main" className="space-y-6">
+              {/* 잔액 대시보드 */}
+              <BalanceDashboard portfolioId="main" />
+
+              {/* Portfolio Overview - 새로운 다중 종목 지원 */}
+              <PortfolioOverview portfolioId="main" />
+
+              {/* AI Advisor */}
+              <AIAdvisorCard />
+
+              {/* Legacy Section: MGK 단일 종목 (옵션) */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>레거시 MGK 데이터</CardTitle>
+                  <CardDescription>기존 단일 종목 추적 시스템</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Alert>
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>데모 모드</AlertTitle>
+                    <AlertDescription>
+                      현재 샘플 데이터를 표시하고 있습니다. Firebase를 설정하면 실제 데이터가 표시됩니다.
+                    </AlertDescription>
+                  </Alert>
 
         {/* Stats Cards */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -214,15 +267,17 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        {/* AI Advisor */}
-        <AIAdvisorCard />
+              {/* Watchlist */}
+              <WatchlistManager />
 
-        {/* Watchlist */}
-        <WatchlistManager />
-
-        {/* Manual Entry */}
-        <ManualEntry />
-      </main>
-    </div>
+              {/* Manual Entry */}
+              <ManualEntry />
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </main>
+      </div>
+    </>
   );
 }

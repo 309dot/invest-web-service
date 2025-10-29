@@ -6,6 +6,9 @@ export interface RSSNewsItem {
   pubDate: Date;
   source: string;
   description?: string;
+  relatedSymbols?: string[];
+  keywords?: string[];
+  category?: string;
 }
 
 // Cache for news (10 minutes)
@@ -201,4 +204,99 @@ export function determineImportance(relevanceScore: number): 'High' | 'Medium' |
  */
 export function clearCache() {
   cache.clear();
+}
+
+/**
+ * Collect news for specific stock symbols
+ */
+export async function collectNewsForSymbols(
+  symbols: string[],
+  language: string = 'en'
+): Promise<RSSNewsItem[]> {
+  const cacheKey = `stock-news-${symbols.join('-')}`;
+  const cached = cache.get(cacheKey);
+
+  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+    return cached.data;
+  }
+
+  try {
+    const allNews: RSSNewsItem[] = [];
+
+    for (const symbol of symbols) {
+      // Search for stock-specific news
+      const queries = [
+        `${symbol} stock`,
+        `${symbol} earnings`,
+        `${symbol} market`,
+      ];
+
+      for (const query of queries) {
+        const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=${language}&gl=US&ceid=US:${language}`;
+
+        try {
+          const response = await axios.get(rssUrl, {
+            timeout: 10000,
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (compatible; NewsBot/1.0)',
+            },
+          });
+
+          const xmlData = response.data;
+          const newsItems = parseRSSFeed(xmlData, query);
+
+          // Add symbol to related symbols
+          newsItems.forEach(item => {
+            item.relatedSymbols = [symbol];
+            item.keywords = [symbol, ...query.split(' ')];
+          });
+
+          allNews.push(...newsItems);
+        } catch (error) {
+          console.error(`Error fetching news for ${symbol}:`, error);
+        }
+      }
+    }
+
+    // Filter to last 7 days for stock-specific news
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const recentNews = allNews.filter(item => item.pubDate > sevenDaysAgo);
+    const uniqueNews = removeDuplicates(recentNews);
+
+    // Sort by date (newest first)
+    uniqueNews.sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime());
+
+    // Cache the result
+    cache.set(cacheKey, { data: uniqueNews, timestamp: Date.now() });
+
+    return uniqueNews;
+  } catch (error) {
+    console.error('Error collecting stock news:', error);
+
+    if (cached) {
+      console.warn('Returning expired cache data due to API error');
+      return cached.data;
+    }
+
+    return [];
+  }
+}
+
+/**
+ * Extract symbols mentioned in news title/description
+ */
+export function extractSymbols(text: string, knownSymbols: string[]): string[] {
+  const found: string[] = [];
+  const upperText = text.toUpperCase();
+
+  knownSymbols.forEach(symbol => {
+    const upperSymbol = symbol.toUpperCase();
+    // Look for symbol as standalone word
+    const regex = new RegExp(`\\b${upperSymbol}\\b`, 'i');
+    if (regex.test(upperText)) {
+      found.push(symbol);
+    }
+  });
+
+  return found;
 }

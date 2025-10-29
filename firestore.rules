@@ -2,12 +2,73 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // 개발 중에는 모두 허용
-    match /{document=**} {
-      allow read, write: if true;
+    
+    // 사용자별 데이터 - 본인만 접근 가능
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      
+      // 포트폴리오
+      match /portfolios/{portfolioId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+      
+      // 북마크된 뉴스
+      match /bookmarkedNews/{newsId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
     }
     
-    // 나중에 인증 추가하면:
-    // allow read, write: if request.auth != null;
+    // 글로벌 종목 마스터 - 모두 읽기 가능, 서버만 쓰기
+    match /stocks/{stockId} {
+      allow read: if true;
+      allow write: if false; // Cloud Functions에서만 쓰기
+    }
+    
+    // 뉴스 아이템 - 모두 읽기 가능
+    match /newsItems/{newsId} {
+      allow read: if true;
+      allow write: if false; // Cloud Functions에서만 쓰기
+    }
+    
+    // AI 인사이트 - 생성한 사용자만 읽기
+    match /aiInsights/{insightId} {
+      allow read: if request.auth != null;
+      allow write: if false; // API에서만 쓰기
+    }
+    
+    // 주간 리포트 - 인증된 사용자만 읽기
+    match /weeklyReports/{reportId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+    
+    // 포트폴리오 분석 결과 - 인증된 사용자만 읽기
+    match /portfolioAnalyses/{analysisId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+    
+    // 앱 설정 - 읽기만 허용
+    match /appSettings/{settingId} {
+      allow read: if true;
+      allow write: if false;
+    }
+    
+    // 대시보드 통계 - 읽기만 허용
+    match /dashboardStats/{statId} {
+      allow read: if true;
+      allow write: if false;
+    }
+    
+    // 레거시 컬렉션 (하위 호환)
+    match /dailyPurchases/{purchaseId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+    
+    match /dollarCharges/{chargeId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
   }
 }

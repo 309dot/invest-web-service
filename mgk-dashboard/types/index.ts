@@ -1,5 +1,186 @@
 import { Timestamp } from 'firebase/firestore';
 
+// ============================================
+// 다중 종목 포트폴리오 시스템 타입
+// ============================================
+
+// 구매 방식 (자동투자 vs 일괄투자)
+export type PurchaseMethod = 'auto' | 'manual';
+
+// 구매 단위 (주 단위 vs 금액 단위)
+export type PurchaseUnit = 'shares' | 'amount';
+
+// 자동투자 주기
+export type AutoInvestFrequency = 'daily' | 'weekly' | 'biweekly' | 'monthly';
+
+// 거래 유형
+export type TransactionType = 'buy' | 'sell' | 'dividend';
+
+// 시장 구분
+export type Market = 'US' | 'KR' | 'GLOBAL';
+
+// 자산 유형
+export type AssetType = 'stock' | 'etf' | 'reit' | 'fund';
+
+// 섹터
+export type Sector = 
+  | 'technology'
+  | 'healthcare'
+  | 'financial'
+  | 'consumer'
+  | 'industrial'
+  | 'energy'
+  | 'materials'
+  | 'utilities'
+  | 'real-estate'
+  | 'communication'
+  | 'other';
+
+// 종목 마스터 데이터
+export interface Stock {
+  id?: string;
+  symbol: string; // 티커 심볼 (예: AAPL, 005930)
+  name: string; // 종목명
+  market: Market; // 시장
+  assetType: AssetType; // 자산 유형
+  sector?: Sector; // 섹터
+  currency: 'USD' | 'KRW'; // 거래 통화
+  exchange?: string; // 거래소 (예: NASDAQ, KOSPI)
+  description?: string; // 종목 설명
+  logoUrl?: string; // 로고 이미지 URL
+  website?: string; // 기업 웹사이트
+  // 메타데이터
+  lastUpdated?: Timestamp;
+  searchCount?: number; // 검색 횟수 (인기도)
+  createdAt: Timestamp;
+}
+
+// 포트폴리오 (사용자별 포트폴리오 컨테이너)
+export interface Portfolio {
+  id?: string;
+  userId: string; // 사용자 ID
+  name: string; // 포트폴리오 이름 (예: "메인 포트폴리오", "은퇴 자금")
+  description?: string;
+  isDefault: boolean; // 기본 포트폴리오 여부
+  totalInvested: number; // 총 투자 금액 (USD)
+  totalValue: number; // 총 평가액 (USD)
+  returnRate: number; // 수익률 (%)
+  cashBalance: number; // 현금 잔액 (USD)
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+// 포지션 (포트폴리오 내 종목별 보유 현황)
+export interface Position {
+  id?: string;
+  portfolioId: string; // 포트폴리오 ID
+  stockId: string; // 종목 ID
+  symbol: string; // 티커 심볼 (빠른 조회용)
+  // 보유 정보
+  shares: number; // 보유 주식 수
+  averagePrice: number; // 평균 매수가 (USD)
+  totalInvested: number; // 총 투자 금액 (USD)
+  currentPrice: number; // 현재 주가 (USD)
+  totalValue: number; // 총 평가액 (USD)
+  returnRate: number; // 수익률 (%)
+  profitLoss: number; // 손익 (USD)
+  // 구매 방식 정보
+  purchaseMethod: PurchaseMethod; // 자동/수동
+  autoInvestConfig?: {
+    frequency: AutoInvestFrequency; // 주기
+    amount: number; // 투자 금액 (USD)
+    startDate: string; // 시작일 (YYYY-MM-DD)
+    isActive: boolean; // 활성화 여부
+    lastExecuted?: string; // 마지막 실행일
+  };
+  // 메타데이터
+  firstPurchaseDate: string; // 최초 매수일 (YYYY-MM-DD)
+  lastTransactionDate: string; // 마지막 거래일
+  transactionCount: number; // 거래 횟수
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+// 거래 이력 (매수/매도 기록)
+export interface Transaction {
+  id?: string;
+  portfolioId: string; // 포트폴리오 ID
+  positionId: string; // 포지션 ID
+  stockId: string; // 종목 ID
+  symbol: string; // 티커 심볼
+  // 거래 정보
+  type: TransactionType; // 거래 유형
+  date: string; // 거래일 (YYYY-MM-DD)
+  price: number; // 거래 가격 (USD)
+  shares: number; // 거래 주식 수
+  amount: number; // 거래 금액 (USD)
+  fee: number; // 수수료 (USD)
+  totalAmount: number; // 총 금액 (수수료 포함)
+  // 환율 정보 (한국 주식의 경우)
+  exchangeRate?: number; // USD/KRW 환율
+  krwAmount?: number; // 원화 환산 금액
+  // 구매 방식
+  purchaseMethod: PurchaseMethod; // 자동/수동
+  purchaseUnit: PurchaseUnit; // 주/금액 단위
+  // 메모
+  memo?: string;
+  // 메타데이터
+  createdAt: Timestamp;
+  updatedAt?: Timestamp;
+}
+
+// 포트폴리오 분석 결과
+export interface PortfolioAnalysis {
+  portfolioId: string;
+  // 섹터별 분산
+  sectorAllocation: {
+    sector: Sector;
+    value: number; // 평가액
+    percentage: number; // 비중 (%)
+    returnRate: number; // 수익률
+  }[];
+  // 지역별 분산
+  regionAllocation: {
+    market: Market;
+    value: number;
+    percentage: number;
+    returnRate: number;
+  }[];
+  // 자산 유형별 분산
+  assetAllocation: {
+    assetType: AssetType;
+    value: number;
+    percentage: number;
+    returnRate: number;
+  }[];
+  // 리스크 분석
+  riskMetrics: {
+    volatility: number; // 변동성
+    sharpeRatio: number; // 샤프 비율
+    maxDrawdown: number; // 최대 낙폭
+    beta?: number; // 베타 (시장 대비)
+  };
+  // 수익률 기여도 (상위 5개)
+  topContributors: {
+    symbol: string;
+    contribution: number; // 기여도 (%)
+    returnRate: number;
+  }[];
+  // 리밸런싱 제안
+  rebalancingSuggestions?: {
+    symbol: string;
+    currentPercentage: number;
+    targetPercentage: number;
+    action: 'buy' | 'sell' | 'hold';
+    amount?: number;
+  }[];
+  generatedAt: Timestamp;
+}
+
+// ============================================
+// 기존 타입 (하위 호환성 유지)
+// ============================================
+
 // Daily Purchase Record
 export interface DailyPurchase {
   id?: string;
