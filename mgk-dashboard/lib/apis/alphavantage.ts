@@ -187,7 +187,7 @@ export async function getHistoricalPrice(symbol: string, date: string): Promise<
     }
     
     if (closestDate) {
-      const priceEntry = dailyData.find((entry) => entry.date === closestDate);
+      const priceEntry = dailyData.find((entry: { date: string; close: number }) => entry.date === closestDate);
       return priceEntry ? priceEntry.close : null;
     }
     
