@@ -369,7 +369,7 @@ export default function TransactionsPage() {
                             </div>
                             <div>
                               <p className="text-muted-foreground">총 금액</p>
-                              <p className="font-semibold">{formatCurrency(transaction.totalCost, 'USD')}</p>
+                              <p className="font-semibold">{formatCurrency(transaction.totalAmount, 'USD')}</p>
                             </div>
                           </div>
 
@@ -451,7 +451,7 @@ export default function TransactionsPage() {
                               {formatCurrency(transaction.tax, 'USD')}
                             </td>
                             <td className="py-3 px-4 text-right font-semibold">
-                              {formatCurrency(transaction.totalCost, 'USD')}
+                              {formatCurrency(transaction.totalAmount, 'USD')}
                             </td>
                             <td className="py-3 px-4 text-sm text-muted-foreground max-w-xs truncate">
                               {transaction.note || '-'}
@@ -499,7 +499,7 @@ export default function TransactionsPage() {
                     <p><strong>종목:</strong> {transactionToDelete.symbol}</p>
                     <p><strong>유형:</strong> {transactionToDelete.type === 'buy' ? '매수' : '매도'}</p>
                     <p><strong>날짜:</strong> {formatDate(transactionToDelete.date)}</p>
-                    <p><strong>금액:</strong> {formatCurrency(transactionToDelete.totalCost, 'USD')}</p>
+                    <p><strong>금액:</strong> {formatCurrency(transactionToDelete.totalAmount, 'USD')}</p>
                   </div>
                 </div>
               )}
