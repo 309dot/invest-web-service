@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { Header } from '@/components/Header';
 import { PortfolioOverview } from '@/components/PortfolioOverview';
@@ -19,7 +20,7 @@ const AIAdvisorCard = dynamic(
     ),
   }
 );
-import { Loader2 } from 'lucide-react';
+import { Loader2, Calendar } from 'lucide-react';
 
 export default function Dashboard() {
   const { user, loading } = useAuth();
@@ -45,24 +46,6 @@ export default function Dashboard() {
   if (!user) {
     return null;
   }
-
-  const StatCard = ({ title, value, change, icon: Icon, trend }: any) => (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium">{title}</CardTitle>
-        <Icon className="h-4 w-4 text-muted-foreground" />
-      </CardHeader>
-      <CardContent>
-        <div className="text-2xl font-bold">{value}</div>
-        {change && (
-          <p className={`text-xs flex items-center gap-1 ${trend === 'up' ? 'text-green-600' : 'text-red-600'}`}>
-            {trend === 'up' ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-            {change}
-          </p>
-        )}
-      </CardContent>
-    </Card>
-  );
 
   return (
     <>
