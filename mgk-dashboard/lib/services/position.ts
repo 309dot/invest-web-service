@@ -53,6 +53,7 @@ export async function createPosition(
       totalInvested > 0 ? ((totalValue - totalInvested) / totalInvested) * 100 : 0;
     const profitLoss = totalValue - totalInvested;
 
+    // Position 데이터 생성 (undefined 필드 제외)
     const position: Omit<Position, 'id'> = {
       portfolioId,
       stockId: stock.symbol,
@@ -71,7 +72,7 @@ export async function createPosition(
       returnRate,
       profitLoss,
       purchaseMethod: initialData.purchaseMethod,
-      autoInvestConfig: initialData.autoInvestConfig,
+      ...(initialData.autoInvestConfig && { autoInvestConfig: initialData.autoInvestConfig }), // undefined 방지
       firstPurchaseDate: initialData.firstPurchaseDate || new Date().toISOString().split('T')[0],
       lastTransactionDate: initialData.firstPurchaseDate || new Date().toISOString().split('T')[0],
       transactionCount: 0,

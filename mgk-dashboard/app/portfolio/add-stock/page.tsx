@@ -420,6 +420,42 @@ function AddStockContent() {
                   {purchaseMethod === 'auto' && (
                     <div className="space-y-4 p-4 border rounded-lg">
                       <div className="space-y-2">
+                        <Label htmlFor="autoStartDate">시작 날짜</Label>
+                        <Input
+                          id="autoStartDate"
+                          type="date"
+                          value={autoStartDate}
+                          onChange={(e) => setAutoStartDate(e.target.value)}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="purchasePrice">
+                          시작일 매수 가격 ({selectedStock?.currency})
+                          {selectedStock?.market === 'US' && loadingPrice && (
+                            <span className="ml-2 text-xs text-muted-foreground">
+                              <Loader2 className="inline h-3 w-3 animate-spin mr-1" />
+                              가격 조회 중...
+                            </span>
+                          )}
+                        </Label>
+                        <Input
+                          id="purchasePrice"
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={purchasePrice}
+                          onChange={(e) => setPurchasePrice(e.target.value)}
+                          disabled={loadingPrice}
+                        />
+                        {selectedStock?.market === 'US' && (
+                          <p className="text-xs text-muted-foreground">
+                            💡 시작 날짜 선택 시 시장가(시가+종가 평균)가 자동으로 입력됩니다.
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="space-y-2">
                         <Label htmlFor="autoFrequency">투자 주기</Label>
                         <Select
                           value={autoFrequency}
@@ -437,7 +473,7 @@ function AddStockContent() {
                       </div>
 
                       <div className="space-y-2">
-                        <Label htmlFor="autoAmount">투자 금액 ({selectedStock?.currency})</Label>
+                        <Label htmlFor="autoAmount">회당 투자 금액 ({selectedStock?.currency})</Label>
                         <Input
                           id="autoAmount"
                           type="number"
@@ -445,16 +481,6 @@ function AddStockContent() {
                           placeholder="0.00"
                           value={autoAmount}
                           onChange={(e) => setAutoAmount(e.target.value)}
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="autoStartDate">시작 날짜</Label>
-                        <Input
-                          id="autoStartDate"
-                          type="date"
-                          value={autoStartDate}
-                          onChange={(e) => setAutoStartDate(e.target.value)}
                         />
                       </div>
                     </div>
