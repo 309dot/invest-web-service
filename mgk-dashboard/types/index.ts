@@ -76,19 +76,25 @@ export interface Position {
   portfolioId: string; // 포트폴리오 ID
   stockId: string; // 종목 ID
   symbol: string; // 티커 심볼 (빠른 조회용)
+  name: string; // 종목명
+  market: 'US' | 'KR' | 'GLOBAL'; // 시장
+  exchange: string; // 거래소
+  assetType: 'stock' | 'etf' | 'reit' | 'fund'; // 자산 유형
+  sector?: string; // 섹터
+  currency: 'USD' | 'KRW'; // 통화
   // 보유 정보
   shares: number; // 보유 주식 수
-  averagePrice: number; // 평균 매수가 (USD)
-  totalInvested: number; // 총 투자 금액 (USD)
-  currentPrice: number; // 현재 주가 (USD)
-  totalValue: number; // 총 평가액 (USD)
+  averagePrice: number; // 평균 매수가
+  totalInvested: number; // 총 투자 금액
+  currentPrice: number; // 현재 주가
+  totalValue: number; // 총 평가액
   returnRate: number; // 수익률 (%)
-  profitLoss: number; // 손익 (USD)
+  profitLoss: number; // 손익
   // 구매 방식 정보
   purchaseMethod: PurchaseMethod; // 자동/수동
   autoInvestConfig?: {
     frequency: AutoInvestFrequency; // 주기
-    amount: number; // 투자 금액 (USD)
+    amount: number; // 투자 금액
     startDate: string; // 시작일 (YYYY-MM-DD)
     isActive: boolean; // 활성화 여부
     lastExecuted?: string; // 마지막 실행일
