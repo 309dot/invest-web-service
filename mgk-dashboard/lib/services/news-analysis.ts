@@ -5,7 +5,7 @@
  */
 
 import { db } from '../firebase';
-import { collection, query, where, getDocs, orderBy, limit, addDoc, Timestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, limit, addDoc, deleteDoc, Timestamp } from 'firebase/firestore';
 import type { Position } from '@/types';
 
 export interface NewsItem {
@@ -349,7 +349,7 @@ export async function toggleBookmark(
   } else {
     // 북마크 제거
     const docToDelete = snapshot.docs[0];
-    await docToDelete.ref.delete();
+    await deleteDoc(docToDelete.ref);
     return false;
   }
 }

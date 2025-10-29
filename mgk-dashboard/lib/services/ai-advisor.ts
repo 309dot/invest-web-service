@@ -482,8 +482,18 @@ export async function diagnosePortfolio(
     throw new Error('AI 응답에서 유효한 JSON을 찾을 수 없습니다.');
   }
 
+  if (!parsed) {
+    throw new Error('AI 응답 파싱 결과가 null입니다.');
+  }
+
   return {
-    ...parsed,
+    diagnosis: parsed.diagnosis || '',
+    strengths: parsed.strengths || [],
+    weaknesses: parsed.weaknesses || [],
+    stockEvaluations: parsed.stockEvaluations || [],
+    rebalancingSuggestion: parsed.rebalancingSuggestion || '',
+    strategies: parsed.strategies || [],
+    overallScore: parsed.overallScore,
     rawText: rawContent,
   };
 }
@@ -631,9 +641,18 @@ export async function analyzeStock(
     throw new Error('AI 응답에서 유효한 JSON을 찾을 수 없습니다.');
   }
 
+  if (!parsed) {
+    throw new Error('AI 응답 파싱 결과가 null입니다.');
+  }
+
   return {
     symbol: position.symbol,
-    ...parsed,
+    evaluation: parsed.evaluation || '',
+    recommendation: parsed.recommendation || 'hold',
+    reason: parsed.reason || '',
+    priceTargets: parsed.priceTargets,
+    risks: parsed.risks || [],
+    actionItems: parsed.actionItems || [],
     rawText: rawContent,
   };
 }

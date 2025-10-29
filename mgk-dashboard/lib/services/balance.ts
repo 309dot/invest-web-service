@@ -172,7 +172,7 @@ export async function createChargeRecord(
       exchangeRate: chargeData.exchangeRate,
       convertedAmount: chargeData.convertedAmount,
       date: chargeData.date,
-      memo: chargeData.memo || '',
+      note: chargeData.note || '',
       createdAt: Timestamp.now(),
     };
 

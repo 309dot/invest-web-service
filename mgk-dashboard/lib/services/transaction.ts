@@ -51,7 +51,7 @@ export async function createTransaction(
     const transaction: Omit<Transaction, 'id'> = {
       portfolioId,
       positionId,
-      stockId: transactionData.stockId || transactionData.symbol,
+      stockId: transactionData.symbol,
       type: transactionData.type,
       symbol: transactionData.symbol,
       shares: transactionData.shares,
@@ -60,10 +60,10 @@ export async function createTransaction(
       fee: transactionData.fee || 0,
       totalAmount: transactionData.amount + (transactionData.fee || 0),
       date: transactionData.date,
-      memo: transactionData.memo || '',
+      memo: transactionData.note || '',
       exchangeRate: transactionData.exchangeRate,
-      purchaseMethod: transactionData.purchaseMethod || 'manual',
-      purchaseUnit: transactionData.purchaseUnit || 'shares',
+      purchaseMethod: 'manual',
+      purchaseUnit: 'shares',
       createdAt: Timestamp.now(),
     };
 
