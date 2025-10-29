@@ -4,6 +4,14 @@ import { PriceData } from '@/types';
 const ALPHA_VANTAGE_API_KEY = process.env.NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY || '';
 const BASE_URL = 'https://www.alphavantage.co/query';
 
+// API 키 검증
+if (!ALPHA_VANTAGE_API_KEY) {
+  console.error('❌ ALPHA_VANTAGE_API_KEY가 설정되지 않았습니다!');
+  console.error('Vercel Dashboard → Settings → Environment Variables에서 설정하세요.');
+}
+
+console.log('🔑 Alpha Vantage API Key:', ALPHA_VANTAGE_API_KEY ? `${ALPHA_VANTAGE_API_KEY.substring(0, 8)}...` : '없음');
+
 // Cache for API responses (5 minutes)
 const cache = new Map<string, { data: any; timestamp: number }>();
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
@@ -124,6 +132,9 @@ export async function getDailyData(symbol: string, outputsize: 'compact' | 'full
   }
 
   try {
+    console.log(`📡 Calling Alpha Vantage API for ${symbol}...`);
+    console.log(`   API Key: ${ALPHA_VANTAGE_API_KEY ? 'Exists' : 'Missing'}`);
+    
     const response = await axios.get(BASE_URL, {
       params: {
         function: 'TIME_SERIES_DAILY',
@@ -134,9 +145,30 @@ export async function getDailyData(symbol: string, outputsize: 'compact' | 'full
       timeout: 10000,
     });
 
+    console.log(`📊 API Response keys:`, Object.keys(response.data));
+
+    // API 에러 메시지 확인
+    if (response.data['Error Message']) {
+      console.error('❌ Alpha Vantage Error:', response.data['Error Message']);
+      throw new Error(response.data['Error Message']);
+    }
+
+    // API 호출 제한 확인
+    if (response.data['Note']) {
+      console.error('⚠️ API Rate Limit:', response.data['Note']);
+      throw new Error('API rate limit exceeded');
+    }
+
+    // 정보 메시지 확인 (demo 키 등)
+    if (response.data['Information']) {
+      console.error('ℹ️ API Information:', response.data['Information']);
+      throw new Error('Invalid API key or demo key');
+    }
+
     const timeSeries = response.data['Time Series (Daily)'];
 
     if (!timeSeries) {
+      console.error('❌ No Time Series data in response');
       throw new Error('No daily data returned');
     }
 
@@ -177,10 +209,22 @@ export async function getHistoricalPrice(
 ): Promise<number | null> {
   try {
     console.log(`🔍 Fetching historical price for ${symbol} on ${date} (method: ${purchaseMethod || 'manual'})`);
+    
+    if (!ALPHA_VANTAGE_API_KEY) {
+      console.error('❌ API 키가 없어서 가격을 조회할 수 없습니다!');
+      return null;
+    }
+    
     const dailyData = await getDailyData(symbol, 'full');
+    
+    console.log(`📊 Daily data entries:`, dailyData ? dailyData.length : 0);
     
     if (!dailyData || dailyData.length === 0) {
       console.warn(`⚠️ No daily data found for ${symbol}`);
+      console.warn('가능한 원인:');
+      console.warn('1. API 키가 유효하지 않음');
+      console.warn('2. API 호출 제한 초과 (5 req/min, 500 req/day)');
+      console.warn('3. 잘못된 심볼');
       return null;
     }
     
