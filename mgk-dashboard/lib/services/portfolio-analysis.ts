@@ -58,7 +58,7 @@ export interface PortfolioAnalysis {
   portfolioId: string;
   totalValue: number;
   totalInvested: number;
-  returnRate: number;
+  overallReturnRate: number;
   sectorAllocation: SectorAllocation[];
   regionAllocation: RegionAllocation[];
   assetAllocation: AssetAllocation[];
@@ -381,7 +381,7 @@ export async function analyzePortfolio(
 
     const totalValue = positions.reduce((sum, p) => sum + p.totalValue, 0);
     const totalInvested = positions.reduce((sum, p) => sum + p.totalInvested, 0);
-    const returnRate = totalInvested > 0 
+    const overallReturnRate = totalInvested > 0 
       ? ((totalValue - totalInvested) / totalInvested) * 100 
       : 0;
 
@@ -402,7 +402,7 @@ export async function analyzePortfolio(
       portfolioId,
       totalValue,
       totalInvested,
-      returnRate,
+      overallReturnRate,
       sectorAllocation,
       regionAllocation,
       assetAllocation,

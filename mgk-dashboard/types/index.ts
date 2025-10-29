@@ -132,6 +132,10 @@ export interface Transaction {
 // 포트폴리오 분석 결과
 export interface PortfolioAnalysis {
   portfolioId: string;
+  // 포트폴리오 총괄
+  totalValue: number; // 총 평가액
+  totalInvested: number; // 총 투자금
+  overallReturnRate: number; // 전체 수익률 (%)
   // 섹터별 분산
   sectorAllocation: {
     sector: Sector;
