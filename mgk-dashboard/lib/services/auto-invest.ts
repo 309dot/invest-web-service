@@ -84,7 +84,6 @@ export async function generateAutoInvestTransactions(
         amount: tx.amount,
         date: tx.date,
         note: `자동 투자 (${config.frequency})`,
-        stockId: config.stockId,
       });
 
       // 포지션 업데이트
