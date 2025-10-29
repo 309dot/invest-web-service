@@ -59,32 +59,43 @@ function AddStockContent() {
       // 수동 구매: purchaseDate 기준, 자동 구매: autoStartDate 기준
       const dateToFetch = purchaseMethod === 'manual' ? purchaseDate : autoStartDate;
       
+      console.log('🔍 Price fetch check:', {
+        selectedStock: selectedStock?.symbol,
+        dateToFetch,
+        purchaseMethod,
+        market: selectedStock?.market,
+      });
+      
       if (!selectedStock || !dateToFetch) {
+        console.log('⚠️ Missing stock or date');
         return;
       }
 
       // US 주식만 지원
       if (selectedStock.market !== 'US') {
+        console.log('⚠️ Not US stock, skipping auto price fetch');
         return;
       }
 
+      console.log('📡 Fetching price from API...');
       setLoadingPrice(true);
       try {
-        const response = await fetch(
-          `/api/stocks/historical-price?symbol=${selectedStock.symbol}&date=${dateToFetch}&method=${purchaseMethod}`
-        );
+        const url = `/api/stocks/historical-price?symbol=${selectedStock.symbol}&date=${dateToFetch}&method=${purchaseMethod}`;
+        console.log('API URL:', url);
+        
+        const response = await fetch(url);
         const data = await response.json();
 
-        console.log('Historical price response:', data);
+        console.log('📊 Historical price response:', data);
 
         if (data.success && data.price) {
           setPurchasePrice(data.price.toFixed(2));
-          console.log(`✅ 가격 자동 입력: ${data.price} (${data.note})`);
+          console.log(`✅ 가격 자동 입력 성공: $${data.price} (${data.note})`);
         } else {
-          console.warn('가격 조회 실패:', data.error);
+          console.error('❌ 가격 조회 실패:', data.error);
         }
       } catch (err) {
-        console.error('Failed to fetch historical price:', err);
+        console.error('❌ Failed to fetch historical price:', err);
       } finally {
         setLoadingPrice(false);
       }

@@ -77,6 +77,29 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
     setShowTransactionForm(true);
   };
 
+  const handleDeletePosition = async (positionId: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // 상세 페이지로 이동 방지
+    
+    if (!confirm('정말로 이 포지션을 삭제하시겠습니까? 모든 거래 내역이 함께 삭제됩니다.')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/positions/${positionId}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        await fetchPositions(); // 목록 새로고침
+      } else {
+        alert('포지션 삭제에 실패했습니다.');
+      }
+    } catch (error) {
+      console.error('Error deleting position:', error);
+      alert('포지션 삭제 중 오류가 발생했습니다.');
+    }
+  };
+
   const handleTransactionSuccess = () => {
     fetchPositions();
     setSelectedPosition(null);
@@ -213,7 +236,10 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                                 <ArrowUpDown className="mr-2 h-4 w-4" />
                                 거래 추가
                               </DropdownMenuItem>
-                              <DropdownMenuItem className="text-destructive">
+                              <DropdownMenuItem 
+                                className="text-destructive"
+                                onClick={(e) => handleDeletePosition(position.id!, e)}
+                              >
                                 <Trash2 className="mr-2 h-4 w-4" />
                                 포지션 삭제
                               </DropdownMenuItem>
@@ -328,7 +354,10 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                                   <ArrowUpDown className="mr-2 h-4 w-4" />
                                   거래 추가
                                 </DropdownMenuItem>
-                                <DropdownMenuItem className="text-destructive">
+                                <DropdownMenuItem 
+                                  className="text-destructive"
+                                  onClick={(e) => handleDeletePosition(position.id!, e)}
+                                >
                                   <Trash2 className="mr-2 h-4 w-4" />
                                   포지션 삭제
                                 </DropdownMenuItem>
