@@ -1,8 +1,7 @@
 {
-  "builds": [
-    { "src": "mgk-dashboard/package.json", "use": "@vercel/next" }
-  ],
-  "routes": [
-    { "src": "/(.*)", "dest": "mgk-dashboard/$1" }
-  ]
+  "buildCommand": "cd mgk-dashboard && npm run build",
+  "devCommand": "cd mgk-dashboard && npm run dev",
+  "installCommand": "cd mgk-dashboard && npm install",
+  "framework": "nextjs",
+  "outputDirectory": "mgk-dashboard/.next"
 }
