@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+export const dynamic = 'force-dynamic';
+
 import { getCurrentPrice } from '@/lib/apis/alphavantage';
 import { getExchangeRate } from '@/lib/apis/exchangerate';
 

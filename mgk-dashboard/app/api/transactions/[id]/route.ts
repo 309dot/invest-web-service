@@ -1,4 +1,6 @@
 /**
+export const dynamic = 'force-dynamic';
+
  * 개별 거래 관리 API
  * 
  * GET: 거래 조회

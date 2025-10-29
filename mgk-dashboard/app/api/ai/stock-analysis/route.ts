@@ -1,4 +1,6 @@
 /**
+export const dynamic = 'force-dynamic';
+
  * 개별 종목 AI 분석 API
  * 
  * POST: 개별 종목 분석

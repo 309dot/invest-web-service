@@ -1,4 +1,6 @@
 /**
+export const dynamic = 'force-dynamic';
+
  * 환율 조회 API
  * 
  * GET: 환율 조회 (날짜별)

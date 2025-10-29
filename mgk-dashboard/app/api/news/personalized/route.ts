@@ -1,4 +1,6 @@
 /**
+export const dynamic = 'force-dynamic';
+
  * 개인화 뉴스 API
  * 
  * GET: 사용자 보유 종목 기반 개인화 뉴스 조회

@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+export const dynamic = 'force-dynamic';
+
 
 import { saveWeeklyReport, generateWeeklySummary } from '@/lib/services/weeklyReports';
 import { fetchAIAdvisorContext, callAIAdvisor, storeAIInsight } from '@/lib/services/ai-advisor';

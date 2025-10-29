@@ -1,4 +1,6 @@
 /**
+export const dynamic = 'force-dynamic';
+
  * 포트폴리오 분석 API
  * 
  * GET: 포트폴리오 분석 결과 조회

@@ -1,4 +1,6 @@
 /**
+export const dynamic = 'force-dynamic';
+
  * 잔액 관리 API
  * 
  * GET: 잔액 조회

@@ -1,4 +1,6 @@
 /**
+export const dynamic = 'force-dynamic';
+
  * 포지션 관리 API
  * 
  * POST: 새 포지션 생성

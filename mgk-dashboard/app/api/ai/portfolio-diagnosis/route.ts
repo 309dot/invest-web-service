@@ -1,4 +1,6 @@
 /**
+export const dynamic = 'force-dynamic';
+
  * 포트폴리오 AI 진단 API
  * 
  * POST: 포트폴리오 종합 진단

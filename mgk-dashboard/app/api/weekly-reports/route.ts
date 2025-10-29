@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+export const dynamic = 'force-dynamic';
+
 
 import { getDocumentsWithLimit } from '@/lib/firestore';
 import { listRecentAIInsights } from '@/lib/services/ai-advisor';

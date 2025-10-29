@@ -3,6 +3,8 @@ import type { Stock } from '@/types';
 import { Timestamp } from 'firebase/firestore';
 import { searchKoreanStocks as searchYahooKR } from '@/lib/apis/yahoo-finance';
 
+export const dynamic = 'force-dynamic';
+
 // Alpha Vantage API를 사용한 주식 검색
 const ALPHA_VANTAGE_API_KEY = process.env.ALPHA_VANTAGE_API_KEY || process.env.NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY || 'demo';
 const ALPHA_VANTAGE_BASE_URL = 'https://www.alphavantage.co/query';
