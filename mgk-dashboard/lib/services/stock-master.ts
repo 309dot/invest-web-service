@@ -330,3 +330,9 @@ export async function getRecentlyUpdatedStocks(limitCount: number = 10): Promise
   }
 }
 
+/**
+ * Alias for ensureStock (for backward compatibility)
+ */
+export async function saveStockMaster(stockData: Omit<Stock, 'id'>): Promise<string> {
+  return ensureStock(stockData);
+}

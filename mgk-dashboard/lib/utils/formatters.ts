@@ -44,6 +44,13 @@ export function formatRelativeTime(date: string | Date): string {
 }
 
 /**
+ * Format relative date (alias for formatRelativeTime)
+ */
+export function formatRelativeDate(date: string | Date): string {
+  return formatRelativeTime(date);
+}
+
+/**
  * Format number with commas
  */
 export function formatNumber(num: number, decimals: number = 0): string {

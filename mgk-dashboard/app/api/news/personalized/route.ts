@@ -55,13 +55,13 @@ export async function GET(request: NextRequest) {
 
       return {
         title: news.title,
-        description: news.description,
+        description: news.description || '',
         url: news.link,
         source: news.source,
         publishedAt: news.pubDate.toISOString(),
-        relatedSymbols: news.relatedSymbols,
-        keywords: news.keywords,
-        category: news.category,
+        relatedSymbols: news.relatedSymbols || [],
+        keywords: news.keywords || [],
+        category: news.category || 'general',
         sentiment: sentiment.sentiment,
         sentimentScore: sentiment.score,
       };
