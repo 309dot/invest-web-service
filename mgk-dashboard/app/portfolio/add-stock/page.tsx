@@ -71,7 +71,7 @@ function AddStockContent() {
       setLoadingPrice(true);
       try {
         const response = await fetch(
-          `/api/stocks/historical-price?symbol=${selectedStock.symbol}&date=${dateToFetch}`
+          `/api/stocks/historical-price?symbol=${selectedStock.symbol}&date=${dateToFetch}&method=${purchaseMethod}`
         );
         const data = await response.json();
 
@@ -79,7 +79,7 @@ function AddStockContent() {
 
         if (data.success && data.price) {
           setPurchasePrice(data.price.toFixed(2));
-          console.log(`✅ 가격 자동 입력: ${data.price}`);
+          console.log(`✅ 가격 자동 입력: ${data.price} (${data.note})`);
         } else {
           console.warn('가격 조회 실패:', data.error);
         }

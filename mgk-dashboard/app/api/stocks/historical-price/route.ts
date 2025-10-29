@@ -12,6 +12,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const symbol = searchParams.get('symbol');
     const date = searchParams.get('date');
+    const purchaseMethod = searchParams.get('method') as 'manual' | 'auto' | null;
 
     if (!symbol || !date) {
       return NextResponse.json(
@@ -20,7 +21,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const price = await getHistoricalPrice(symbol, date);
+    const price = await getHistoricalPrice(symbol, date, purchaseMethod || 'manual');
 
     if (price === null) {
       return NextResponse.json(
@@ -34,6 +35,10 @@ export async function GET(request: NextRequest) {
       symbol,
       date,
       price,
+      method: purchaseMethod || 'manual',
+      note: purchaseMethod === 'auto' 
+        ? '시장가 매수 시뮬레이션 (시가+종가 평균)'
+        : '종가 기준',
     });
   } catch (error) {
     console.error('Historical price API error:', error);

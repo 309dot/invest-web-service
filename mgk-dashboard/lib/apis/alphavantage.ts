@@ -165,10 +165,18 @@ export async function getDailyData(symbol: string, outputsize: 'compact' | 'full
 
 /**
  * Get historical price for a specific date
+ * 매수 가격 자동 결정 우선순위:
+ * 1순위: 해당일 종가 (Close Price)
+ * 2순위: 해당일 시가 (Open Price)  
+ * 3순위: 전일 종가 (휴장일 대응)
  */
-export async function getHistoricalPrice(symbol: string, date: string): Promise<number | null> {
+export async function getHistoricalPrice(
+  symbol: string, 
+  date: string,
+  purchaseMethod?: 'manual' | 'auto'
+): Promise<number | null> {
   try {
-    console.log(`🔍 Fetching historical price for ${symbol} on ${date}`);
+    console.log(`🔍 Fetching historical price for ${symbol} on ${date} (method: ${purchaseMethod || 'manual'})`);
     const dailyData = await getDailyData(symbol, 'full');
     
     if (!dailyData || dailyData.length === 0) {
@@ -193,10 +201,35 @@ export async function getHistoricalPrice(symbol: string, date: string): Promise<
     }
     
     if (closestDate) {
-      const priceEntry = dailyData.find((entry: { date: string; close: number }) => entry.date === closestDate);
+      const priceEntry = dailyData.find((entry: { date: string; open: number; close: number }) => entry.date === closestDate);
       if (priceEntry) {
-        console.log(`✅ Found price for ${symbol} on ${closestDate}: $${priceEntry.close}`);
-        return priceEntry.close;
+        let price: number;
+        
+        // 구매 방식에 따른 가격 결정
+        if (purchaseMethod === 'auto') {
+          // 자동 구매: 시장가 매수 시뮬레이션 (시가 + 종가) / 2
+          if (priceEntry.open && priceEntry.close) {
+            price = (priceEntry.open + priceEntry.close) / 2;
+            console.log(`✅ Auto purchase - Average price for ${symbol} on ${closestDate}: $${price.toFixed(2)} (Open: $${priceEntry.open}, Close: $${priceEntry.close})`);
+          } else {
+            price = priceEntry.close || priceEntry.open;
+            console.log(`✅ Auto purchase - Fallback price for ${symbol} on ${closestDate}: $${price.toFixed(2)}`);
+          }
+        } else {
+          // 수동 구매: 종가 우선, 없으면 시가
+          if (priceEntry.close) {
+            price = priceEntry.close;
+            console.log(`✅ Manual purchase - Close price for ${symbol} on ${closestDate}: $${price.toFixed(2)}`);
+          } else if (priceEntry.open) {
+            price = priceEntry.open;
+            console.log(`✅ Manual purchase - Open price for ${symbol} on ${closestDate}: $${price.toFixed(2)}`);
+          } else {
+            console.warn(`⚠️ No price data available for ${symbol} on ${closestDate}`);
+            return null;
+          }
+        }
+        
+        return price;
       }
     }
     

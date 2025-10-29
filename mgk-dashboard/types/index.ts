@@ -11,7 +11,7 @@ export type PurchaseMethod = 'auto' | 'manual';
 export type PurchaseUnit = 'shares' | 'amount';
 
 // 자동투자 주기
-export type AutoInvestFrequency = 'daily' | 'weekly' | 'biweekly' | 'monthly';
+export type AutoInvestFrequency = 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'quarterly';
 
 // 거래 유형
 export type TransactionType = 'buy' | 'sell' | 'dividend';
