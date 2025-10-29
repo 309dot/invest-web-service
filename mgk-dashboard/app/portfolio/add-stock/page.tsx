@@ -169,25 +169,25 @@ function AddStockContent() {
       const stockId = stockMasterData.stockId;
 
       // 2. 포지션 생성
+      const calculatedShares = purchaseMethod === 'manual' && purchaseUnit === 'shares' 
+        ? parseFloat(shares)
+        : purchaseMethod === 'manual' && purchaseUnit === 'amount'
+        ? parseFloat(amount) / parseFloat(purchasePrice)
+        : 0;
+
       const positionData = {
         userId: user.uid,
         portfolioId: portfolioId,
-        stockId,
-        symbol: selectedStock.symbol,
-        name: selectedStock.name,
-        market: selectedStock.market,
-        assetType: selectedStock.assetType,
-        sector: selectedStock.sector,
-        currency: selectedStock.currency,
-        shares: purchaseMethod === 'manual' && purchaseUnit === 'shares' 
-          ? parseFloat(shares)
-          : purchaseMethod === 'manual' && purchaseUnit === 'amount'
-          ? parseFloat(amount) / parseFloat(purchasePrice)
-          : 0,
-        averagePrice: purchaseMethod === 'manual' ? parseFloat(purchasePrice) : 0,
-        currentPrice: parseFloat(purchasePrice),
+        stock: selectedStock,
         purchaseMethod,
-        purchaseUnit: purchaseMethod === 'manual' ? purchaseUnit : 'amount',
+        initialPurchase: purchaseMethod === 'manual' ? {
+          shares: calculatedShares,
+          price: parseFloat(purchasePrice),
+          amount: purchaseUnit === 'shares'
+            ? calculatedShares * parseFloat(purchasePrice)
+            : parseFloat(amount),
+          date: purchaseDate,
+        } : undefined,
         autoInvestConfig: purchaseMethod === 'auto' ? {
           enabled: true,
           frequency: autoFrequency,
@@ -203,39 +203,12 @@ function AddStockContent() {
       });
 
       if (!positionResponse.ok) {
-        throw new Error('포지션 생성 실패');
+        const errorData = await positionResponse.json();
+        console.error('Position creation error:', errorData);
+        throw new Error(errorData.error || '포지션 생성 실패');
       }
 
       const positionResult = await positionResponse.json();
-
-      // 3. 수동 매수인 경우 첫 거래 기록 생성
-      if (purchaseMethod === 'manual') {
-        const transactionData = {
-          userId: user.uid,
-          portfolioId: portfolioId,
-          positionId: positionResult.positionId,
-          type: 'buy' as const,
-          symbol: selectedStock.symbol,
-          shares: purchaseUnit === 'shares'
-            ? parseFloat(shares)
-            : parseFloat(amount) / parseFloat(purchasePrice),
-          price: parseFloat(purchasePrice),
-          amount: purchaseUnit === 'shares'
-            ? parseFloat(shares) * parseFloat(purchasePrice)
-            : parseFloat(amount),
-          date: purchaseDate,
-        };
-
-        const transactionResponse = await fetch('/api/transactions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(transactionData),
-        });
-
-        if (!transactionResponse.ok) {
-          throw new Error('거래 기록 생성 실패');
-        }
-      }
 
       // 성공 시 대시보드로 이동
       router.push(`/?portfolioId=${portfolioId}`);
