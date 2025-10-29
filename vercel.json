@@ -1,8 +1,2 @@
-{
-  "buildCommand": "cd mgk-dashboard && npm install && npm run build",
-  "devCommand": "cd mgk-dashboard && npm run dev",
-  "installCommand": "cd mgk-dashboard && npm install",
-  "framework": "nextjs",
-  "outputDirectory": "mgk-dashboard/.next",
-  "ignoreCommand": "git diff --quiet HEAD^ HEAD ./mgk-dashboard"
-}
+{}
+
