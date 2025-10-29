@@ -7,6 +7,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -27,7 +28,6 @@ import {
   ArrowUpDown,
   Trash2,
 } from 'lucide-react';
-import { AddStockModal } from './AddStockModal';
 import { TransactionForm } from './TransactionForm';
 import { formatCurrency, formatPercent } from '@/lib/utils/formatters';
 import type { Position } from '@/types';
@@ -37,6 +37,7 @@ interface PortfolioOverviewProps {
 }
 
 export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
+  const router = useRouter();
   const [positions, setPositions] = useState<Position[]>([]);
   const [totals, setTotals] = useState({
     totalInvested: 0,
@@ -44,7 +45,6 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
     returnRate: 0,
   });
   const [loading, setLoading] = useState(true);
-  const [showAddModal, setShowAddModal] = useState(false);
   const [selectedPosition, setSelectedPosition] = useState<Position | null>(null);
   const [showTransactionForm, setShowTransactionForm] = useState(false);
 
@@ -68,8 +68,8 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
     fetchPositions();
   }, [portfolioId]);
 
-  const handleAddSuccess = () => {
-    fetchPositions();
+  const handleAddStock = () => {
+    router.push(`/portfolio/add-stock?portfolioId=${portfolioId}`);
   };
 
   const handleTransactionClick = (position: Position) => {
@@ -105,7 +105,7 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                 >
                   <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                 </Button>
-                <Button onClick={() => setShowAddModal(true)}>
+                <Button onClick={handleAddStock}>
                   <Plus className="mr-2 h-4 w-4" />
                   종목 추가
                 </Button>
@@ -180,7 +180,7 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                 <p className="text-sm text-muted-foreground mb-4">
                   종목을 추가하여 포트폴리오를 시작하세요.
                 </p>
-                <Button onClick={() => setShowAddModal(true)}>
+                <Button onClick={handleAddStock}>
                   <Plus className="mr-2 h-4 w-4" />
                   첫 종목 추가하기
                 </Button>
@@ -338,14 +338,6 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
           </CardContent>
         </Card>
       </div>
-
-      {/* 종목 추가 모달 */}
-      <AddStockModal
-        open={showAddModal}
-        onOpenChange={setShowAddModal}
-        portfolioId={portfolioId}
-        onSuccess={handleAddSuccess}
-      />
 
       {/* 거래 입력 폼 */}
       {selectedPosition && (

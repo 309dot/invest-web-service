@@ -164,6 +164,41 @@ export async function getDailyData(symbol: string, outputsize: 'compact' | 'full
 }
 
 /**
+ * Get historical price for a specific date
+ */
+export async function getHistoricalPrice(symbol: string, date: string): Promise<number | null> {
+  try {
+    const dailyData = await getDailyData(symbol, 'full');
+    
+    // Find the exact date or the closest previous trading day
+    const targetDate = new Date(date);
+    let closestDate: string | null = null;
+    let closestDiff = Infinity;
+    
+    for (const entry of dailyData) {
+      const entryDate = new Date(entry.date);
+      const diff = targetDate.getTime() - entryDate.getTime();
+      
+      // Only consider dates on or before the target date
+      if (diff >= 0 && diff < closestDiff) {
+        closestDiff = diff;
+        closestDate = entry.date;
+      }
+    }
+    
+    if (closestDate) {
+      const priceEntry = dailyData.find((entry) => entry.date === closestDate);
+      return priceEntry ? priceEntry.close : null;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error fetching historical price:', error);
+    return null;
+  }
+}
+
+/**
  * Clear the cache (useful for testing or forced refresh)
  */
 export function clearCache() {

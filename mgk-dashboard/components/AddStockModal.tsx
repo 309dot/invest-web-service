@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { StockSearch } from './StockSearch';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -43,6 +43,7 @@ export function AddStockModal({
   const [selectedStock, setSelectedStock] = useState<Omit<Stock, 'id'> | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadingPrice, setLoadingPrice] = useState(false);
 
   // 구매 정보
   const [purchaseMethod, setPurchaseMethod] = useState<PurchaseMethod>('manual');
@@ -51,6 +52,38 @@ export function AddStockModal({
   const [purchasePrice, setPurchasePrice] = useState('');
   const [shares, setShares] = useState('');
   const [amount, setAmount] = useState('');
+
+  // 날짜 변경 시 자동으로 가격 불러오기
+  useEffect(() => {
+    const fetchHistoricalPrice = async () => {
+      if (!selectedStock || !purchaseDate || purchaseMethod !== 'manual') {
+        return;
+      }
+
+      // US 주식만 지원
+      if (selectedStock.market !== 'US') {
+        return;
+      }
+
+      setLoadingPrice(true);
+      try {
+        const response = await fetch(
+          `/api/stocks/historical-price?symbol=${selectedStock.symbol}&date=${purchaseDate}`
+        );
+        const data = await response.json();
+
+        if (data.success && data.price) {
+          setPurchasePrice(data.price.toFixed(2));
+        }
+      } catch (err) {
+        console.error('Failed to fetch historical price:', err);
+      } finally {
+        setLoadingPrice(false);
+      }
+    };
+
+    fetchHistoricalPrice();
+  }, [purchaseDate, selectedStock, purchaseMethod]);
 
   // 자동투자 설정
   const [autoFrequency, setAutoFrequency] = useState<AutoInvestFrequency>('monthly');
@@ -282,7 +315,15 @@ export function AddStockModal({
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="purchasePrice">매수 가격 ({selectedStock?.currency})</Label>
+                    <Label htmlFor="purchasePrice">
+                      매수 가격 ({selectedStock?.currency})
+                      {selectedStock?.market === 'US' && loadingPrice && (
+                        <span className="ml-2 text-xs text-muted-foreground">
+                          <Loader2 className="inline h-3 w-3 animate-spin mr-1" />
+                          가격 조회 중...
+                        </span>
+                      )}
+                    </Label>
                     <Input
                       id="purchasePrice"
                       type="number"
@@ -290,7 +331,13 @@ export function AddStockModal({
                       placeholder="0.00"
                       value={purchasePrice}
                       onChange={(e) => setPurchasePrice(e.target.value)}
+                      disabled={loadingPrice}
                     />
+                    {selectedStock?.market === 'US' && (
+                      <p className="text-xs text-muted-foreground">
+                        💡 날짜 선택 시 실제 종가가 자동으로 입력됩니다.
+                      </p>
+                    )}
                   </div>
 
                   {/* 구매 단위 선택 */}
