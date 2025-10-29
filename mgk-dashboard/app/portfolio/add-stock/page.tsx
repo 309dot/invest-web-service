@@ -56,7 +56,10 @@ function AddStockContent() {
   // 날짜 변경 시 자동으로 가격 불러오기
   useEffect(() => {
     const fetchHistoricalPrice = async () => {
-      if (!selectedStock || !purchaseDate || purchaseMethod !== 'manual') {
+      // 수동 구매: purchaseDate 기준, 자동 구매: autoStartDate 기준
+      const dateToFetch = purchaseMethod === 'manual' ? purchaseDate : autoStartDate;
+      
+      if (!selectedStock || !dateToFetch) {
         return;
       }
 
@@ -68,7 +71,7 @@ function AddStockContent() {
       setLoadingPrice(true);
       try {
         const response = await fetch(
-          `/api/stocks/historical-price?symbol=${selectedStock.symbol}&date=${purchaseDate}`
+          `/api/stocks/historical-price?symbol=${selectedStock.symbol}&date=${dateToFetch}`
         );
         const data = await response.json();
 
@@ -88,7 +91,7 @@ function AddStockContent() {
     };
 
     fetchHistoricalPrice();
-  }, [purchaseDate, selectedStock, purchaseMethod]);
+  }, [purchaseDate, autoStartDate, selectedStock, purchaseMethod]);
 
   useEffect(() => {
     if (!authLoading && !user) {

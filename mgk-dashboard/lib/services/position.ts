@@ -61,7 +61,7 @@ export async function createPosition(
       market: stock.market,
       exchange: stock.exchange || '',
       assetType: stock.assetType,
-      sector: stock.sector,
+      sector: stock.sector || '미분류',
       currency: stock.currency,
       shares: shares,
       averagePrice: initialData.averagePrice || 0,
@@ -146,6 +146,37 @@ export async function getPortfolioPositions(
   } catch (error) {
     console.error('Error getting portfolio positions:', error);
     return [];
+  }
+}
+
+/**
+ * 특정 종목의 포지션 찾기
+ */
+export async function findPositionBySymbol(
+  userId: string,
+  portfolioId: string,
+  symbol: string
+): Promise<Position | null> {
+  try {
+    const positionsRef = collection(
+      db,
+      `users/${userId}/portfolios/${portfolioId}/positions`
+    );
+    const q = query(positionsRef, where('symbol', '==', symbol));
+    const snapshot = await getDocs(q);
+
+    if (snapshot.empty) {
+      return null;
+    }
+
+    const doc = snapshot.docs[0];
+    return {
+      id: doc.id,
+      ...doc.data(),
+    } as Position;
+  } catch (error) {
+    console.error('Error finding position by symbol:', error);
+    return null;
   }
 }
 

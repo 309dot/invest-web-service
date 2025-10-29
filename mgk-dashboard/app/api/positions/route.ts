@@ -10,8 +10,11 @@ import {
   createPosition, 
   getPortfolioPositions,
   calculatePortfolioTotals,
+  findPositionBySymbol,
+  updatePositionAfterTransaction,
 } from '@/lib/services/position';
 import { saveStockMaster } from '@/lib/services/stock-master';
+import { generateAutoInvestTransactions } from '@/lib/services/auto-invest';
 import type { Stock } from '@/types';
 
 /**
@@ -42,7 +45,64 @@ export async function POST(request: NextRequest) {
     const stockId = await saveStockMaster(stock);
     console.log(`✅ 종목 마스터 저장: ${stockId}`);
 
-    // 포지션 생성
+    // 동일 종목이 이미 있는지 확인
+    const existingPosition = await findPositionBySymbol(userId, portfolioId, stock.symbol);
+    
+    if (existingPosition) {
+      console.log(`⚠️ 동일 종목 발견: ${stock.symbol} - 기존 포지션에 병합합니다.`);
+      
+      // 기존 포지션에 새 거래 추가
+      if (purchaseMethod === 'manual' && initialPurchase) {
+        // 수동 매수 병합
+        await fetch(`${request.nextUrl.origin}/api/transactions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId,
+            portfolioId,
+            positionId: existingPosition.id,
+            type: 'buy',
+            symbol: stock.symbol,
+            shares: initialPurchase.shares,
+            price: initialPurchase.price,
+            amount: initialPurchase.amount || initialPurchase.shares * initialPurchase.price,
+            date: initialPurchase.date,
+            note: '추가 매수 (병합)',
+          }),
+        });
+        
+        // 포지션 업데이트
+        await updatePositionAfterTransaction(userId, portfolioId, existingPosition.id!, {
+          type: 'buy',
+          shares: initialPurchase.shares,
+          price: initialPurchase.price,
+          date: initialPurchase.date,
+        });
+      } else if (purchaseMethod === 'auto' && autoInvestConfig) {
+        // 자동 투자 병합
+        const pricePerShare = parseFloat(body.purchasePrice) || 100;
+        await generateAutoInvestTransactions(userId, portfolioId, existingPosition.id!, {
+          symbol: stock.symbol,
+          stockId: stock.symbol,
+          frequency: autoInvestConfig.frequency,
+          amount: autoInvestConfig.amount,
+          startDate: autoInvestConfig.startDate,
+          pricePerShare,
+        });
+      }
+      
+      const totals = await calculatePortfolioTotals(userId, portfolioId);
+      
+      return NextResponse.json({
+        success: true,
+        positionId: existingPosition.id,
+        merged: true,
+        message: '동일 종목이 기존 포지션에 병합되었습니다.',
+        totals,
+      });
+    }
+
+    // 포지션 생성 (신규)
     let positionData: any = {
       purchaseMethod,
     };
@@ -74,9 +134,9 @@ export async function POST(request: NextRequest) {
       positionData
     );
 
-    // 초기 거래 기록 생성 (수동 매수인 경우)
+    // 초기 거래 기록 생성
     if (purchaseMethod === 'manual' && initialPurchase) {
-      // 거래 기록 API 호출
+      // 수동 매수: 단건 거래 기록
       await fetch(`${request.nextUrl.origin}/api/transactions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -92,6 +152,17 @@ export async function POST(request: NextRequest) {
           date: initialPurchase.date,
           note: '초기 매수',
         }),
+      });
+    } else if (purchaseMethod === 'auto' && autoInvestConfig) {
+      // 자동 투자: 시작일부터 오늘까지 정기 구매 거래 내역 생성
+      const pricePerShare = parseFloat(body.purchasePrice) || 100; // 시작일 가격
+      await generateAutoInvestTransactions(userId, portfolioId, positionId, {
+        symbol: stock.symbol,
+        stockId: stock.symbol,
+        frequency: autoInvestConfig.frequency,
+        amount: autoInvestConfig.amount,
+        startDate: autoInvestConfig.startDate,
+        pricePerShare,
       });
     }
 
