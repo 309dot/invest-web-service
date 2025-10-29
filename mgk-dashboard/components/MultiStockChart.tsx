@@ -223,7 +223,7 @@ export function MultiStockChart({ positions }: MultiStockChartProps) {
                 {position.symbol}
                 {isVisible && (
                   <span className="ml-1">
-                    {position.unrealizedReturnRate >= 0 ? (
+                    {position.returnRate >= 0 ? (
                       <TrendingUp className="inline h-3 w-3" />
                     ) : (
                       <TrendingDown className="inline h-3 w-3" />
@@ -305,11 +305,11 @@ export function MultiStockChart({ positions }: MultiStockChartProps) {
                         {position.symbol}
                       </div>
                       <div className={`font-medium ${
-                        position.unrealizedReturnRate >= 0 
+                        position.returnRate >= 0 
                           ? 'text-green-600' 
                           : 'text-red-600'
                       }`}>
-                        {formatPercent(position.unrealizedReturnRate)}
+                        {formatPercent(position.returnRate)}
                       </div>
                       <div className="text-xs text-muted-foreground">
                         {formatCurrency(position.totalValue, 'USD')}

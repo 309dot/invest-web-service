@@ -56,11 +56,12 @@ export async function createTransaction(
       price: transactionData.price,
       amount: transactionData.amount,
       fee: transactionData.fee || 0,
-      tax: transactionData.tax || 0,
-      totalCost: transactionData.amount + (transactionData.fee || 0) + (transactionData.tax || 0),
+      totalAmount: transactionData.amount + (transactionData.fee || 0),
       date: transactionData.date,
-      note: transactionData.note || '',
+      memo: transactionData.memo || '',
       exchangeRate: transactionData.exchangeRate,
+      purchaseMethod: transactionData.purchaseMethod || 'manual',
+      purchaseUnit: transactionData.purchaseUnit || 'shares',
       createdAt: Timestamp.now(),
     };
 
