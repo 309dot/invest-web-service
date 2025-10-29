@@ -373,9 +373,9 @@ export default function TransactionsPage() {
                             </div>
                           </div>
 
-                          {transaction.note && (
+                          {transaction.memo && (
                             <p className="text-sm text-muted-foreground mt-3 pt-3 border-t">
-                              {transaction.note}
+                              {transaction.memo}
                             </p>
                           )}
 
@@ -407,7 +407,6 @@ export default function TransactionsPage() {
                           <th className="text-right py-3 px-4 font-medium">가격</th>
                           <th className="text-right py-3 px-4 font-medium">거래 금액</th>
                           <th className="text-right py-3 px-4 font-medium">수수료</th>
-                          <th className="text-right py-3 px-4 font-medium">세금</th>
                           <th className="text-right py-3 px-4 font-medium">총 금액</th>
                           <th className="text-left py-3 px-4 font-medium">메모</th>
                           <th className="w-12"></th>
@@ -447,14 +446,11 @@ export default function TransactionsPage() {
                             <td className="py-3 px-4 text-right text-muted-foreground">
                               {formatCurrency(transaction.fee, 'USD')}
                             </td>
-                            <td className="py-3 px-4 text-right text-muted-foreground">
-                              {formatCurrency(transaction.tax, 'USD')}
-                            </td>
                             <td className="py-3 px-4 text-right font-semibold">
                               {formatCurrency(transaction.totalAmount, 'USD')}
                             </td>
                             <td className="py-3 px-4 text-sm text-muted-foreground max-w-xs truncate">
-                              {transaction.note || '-'}
+                              {transaction.memo || '-'}
                             </td>
                             <td className="py-3 px-4">
                               <DropdownMenu>
