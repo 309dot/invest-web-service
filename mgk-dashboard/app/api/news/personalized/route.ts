@@ -22,17 +22,38 @@ function summarizeContent(text?: string, maxSentences: number = 3): string {
     return '요약 정보를 불러오지 못했습니다.';
   }
 
-  const sentences = normalized
-    .match(/[^.!?。？！]+[.!?。？！]?/gu)
-    ?.map((sentence) => sentence.trim())
-    .filter(Boolean)
-    .slice(0, maxSentences);
+  const delimiters = new Set(['.', '!', '?', '。', '？', '！']);
+  const sentences: string[] = [];
+  let buffer = '';
 
-  if (!sentences || sentences.length === 0) {
+  for (const char of normalized) {
+    buffer += char;
+
+    if (delimiters.has(char)) {
+      const trimmed = buffer.trim();
+      if (trimmed) {
+        sentences.push(trimmed);
+      }
+      buffer = '';
+
+      if (sentences.length >= maxSentences) {
+        break;
+      }
+    }
+  }
+
+  if (sentences.length < maxSentences) {
+    const tail = buffer.trim();
+    if (tail) {
+      sentences.push(tail);
+    }
+  }
+
+  if (sentences.length === 0) {
     return normalized;
   }
 
-  return sentences.join(' ');
+  return sentences.slice(0, maxSentences).join(' ');
 }
 
 /**
