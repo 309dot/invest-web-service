@@ -263,7 +263,8 @@ export async function collectNewsForSymbols(
 
       const queries = Array.from(querySet);
 
-      queries.forEach((query) => {
+      for (let i = 0; i < queries.length; i += 1) {
+        const query = queries[i];
         const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=${language}&gl=${region}&ceid=${region}:${language}`;
 
         try {
@@ -288,7 +289,7 @@ export async function collectNewsForSymbols(
         } catch (error) {
           console.error(`Error fetching news for ${target.symbol}:`, error);
         }
-      });
+      }
     }
 
     // Filter to last 7 days for stock-specific news
