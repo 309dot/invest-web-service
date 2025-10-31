@@ -244,14 +244,18 @@ export async function callAIAdvisor(
       return generateFallbackAdvisorResult(payload, 'invalid JSON response');
     }
 
-    return {
-      weeklySummary: parsed.weeklySummary ?? '',
-      newsHighlights: parsed.newsHighlights ?? [],
-      signals: parsed.signals ?? { sellSignal: false, reason: '' },
-      recommendations: parsed.recommendations ?? [],
-      confidenceScore: parsed.confidenceScore,
-      rawText: rawContent,
-    };
+    if (parsed) {
+      return {
+        weeklySummary: parsed.weeklySummary ?? '',
+        newsHighlights: parsed.newsHighlights ?? [],
+        signals: parsed.signals ?? { sellSignal: false, reason: '' },
+        recommendations: parsed.recommendations ?? [],
+        confidenceScore: parsed.confidenceScore,
+        rawText: rawContent,
+      };
+    }
+
+    return generateFallbackAdvisorResult(payload, 'parsed JSON empty');
   } catch (error) {
     console.error('AI 어드바이저 호출 중 예외 발생:', error);
     return generateFallbackAdvisorResult(
