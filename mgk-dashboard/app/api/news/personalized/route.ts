@@ -163,6 +163,7 @@ export async function GET(request: NextRequest) {
         category: news.category || 'general',
         sentiment: sentiment.sentiment,
         sentimentScore: sentiment.score,
+        content: undefined as string | undefined,
       };
     });
 
