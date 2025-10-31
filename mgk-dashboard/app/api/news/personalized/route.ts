@@ -14,19 +14,14 @@ import { getPortfolioPositions } from '@/lib/services/position';
 /**
  * GET /api/news/personalized?userId=xxx&portfolioId=xxx
  * 보유 종목 기반 개인화 뉴스
+ * 
+ * userId가 없으면 default_user 사용 (테스트/개발용)
  */
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
+    const userId = searchParams.get('userId') || 'default_user'; // 기본값 추가
     const portfolioId = searchParams.get('portfolioId') || 'main';
-
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'userId가 필요합니다.' },
-        { status: 400 }
-      );
-    }
 
     // 포지션 조회
     const positions = await getPortfolioPositions(userId, portfolioId);
