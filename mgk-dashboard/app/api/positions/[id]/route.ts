@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { deletePosition, getPosition, updatePositionAfterTransaction } from '@/lib/services/position';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 /**
  * GET /api/positions/[id]
@@ -116,13 +117,14 @@ export async function DELETE(
 
     console.log('📊 Portfolio ID:', portfolioId);
 
-    await deletePosition(userId, portfolioId, positionId);
+    const { deletedTransactions } = await deletePosition(userId, portfolioId, positionId);
 
     console.log('✅ Position deleted successfully');
 
     return NextResponse.json({
       success: true,
       message: '포지션이 삭제되었습니다.',
+      deletedTransactions,
     });
   } catch (error) {
     console.error('❌ Delete position error:', error);
@@ -132,4 +134,5 @@ export async function DELETE(
     );
   }
 }
+
 

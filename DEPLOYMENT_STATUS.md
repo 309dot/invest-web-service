@@ -2,6 +2,36 @@
 
 ## 배포 이력
 
+### 배포 #4 - 2025-10-31 (대기중)
+
+**커밋**: `미배포 (로컬 수정)`
+**메시지**: _pending_
+
+**변경 사항**:
+- ✅ Alpha Vantage 환경 변수 폴백 로직 보완 (`mgk-dashboard/lib/apis/alphavantage.ts`)
+- ✅ 프로덕션 API 헬스체크 (`/api/stocks/search`, `/api/exchange-rate` 정상 응답)
+- ✅ 포지션 삭제 시 서버 라우트/서비스 개선
+  - `app/api/positions/route.ts`, `app/api/positions/[id]/route.ts`에 `runtime = 'nodejs'` 지정 및 거래 생성/삭제 오류 처리 강화
+  - `lib/services/position.ts`에서 포지션 삭제 시 연관 거래 일괄 삭제(batch)
+  - `lib/services/transaction.ts`에서 `exchangeRate` 옵션 처리 (Firestore undefined 저장 방지)
+  - `PortfolioOverview.tsx` 삭제 후 사용자 알림 개선
+
+**현황**:
+- ❌ `/api/stocks/historical-price`가 404 응답 (가격 데이터 조회 실패)
+  - 원인: 서버 코드가 `process.env.NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY`만 읽어 Vercel에 설정된 `ALPHA_VANTAGE_API_KEY`를 인식하지 못함
+  - 조치: 로컬 코드에서 `ALPHA_VANTAGE_API_KEY → NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY → ''` 순으로 폴백하도록 수정
+- ⚠️ `/api/positions/[id]` 라우트는 로컬 수정 완료 (삭제 시 연관 거래 포함) → **재배포 후 프로덕션 확인 필요**
+  - 최신 코드 기준: DELETE 요청 시 거래 일괄 삭제 및 JSON 응답(`deletedTransactions`) 반환
+  - `/api/transactions` exchangeRate undefined 오류 해결 (옵션 필드)
+- ⏳ 수정 커밋 배포 필요 (재배포 전까지 프로덕션은 기존 동작 유지)
+
+**다음 단계**:
+1. 수정 커밋 푸시 및 Vercel 재배포 실행
+2. 재배포 완료 후 `/api/stocks/historical-price?symbol=AAPL&date=2024-01-15` 재검증
+3. Alpha Vantage 일일 호출 한도(5 req/min, 500 req/day) 모니터링
+
+---
+
 ### 배포 #3 - 2025-10-29 (진행중)
 
 **커밋**: `013f55a`

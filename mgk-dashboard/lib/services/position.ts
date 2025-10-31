@@ -295,7 +295,8 @@ export async function deletePosition(
   userId: string,
   portfolioId: string,
   positionId: string
-): Promise<void> {
+): Promise<{ deletedTransactions: number }>
+{
   try {
     const positionRef = doc(
       db,
@@ -303,8 +304,28 @@ export async function deletePosition(
       positionId
     );
 
-    await deleteDoc(positionRef);
-    console.log(`✅ 포지션 삭제: ${positionId}`);
+    const transactionsRef = collection(
+      db,
+      `users/${userId}/portfolios/${portfolioId}/transactions`
+    );
+    const transactionsQuery = query(transactionsRef, where('positionId', '==', positionId));
+    const transactionsSnapshot = await getDocs(transactionsQuery);
+
+    const batch = writeBatch(db);
+    let deletedTransactions = 0;
+
+    transactionsSnapshot.forEach((transactionDoc) => {
+      batch.delete(transactionDoc.ref);
+      deletedTransactions += 1;
+    });
+
+    batch.delete(positionRef);
+
+    await batch.commit();
+
+    console.log(`✅ 포지션 삭제: ${positionId} (거래 ${deletedTransactions}건 포함)`);
+
+    return { deletedTransactions };
   } catch (error) {
     console.error('Error deleting position:', error);
     throw error;

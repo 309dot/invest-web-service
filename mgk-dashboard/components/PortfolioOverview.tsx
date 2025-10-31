@@ -90,9 +90,16 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
       });
 
       if (response.ok) {
+        const result = await response.json().catch(() => null);
+        const deletedTransactions = result?.deletedTransactions ?? 0;
         await fetchPositions(); // 목록 새로고침
+
+        if (deletedTransactions > 0) {
+          alert(`포지션과 함께 ${deletedTransactions}건의 거래가 삭제되었습니다.`);
+        }
       } else {
-        alert('포지션 삭제에 실패했습니다.');
+        const errorBody = await response.json().catch(() => null);
+        alert(errorBody?.error || '포지션 삭제에 실패했습니다.');
       }
     } catch (error) {
       console.error('Error deleting position:', error);

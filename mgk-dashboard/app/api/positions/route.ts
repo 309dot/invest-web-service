@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 import { 
   createPosition, 
   getPortfolioPositions,
@@ -56,22 +57,36 @@ export async function POST(request: NextRequest) {
       // 기존 포지션에 새 거래 추가
       if (purchaseMethod === 'manual' && initialPurchase) {
         // 수동 매수 병합
-        await fetch(`${request.nextUrl.origin}/api/transactions`, {
+        const transactionPayload: Record<string, unknown> = {
+          userId,
+          portfolioId,
+          positionId: existingPosition.id,
+          type: 'buy',
+          symbol: stock.symbol,
+          shares: initialPurchase.shares,
+          price: initialPurchase.price,
+          amount: initialPurchase.amount || initialPurchase.shares * initialPurchase.price,
+          date: initialPurchase.date,
+          note: '추가 매수 (병합)',
+        };
+
+        if (typeof initialPurchase.exchangeRate === 'number') {
+          transactionPayload.exchangeRate = initialPurchase.exchangeRate;
+        }
+
+        const transactionResponse = await fetch(`${request.nextUrl.origin}/api/transactions`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId,
-            portfolioId,
-            positionId: existingPosition.id,
-            type: 'buy',
-            symbol: stock.symbol,
-            shares: initialPurchase.shares,
-            price: initialPurchase.price,
-            amount: initialPurchase.amount || initialPurchase.shares * initialPurchase.price,
-            date: initialPurchase.date,
-            note: '추가 매수 (병합)',
-          }),
+          body: JSON.stringify(transactionPayload),
         });
+
+        if (!transactionResponse.ok) {
+          const errorBody = await transactionResponse.json().catch(() => null);
+          console.error('❌ 초기 거래 생성 실패 (기존 포지션 병합)', errorBody);
+          throw new Error(
+            errorBody?.error || '동일 종목 병합 중 거래 생성에 실패했습니다.'
+          );
+        }
         
         // 포지션 업데이트
         await updatePositionAfterTransaction(userId, portfolioId, existingPosition.id!, {
@@ -139,22 +154,34 @@ export async function POST(request: NextRequest) {
     // 초기 거래 기록 생성
     if (purchaseMethod === 'manual' && initialPurchase) {
       // 수동 매수: 단건 거래 기록
-      await fetch(`${request.nextUrl.origin}/api/transactions`, {
+      const transactionPayload: Record<string, unknown> = {
+        userId,
+        portfolioId,
+        positionId,
+        type: 'buy',
+        symbol: stock.symbol,
+        shares: initialPurchase.shares,
+        price: initialPurchase.price,
+        amount: initialPurchase.amount || initialPurchase.shares * initialPurchase.price,
+        date: initialPurchase.date,
+        note: '초기 매수',
+      };
+
+      if (typeof initialPurchase.exchangeRate === 'number') {
+        transactionPayload.exchangeRate = initialPurchase.exchangeRate;
+      }
+
+      const transactionResponse = await fetch(`${request.nextUrl.origin}/api/transactions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId,
-          portfolioId,
-          positionId,
-          type: 'buy',
-          symbol: stock.symbol,
-          shares: initialPurchase.shares,
-          price: initialPurchase.price,
-          amount: initialPurchase.amount || initialPurchase.shares * initialPurchase.price,
-          date: initialPurchase.date,
-          note: '초기 매수',
-        }),
+        body: JSON.stringify(transactionPayload),
       });
+
+      if (!transactionResponse.ok) {
+        const errorBody = await transactionResponse.json().catch(() => null);
+        console.error('❌ 초기 거래 생성 실패 (신규 포지션)', errorBody);
+        throw new Error(errorBody?.error || '초기 거래 생성에 실패했습니다.');
+      }
     } else if (purchaseMethod === 'auto' && autoInvestConfig) {
       // 자동 투자: 시작일부터 오늘까지 정기 구매 거래 내역 생성
       const pricePerShare = parseFloat(body.purchasePrice) || 100; // 시작일 가격

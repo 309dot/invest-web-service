@@ -61,10 +61,12 @@ export async function createTransaction(
       totalAmount: transactionData.amount + (transactionData.fee || 0),
       date: transactionData.date,
       memo: transactionData.note || '',
-      exchangeRate: transactionData.exchangeRate,
       purchaseMethod: 'manual',
       purchaseUnit: 'shares',
       createdAt: Timestamp.now(),
+      ...(typeof transactionData.exchangeRate === 'number' && {
+        exchangeRate: transactionData.exchangeRate,
+      }),
     };
 
     await setDoc(transactionRef, transaction);

@@ -1,12 +1,15 @@
 import axios from 'axios';
 import { PriceData } from '@/types';
 
-const ALPHA_VANTAGE_API_KEY = process.env.NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY || '';
+const ALPHA_VANTAGE_API_KEY =
+  process.env.ALPHA_VANTAGE_API_KEY ||
+  process.env.NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY ||
+  '';
 const BASE_URL = 'https://www.alphavantage.co/query';
 
 // API 키 검증
 if (!ALPHA_VANTAGE_API_KEY) {
-  console.error('❌ ALPHA_VANTAGE_API_KEY가 설정되지 않았습니다!');
+  console.error('❌ ALPHA_VANTAGE_API_KEY 또는 NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY가 설정되지 않았습니다!');
   console.error('Vercel Dashboard → Settings → Environment Variables에서 설정하세요.');
 }
 
