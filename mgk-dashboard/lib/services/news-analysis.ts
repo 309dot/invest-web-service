@@ -23,6 +23,7 @@ export interface NewsItem {
   sentimentScore?: number; // -1 to 1
   keywords?: string[];
   category?: string;
+  content?: string;
 }
 
 export interface PersonalizedNews extends NewsItem {
@@ -34,6 +35,7 @@ export interface PersonalizedNews extends NewsItem {
   }[];
   reason: string;
   summary?: string;
+  content?: string;
 }
 
 /**

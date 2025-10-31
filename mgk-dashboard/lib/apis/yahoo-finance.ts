@@ -63,15 +63,19 @@ export async function searchKoreanStocks(query: string): Promise<any[]> {
       .map((quote: any) => {
         const rawSector = (quote.sector || '').toLowerCase().replace(/\s+/g, '');
 
+        const shortName = quote.shortname || '';
+        const longName = quote.longname || '';
+        const hangulName = /[가-힣]/.test(shortName) ? shortName : /[가-힣]/.test(longName) ? longName : shortName || longName || quote.symbol;
+
         return {
           symbol: quote.symbol.replace(/\.(KS|KQ)$/, ''), // Remove exchange suffix
-          name: quote.longname || quote.shortname || quote.symbol,
+          name: hangulName || quote.symbol,
           market: 'KR' as const,
           exchange: quote.exchDisp || (quote.symbol.endsWith('.KS') ? 'KOSPI' : 'KOSDAQ'),
           assetType: quote.quoteType?.toLowerCase() === 'etf' ? 'etf' : 'stock',
           sector: sectorMap[rawSector] || 'other',
           currency: 'KRW' as const,
-          description: quote.longbusinesssummary || quote.longname || quote.shortname || quote.symbol,
+          description: longName || shortName || quote.symbol,
           searchCount: 0,
           createdAt: Timestamp.now(),
         };

@@ -13,6 +13,7 @@ export async function GET(request: NextRequest) {
     const symbol = searchParams.get('symbol');
     const date = searchParams.get('date');
     const purchaseMethod = searchParams.get('method') as 'manual' | 'auto' | null;
+    const market = (searchParams.get('market') as 'US' | 'KR' | 'GLOBAL' | null) || undefined;
 
     if (!symbol || !date) {
       return NextResponse.json(
@@ -21,7 +22,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const price = await getHistoricalPrice(symbol, date, purchaseMethod || 'manual');
+    const price = await getHistoricalPrice(symbol, date, purchaseMethod || 'manual', market);
 
     if (price === null) {
       return NextResponse.json(
@@ -36,9 +37,10 @@ export async function GET(request: NextRequest) {
       date,
       price,
       method: purchaseMethod || 'manual',
-      note: purchaseMethod === 'auto' 
-        ? '시장가 매수 시뮬레이션 (시가+종가 평균)'
-        : '종가 기준',
+      note:
+        purchaseMethod === 'auto'
+          ? '시장가 매수 시뮬레이션 (시가+종가 평균)'
+          : '종가 기준',
     });
   } catch (error) {
     console.error('Historical price API error:', error);

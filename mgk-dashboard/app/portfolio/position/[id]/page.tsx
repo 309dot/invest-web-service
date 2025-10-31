@@ -50,7 +50,7 @@ export default function PositionDetailPage() {
       setLoading(true);
       // TODO: API에서 특정 포지션 조회
       // 현재는 임시로 전체 포지션에서 찾기
-      const response = await fetch(`/api/positions?portfolioId=main`);
+      const response = await fetch(`/api/positions?portfolioId=main&userId=${user?.uid}`);
       const data = await response.json();
       
       const found = data.positions?.find((p: Position) => p.id === positionId);

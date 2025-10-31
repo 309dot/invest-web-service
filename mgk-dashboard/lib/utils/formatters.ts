@@ -8,15 +8,21 @@ export function formatCurrency(
   amount: number,
   currency: 'USD' | 'KRW' = 'USD'
 ): string {
-  const locale = currency === 'KRW' ? 'ko-KR' : 'en-US';
-  const currencyCode = currency;
+  const sign = amount < 0 ? '-' : '';
+  const value = Math.abs(amount);
 
-  return new Intl.NumberFormat(locale, {
-    style: 'currency',
-    currency: currencyCode,
-    minimumFractionDigits: currency === 'KRW' ? 0 : 2,
-    maximumFractionDigits: currency === 'KRW' ? 0 : 2,
-  }).format(amount);
+  if (currency === 'KRW') {
+    const formatted = new Intl.NumberFormat('ko-KR', {
+      maximumFractionDigits: 0,
+    }).format(Math.round(value));
+    return `${sign}${formatted}원`;
+  }
+
+  const formatted = new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+  return `${sign}$${formatted}`;
 }
 
 /**

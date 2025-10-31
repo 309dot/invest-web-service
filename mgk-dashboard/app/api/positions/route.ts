@@ -36,6 +36,13 @@ export async function POST(request: NextRequest) {
       autoInvestConfig,
     } = body;
 
+    if (!userId || userId === 'default_user') {
+      return NextResponse.json(
+        { error: 'userId가 필요합니다.' },
+        { status: 400 }
+      );
+    }
+
     // 유효성 검사
     if (!portfolioId || !stock) {
       return NextResponse.json(
@@ -68,6 +75,7 @@ export async function POST(request: NextRequest) {
           amount: initialPurchase.amount || initialPurchase.shares * initialPurchase.price,
           date: initialPurchase.date,
           note: '추가 매수 (병합)',
+          currency: stock.currency,
         };
 
         if (typeof initialPurchase.exchangeRate === 'number') {
@@ -105,6 +113,7 @@ export async function POST(request: NextRequest) {
           amount: autoInvestConfig.amount,
           startDate: autoInvestConfig.startDate,
           pricePerShare,
+          currency: stock.currency,
         });
       }
       
@@ -165,6 +174,7 @@ export async function POST(request: NextRequest) {
         amount: initialPurchase.amount || initialPurchase.shares * initialPurchase.price,
         date: initialPurchase.date,
         note: '초기 매수',
+        currency: stock.currency,
       };
 
       if (typeof initialPurchase.exchangeRate === 'number') {
@@ -192,6 +202,7 @@ export async function POST(request: NextRequest) {
         amount: autoInvestConfig.amount,
         startDate: autoInvestConfig.startDate,
         pricePerShare,
+        currency: stock.currency,
       });
     }
 
@@ -219,7 +230,7 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    const userId = 'default_user'; // 실제로는 인증에서 가져와야 함
+    const userId = searchParams.get('userId') || 'default_user';
     const portfolioId = searchParams.get('portfolioId');
 
     if (!portfolioId) {

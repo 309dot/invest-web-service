@@ -7,8 +7,9 @@ export const runtime = 'nodejs';
  * GET: 사용자 보유 종목 기반 개인화 뉴스 조회
  */
 
+import axios from 'axios';
 import { NextRequest, NextResponse } from 'next/server';
-import { collectNewsForSymbols, type SymbolNewsTarget } from '@/lib/apis/news';
+import { collectNewsForSymbols, decodeHTMLEntities, stripHtml, type SymbolNewsTarget } from '@/lib/apis/news';
 import { analyzePersonalizedNews, analyzeSentiment } from '@/lib/services/news-analysis';
 import { getPortfolioPositions } from '@/lib/services/position';
 
@@ -54,6 +55,45 @@ function summarizeContent(text?: string, maxSentences: number = 3): string {
   }
 
   return sentences.slice(0, maxSentences).join(' ');
+}
+
+const MAX_ARTICLE_CONTENT_FETCH = 5;
+const ARTICLE_CHARACTER_LIMIT = 1500;
+
+async function fetchArticleContent(url: string): Promise<string | null> {
+  try {
+    const response = await axios.get<string>(url, {
+      timeout: 8000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; NewsContentFetcher/1.0)',
+        'Accept-Language': 'ko,en;q=0.8',
+      },
+      responseType: 'text',
+      validateStatus: (status) => status >= 200 && status < 400,
+    });
+
+    if (typeof response.data !== 'string') {
+      return null;
+    }
+
+    const html = response.data;
+    const articleMatch = html.match(/<article[\s\S]*?<\/article>/i);
+    const candidate = articleMatch ? articleMatch[0] : html;
+
+    const cleaned = decodeHTMLEntities(stripHtml(candidate));
+    const normalized = cleaned.replace(/\s+/g, ' ').trim();
+
+    if (!normalized) {
+      return null;
+    }
+
+    return normalized.length > ARTICLE_CHARACTER_LIMIT
+      ? `${normalized.slice(0, ARTICLE_CHARACTER_LIMIT)}...`
+      : normalized;
+  } catch (error) {
+    console.warn('Article content fetch failed:', error instanceof Error ? error.message : error);
+    return null;
+  }
 }
 
 /**
@@ -126,6 +166,17 @@ export async function GET(request: NextRequest) {
       };
     });
 
+    const contentTargets = newsWithSentiment.slice(0, MAX_ARTICLE_CONTENT_FETCH);
+    const contentResults = await Promise.allSettled(
+      contentTargets.map((item) => fetchArticleContent(item.url))
+    );
+
+    contentResults.forEach((result, index) => {
+      if (result.status === 'fulfilled' && result.value) {
+        contentTargets[index].content = result.value;
+      }
+    });
+
     // 개인화 분석
     const personalizedNews = await analyzePersonalizedNews(
       newsWithSentiment,
@@ -134,7 +185,8 @@ export async function GET(request: NextRequest) {
 
     const enrichedNews = personalizedNews.map((item) => ({
       ...item,
-      summary: summarizeContent(item.description),
+      summary: summarizeContent(item.content || item.description),
+      content: item.content,
     }));
 
     const symbols = positions.map(p => p.symbol);

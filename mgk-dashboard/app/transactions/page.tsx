@@ -73,9 +73,15 @@ export default function TransactionsPage() {
   const fetchTransactions = async () => {
     try {
       setLoading(true);
+      if (!user) {
+        setTransactions([]);
+        setStats(null);
+        return;
+      }
       const params = new URLSearchParams({
         portfolioId: 'main',
         includeStats: 'true',
+        userId: user.uid,
       });
 
       if (selectedSymbol !== 'all') {
@@ -117,10 +123,14 @@ export default function TransactionsPage() {
 
   const handleDeleteConfirm = async () => {
     if (!transactionToDelete) return;
+    if (!user) {
+      alert('로그인이 필요합니다.');
+      return;
+    }
 
     try {
       const response = await fetch(
-        `/api/transactions/${transactionToDelete.id}?portfolioId=main`,
+        `/api/transactions/${transactionToDelete.id}?portfolioId=main&userId=${user.uid}`,
         { method: 'DELETE' }
       );
 
@@ -151,6 +161,13 @@ export default function TransactionsPage() {
 
   // 종목 목록 추출
   const symbols = Array.from(new Set(transactions.map((t) => t.symbol))).sort();
+
+  const resolveTransactionCurrency = (transaction: Transaction): 'USD' | 'KRW' => {
+    if (transaction.currency === 'KRW' || transaction.currency === 'USD') {
+      return transaction.currency;
+    }
+    return /^[0-9]/.test(transaction.symbol) ? 'KRW' : 'USD';
+  };
 
   return (
     <>
@@ -361,15 +378,15 @@ export default function TransactionsPage() {
                             </div>
                             <div>
                               <p className="text-muted-foreground">가격</p>
-                              <p className="font-medium">{formatCurrency(transaction.price, 'USD')}</p>
+                              <p className="font-medium">{formatCurrency(transaction.price, resolveTransactionCurrency(transaction))}</p>
                             </div>
                             <div>
                               <p className="text-muted-foreground">거래 금액</p>
-                              <p className="font-medium">{formatCurrency(transaction.amount, 'USD')}</p>
+                              <p className="font-medium">{formatCurrency(transaction.amount, resolveTransactionCurrency(transaction))}</p>
                             </div>
                             <div>
                               <p className="text-muted-foreground">총 금액</p>
-                              <p className="font-semibold">{formatCurrency(transaction.totalAmount, 'USD')}</p>
+                              <p className="font-semibold">{formatCurrency(transaction.totalAmount, resolveTransactionCurrency(transaction))}</p>
                             </div>
                           </div>
 
@@ -438,16 +455,16 @@ export default function TransactionsPage() {
                               {transaction.shares.toFixed(4)}
                             </td>
                             <td className="py-3 px-4 text-right">
-                              {formatCurrency(transaction.price, 'USD')}
+                              {formatCurrency(transaction.price, resolveTransactionCurrency(transaction))}
                             </td>
                             <td className="py-3 px-4 text-right font-medium">
-                              {formatCurrency(transaction.amount, 'USD')}
+                              {formatCurrency(transaction.amount, resolveTransactionCurrency(transaction))}
                             </td>
                             <td className="py-3 px-4 text-right text-muted-foreground">
-                              {formatCurrency(transaction.fee, 'USD')}
+                              {formatCurrency(transaction.fee, resolveTransactionCurrency(transaction))}
                             </td>
                             <td className="py-3 px-4 text-right font-semibold">
-                              {formatCurrency(transaction.totalAmount, 'USD')}
+                              {formatCurrency(transaction.totalAmount, resolveTransactionCurrency(transaction))}
                             </td>
                             <td className="py-3 px-4 text-sm text-muted-foreground max-w-xs truncate">
                               {transaction.memo || '-'}
@@ -495,7 +512,7 @@ export default function TransactionsPage() {
                     <p><strong>종목:</strong> {transactionToDelete.symbol}</p>
                     <p><strong>유형:</strong> {transactionToDelete.type === 'buy' ? '매수' : '매도'}</p>
                     <p><strong>날짜:</strong> {formatDate(transactionToDelete.date)}</p>
-                    <p><strong>금액:</strong> {formatCurrency(transactionToDelete.totalAmount, 'USD')}</p>
+                    <p><strong>금액:</strong> {formatCurrency(transactionToDelete.totalAmount, resolveTransactionCurrency(transactionToDelete!))}</p>
                   </div>
                 </div>
               )}

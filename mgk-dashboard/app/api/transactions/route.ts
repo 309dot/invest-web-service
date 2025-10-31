@@ -37,6 +37,13 @@ export async function POST(request: NextRequest) {
       exchangeRate,
     } = body;
 
+    if (!userId || userId === 'default_user') {
+      return NextResponse.json(
+        { error: 'userId가 필요합니다.' },
+        { status: 400 }
+      );
+    }
+
     // 유효성 검사
     if (!portfolioId || !positionId || !type || !symbol || !shares || !price || !date) {
       return NextResponse.json(
@@ -90,7 +97,7 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    const userId = 'default_user'; // 실제로는 인증에서 가져와야 함
+    const userId = searchParams.get('userId') || 'default_user';
     const portfolioId = searchParams.get('portfolioId');
     const symbol = searchParams.get('symbol') || undefined;
     const type = searchParams.get('type') as 'buy' | 'sell' | undefined;

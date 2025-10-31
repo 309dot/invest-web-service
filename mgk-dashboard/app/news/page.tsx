@@ -280,9 +280,9 @@ export default function NewsPage() {
                         </button>
 
                         {/* 설명 */}
-                        {item.description && (
+                        {(item.summary || item.description) && (
                           <p className="text-muted-foreground text-sm mb-3 line-clamp-2">
-                            {item.description}
+                            {item.summary || item.description}
                           </p>
                         )}
 
@@ -370,9 +370,9 @@ export default function NewsPage() {
             <p className="text-sm leading-relaxed whitespace-pre-wrap">
               {selectedNews?.summary || '요약 정보를 불러오지 못했습니다.'}
             </p>
-            {selectedNews?.description && (
-              <div className="rounded-md bg-muted/40 p-4 text-sm leading-relaxed whitespace-pre-wrap">
-                {selectedNews.description}
+            {(selectedNews?.content || selectedNews?.description) && (
+              <div className="rounded-md bg-muted/40 p-4 text-sm leading-relaxed whitespace-pre-wrap max-h-80 overflow-y-auto">
+                {selectedNews?.content || selectedNews?.description}
               </div>
             )}
             <div className="flex flex-wrap items-center gap-2">

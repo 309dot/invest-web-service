@@ -20,23 +20,32 @@
   - `components/AddStockModal.tsx`: 실제 사용자 UID 전달로 포지션 저장 실패 예방
   - 뉴스 수집: `lib/apis/news.ts`, `app/api/news/personalized/route.ts` → 보유 종목 기반 한글 뉴스 우선 수집, 요약/HTML 정리
   - 뉴스 UI: `app/news/page.tsx` → 카드 href 노출 제거, 모달 요약/원문 보기 제공
+- ✅ 다중 통화/데이터 동기화 고도화 (2025-10-31 밤)
+  - `tsconfig.json` target을 `es2020`으로 상향 → ES6 전용 문법 관련 빌드 오류 방지
+  - `lib/apis/alphavantage.ts`/`/api/stocks/historical-price`: 한국(KR) 종목에 대해 Yahoo Finance 기반 종가/시가 평균 조회 지원
+  - Add Stock 모듈에서 시장 구분 없이 자동 가격 입력 지원 (`components/AddStockModal.tsx`, `app/portfolio/add-stock/page.tsx`)
+  - `formatters.ts` 및 주요 UI에서 통화 표기 규칙 통일 (KRW → `원`, USD → `$`)
+  - 포지션/거래 API 전반에 `userId` 필수 반영 → `PortfolioOverview`, `TransactionForm`, `TransactionsPage` 등 실시간 동기화
+  - 거래 기록에 통화 정보 저장(`currency`) 및 자동 투자 루틴에 전파
+  - 뉴스 API가 기사 원문을 일부 스크랩해 `content` 필드 제공, 모달에서 요약/본문 동시 노출
 
 **현황**:
-- ❌ `/api/stocks/historical-price`가 404 응답 (가격 데이터 조회 실패)
-  - 원인: 서버 코드가 `process.env.NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY`만 읽어 Vercel에 설정된 `ALPHA_VANTAGE_API_KEY`를 인식하지 못함
-  - 조치: 로컬 코드에서 `ALPHA_VANTAGE_API_KEY → NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY → ''` 순으로 폴백하도록 수정
+- ⚠️ `/api/stocks/historical-price` 한국/미국 시세 조회 개선 사항 배포 후 검증 필요
+  - 신규 로직: 미국(Alpha Vantage) + 한국(Yahoo Finance) 병행 지원, 자동 매수 평균가 계산
+  - 액션: `?symbol=005930&market=KR` 등 실데이터로 응답 확인
 - ⚠️ `/api/positions/[id]` 라우트는 로컬 수정 완료 (삭제 시 연관 거래 포함) → **재배포 후 프로덕션 확인 필요**
   - 최신 코드 기준: DELETE 요청 시 거래 일괄 삭제 및 JSON 응답(`deletedTransactions`) 반환
   - `/api/transactions` exchangeRate undefined 오류 해결 (옵션 필드)
-- ⚠️ 뉴스/검색 개선 사항 적용 후 프로덕션 재배포 필요
+- ⚠️ 뉴스/검색/기사 본문 개선 사항 적용 후 프로덕션 재배포 필요
   - 한글 종목 검색 (`/api/stocks/search?q=삼성전자`) 결과 확인
-  - 뉴스 모듈 모달/요약 기능 검증 및 한국어 기사 노출 여부 확인
+  - 뉴스 모듈 모달/요약 기능 + 기사 본문(`content`) 노출 여부 확인
 - ⏳ 수정 커밋 배포 필요 (재배포 전까지 프로덕션은 기존 동작 유지)
 
 **다음 단계**:
 1. 수정 커밋 푸시 및 Vercel 재배포 실행
-2. 재배포 완료 후 `/api/stocks/historical-price?symbol=AAPL&date=2024-01-15` 재검증
-3. Alpha Vantage 일일 호출 한도(5 req/min, 500 req/day) 모니터링
+2. 재배포 완료 후 `/api/stocks/historical-price?symbol=005930&date=2024-01-15&market=KR` 등 실데이터 재검증
+3. 포지션/거래 UI가 사용자별 데이터로 즉시 갱신되는지 확인
+4. Alpha Vantage (미국) / Yahoo Finance (한국) 호출 제한 모니터링
 
 ---
 

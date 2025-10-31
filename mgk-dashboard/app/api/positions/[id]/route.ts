@@ -13,7 +13,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const userId = 'default_user'; // 실제로는 인증에서 가져와야 함
+    const userId = request.nextUrl.searchParams.get('userId') || 'default_user';
     const positionId = params.id;
 
     if (!positionId) {
@@ -57,7 +57,7 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    const userId = 'default_user';
+    const userId = request.nextUrl.searchParams.get('userId') || 'default_user';
     const positionId = params.id;
     const body = await request.json();
 
@@ -100,7 +100,7 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const userId = 'default_user'; // 실제로는 인증에서 가져와야 함
+    const userId = request.nextUrl.searchParams.get('userId') || 'default_user';
     const positionId = params.id;
 
     console.log('🗑️ Deleting position:', positionId);

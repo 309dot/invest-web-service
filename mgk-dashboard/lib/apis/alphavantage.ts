@@ -18,6 +18,26 @@ console.log('🔑 Alpha Vantage API Key:', ALPHA_VANTAGE_API_KEY ? `${ALPHA_VANT
 // Cache for API responses (5 minutes)
 const cache = new Map<string, { data: any; timestamp: number }>();
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+const KOREAN_SYMBOL_PATTERN = /^[0-9]{4,6}$/;
+
+function isKoreanMarketSymbol(symbol: string): boolean {
+  const upper = symbol.toUpperCase();
+  return KOREAN_SYMBOL_PATTERN.test(symbol) || upper.endsWith('.KS') || upper.endsWith('.KQ');
+}
+
+function buildKoreanSymbolCandidates(symbol: string): string[] {
+  const upper = symbol.toUpperCase();
+  if (upper.endsWith('.KS') || upper.endsWith('.KQ')) {
+    return [upper];
+  }
+  return [`${symbol}.KS`, `${symbol}.KQ`];
+}
+
+function formatDateKST(timestampSeconds: number): string {
+  return new Date(timestampSeconds * 1000).toLocaleDateString('en-CA', {
+    timeZone: 'Asia/Seoul',
+  });
+}
 
 /**
  * Get current price for a stock symbol
@@ -206,20 +226,28 @@ export async function getDailyData(symbol: string, outputsize: 'compact' | 'full
  * 3순위: 전일 종가 (휴장일 대응)
  */
 export async function getHistoricalPrice(
-  symbol: string, 
+  symbol: string,
   date: string,
-  purchaseMethod?: 'manual' | 'auto'
+  purchaseMethod?: 'manual' | 'auto',
+  market?: 'US' | 'KR' | 'GLOBAL'
 ): Promise<number | null> {
   try {
-    console.log(`🔍 Fetching historical price for ${symbol} on ${date} (method: ${purchaseMethod || 'manual'})`);
-    
+    const normalizedMethod: 'manual' | 'auto' = purchaseMethod || 'manual';
+    console.log(`🔍 Fetching historical price for ${symbol} on ${date} (method: ${normalizedMethod})`);
+
+    const inferredMarket = market || (isKoreanMarketSymbol(symbol) ? 'KR' : 'US');
+
+    if (inferredMarket === 'KR') {
+      return await getKoreanHistoricalPrice(symbol, date, normalizedMethod);
+    }
+
     if (!ALPHA_VANTAGE_API_KEY) {
       console.error('❌ API 키가 없어서 가격을 조회할 수 없습니다!');
       return null;
     }
-    
+
     const dailyData = await getDailyData(symbol, 'full');
-    
+
     console.log(`📊 Daily data entries:`, dailyData ? dailyData.length : 0);
     
     if (!dailyData || dailyData.length === 0) {
@@ -253,7 +281,7 @@ export async function getHistoricalPrice(
         let price: number;
         
         // 구매 방식에 따른 가격 결정
-        if (purchaseMethod === 'auto') {
+        if (normalizedMethod === 'auto') {
           // 자동 구매: 시장가 매수 시뮬레이션 (시가 + 종가) / 2
           if (priceEntry.open && priceEntry.close) {
             price = (priceEntry.open + priceEntry.close) / 2;
@@ -286,6 +314,89 @@ export async function getHistoricalPrice(
     console.error('Error fetching historical price:', error);
     return null;
   }
+}
+
+async function getKoreanHistoricalPrice(
+  symbol: string,
+  date: string,
+  purchaseMethod: 'manual' | 'auto'
+): Promise<number | null> {
+  const candidates = buildKoreanSymbolCandidates(symbol);
+  const targetDate = new Date(`${date}T00:00:00Z`);
+  const periodEnd = Math.floor(targetDate.getTime() / 1000) + 2 * 24 * 60 * 60; // target day + buffer
+  const periodStart = periodEnd - 10 * 24 * 60 * 60; // 10 days window
+
+  for (const candidate of candidates) {
+    try {
+      const response = await axios.get(`https://query1.finance.yahoo.com/v8/finance/chart/${candidate}`, {
+        params: {
+          period1: periodStart,
+          period2: periodEnd,
+          interval: '1d',
+        },
+        timeout: 10000,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; PriceFetcher/1.0)',
+        },
+      });
+
+      const result = response.data?.chart?.result?.[0];
+      if (!result || !Array.isArray(result.timestamp) || result.timestamp.length === 0) {
+        continue;
+      }
+
+      const quotes = result.indicators?.quote?.[0];
+      if (!quotes) {
+        continue;
+      }
+
+      const targetKey = targetDate.toISOString().slice(0, 10);
+      let chosenIndex = -1;
+
+      for (let i = 0; i < result.timestamp.length; i += 1) {
+        const ts = result.timestamp[i];
+        const dateKey = formatDateKST(ts);
+        if (dateKey === targetKey) {
+          chosenIndex = i;
+          break;
+        }
+        if (dateKey < targetKey) {
+          chosenIndex = i; // keep closest previous trading day
+        }
+      }
+
+      if (chosenIndex === -1) {
+        continue;
+      }
+
+      const open = quotes.open?.[chosenIndex];
+      const close = quotes.close?.[chosenIndex];
+
+      if (purchaseMethod === 'auto') {
+        if (Number.isFinite(open) && Number.isFinite(close)) {
+          return ((open as number) + (close as number)) / 2;
+        }
+        if (Number.isFinite(close)) {
+          return close as number;
+        }
+        if (Number.isFinite(open)) {
+          return open as number;
+        }
+      } else {
+        if (Number.isFinite(close)) {
+          return close as number;
+        }
+        if (Number.isFinite(open)) {
+          return open as number;
+        }
+      }
+    } catch (error) {
+      console.error(`Yahoo price fetch failed for ${candidate}:`, error);
+    }
+  }
+
+  console.warn(`⚠️ Unable to fetch Korean historical price for ${symbol} on ${date}`);
+  return null;
 }
 
 /**

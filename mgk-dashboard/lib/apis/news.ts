@@ -124,7 +124,7 @@ function extractXMLValue(xml: string, tagName: string): string {
 /**
  * Decode HTML entities
  */
-function decodeHTMLEntities(text: string): string {
+export function decodeHTMLEntities(text: string): string {
   const entities: { [key: string]: string } = {
     '&amp;': '&',
     '&lt;': '<',
@@ -137,7 +137,7 @@ function decodeHTMLEntities(text: string): string {
   return text.replace(/&[#\w]+;/g, entity => entities[entity] || entity);
 }
 
-function stripHtml(html: string): string {
+export function stripHtml(html: string): string {
   return html
     .replace(/<style[\s\S]*?<\/style>/gi, '')
     .replace(/<script[\s\S]*?<\/script>/gi, '')

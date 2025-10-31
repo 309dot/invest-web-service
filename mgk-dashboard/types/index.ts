@@ -117,11 +117,12 @@ export interface Transaction {
   // 거래 정보
   type: TransactionType; // 거래 유형
   date: string; // 거래일 (YYYY-MM-DD)
-  price: number; // 거래 가격 (USD)
+  price: number; // 거래 가격 (현지 통화)
   shares: number; // 거래 주식 수
-  amount: number; // 거래 금액 (USD)
-  fee: number; // 수수료 (USD)
+  amount: number; // 거래 금액 (현지 통화)
+  fee: number; // 수수료 (현지 통화)
   totalAmount: number; // 총 금액 (수수료 포함)
+  currency?: 'USD' | 'KRW';
   // 환율 정보 (한국 주식의 경우)
   exchangeRate?: number; // USD/KRW 환율
   krwAmount?: number; // 원화 환산 금액

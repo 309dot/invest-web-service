@@ -31,6 +31,7 @@ import {
 import { TransactionForm } from './TransactionForm';
 import { formatCurrency, formatPercent } from '@/lib/utils/formatters';
 import type { Position } from '@/types';
+import { useAuth } from '@/lib/contexts/AuthContext';
 
 interface PortfolioOverviewProps {
   portfolioId: string;
@@ -38,6 +39,7 @@ interface PortfolioOverviewProps {
 
 export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
   const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const [positions, setPositions] = useState<Position[]>([]);
   const [totals, setTotals] = useState({
     totalInvested: 0,
@@ -48,10 +50,10 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
   const [selectedPosition, setSelectedPosition] = useState<Position | null>(null);
   const [showTransactionForm, setShowTransactionForm] = useState(false);
 
-  const fetchPositions = async () => {
+  const fetchPositions = async (uid: string) => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/positions?portfolioId=${portfolioId}`);
+      const response = await fetch(`/api/positions?portfolioId=${portfolioId}&userId=${uid}`);
       if (response.ok) {
         const data = await response.json();
         setPositions(data.positions || []);
@@ -65,8 +67,18 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
   };
 
   useEffect(() => {
-    fetchPositions();
-  }, [portfolioId]);
+    if (user) {
+      fetchPositions(user.uid);
+    }
+  }, [user, portfolioId]);
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      setPositions([]);
+      setTotals({ totalInvested: 0, totalValue: 0, returnRate: 0 });
+      setLoading(false);
+    }
+  }, [authLoading, user]);
 
   const handleAddStock = () => {
     router.push(`/portfolio/add-stock?portfolioId=${portfolioId}`);
@@ -84,15 +96,20 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
       return;
     }
 
+    if (!user) {
+      alert('로그인이 필요합니다.');
+      return;
+    }
+
     try {
-      const response = await fetch(`/api/positions/${positionId}`, {
+      const response = await fetch(`/api/positions/${positionId}?userId=${user.uid}`, {
         method: 'DELETE',
       });
 
       if (response.ok) {
         const result = await response.json().catch(() => null);
         const deletedTransactions = result?.deletedTransactions ?? 0;
-        await fetchPositions(); // 목록 새로고침
+        await fetchPositions(user.uid); // 목록 새로고침
 
         if (deletedTransactions > 0) {
           alert(`포지션과 함께 ${deletedTransactions}건의 거래가 삭제되었습니다.`);
@@ -108,12 +125,21 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
   };
 
   const handleTransactionSuccess = () => {
-    fetchPositions();
+    if (user) {
+      fetchPositions(user.uid);
+    }
     setSelectedPosition(null);
   };
 
   const profitLoss = totals.totalValue - totals.totalInvested;
   const isPositive = profitLoss >= 0;
+
+  const resolveCurrency = (position: Position): 'USD' | 'KRW' => {
+    if (position.currency === 'KRW' || position.currency === 'USD') {
+      return position.currency;
+    }
+    return position.market === 'KR' ? 'KRW' : 'USD';
+  };
 
   return (
     <>
@@ -261,15 +287,15 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                           </div>
                           <div>
                             <p className="text-muted-foreground">평균 단가</p>
-                            <p className="font-medium">{formatCurrency(position.averagePrice, 'USD')}</p>
+                            <p className="font-medium">{formatCurrency(position.averagePrice, resolveCurrency(position))}</p>
                           </div>
                           <div>
                             <p className="text-muted-foreground">투자 금액</p>
-                            <p className="font-medium">{formatCurrency(position.totalInvested, 'USD')}</p>
+                            <p className="font-medium">{formatCurrency(position.totalInvested, resolveCurrency(position))}</p>
                           </div>
                           <div>
                             <p className="text-muted-foreground">평가 금액</p>
-                            <p className="font-medium">{formatCurrency(position.totalValue, 'USD')}</p>
+                            <p className="font-medium">{formatCurrency(position.totalValue, resolveCurrency(position))}</p>
                           </div>
                         </div>
 
@@ -285,7 +311,7 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                               <span className={`text-xs ${
                                 position.profitLoss >= 0 ? 'text-green-600' : 'text-red-600'
                               }`}>
-                                ({position.profitLoss >= 0 ? '+' : ''}{formatCurrency(position.profitLoss, 'USD')})
+                                ({position.profitLoss >= 0 ? '+' : ''}{formatCurrency(position.profitLoss, resolveCurrency(position))})
                               </span>
                             </div>
                           </div>
@@ -325,13 +351,13 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                             {position.shares.toFixed(4)} 주
                           </td>
                           <td className="py-3 px-4 text-right">
-                            {formatCurrency(position.averagePrice, 'USD')}
+                            {formatCurrency(position.averagePrice, resolveCurrency(position))}
                           </td>
                           <td className="py-3 px-4 text-right">
-                            {formatCurrency(position.totalInvested, 'USD')}
+                            {formatCurrency(position.totalInvested, resolveCurrency(position))}
                           </td>
                           <td className="py-3 px-4 text-right font-medium">
-                            {formatCurrency(position.totalValue, 'USD')}
+                            {formatCurrency(position.totalValue, resolveCurrency(position))}
                           </td>
                           <td className={`py-3 px-4 text-right font-semibold ${
                             position.returnRate >= 0 ? 'text-green-600' : 'text-red-600'
@@ -342,7 +368,7 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                             position.profitLoss >= 0 ? 'text-green-600' : 'text-red-600'
                           }`}>
                             {position.profitLoss >= 0 ? '+' : ''}
-                            {formatCurrency(position.profitLoss, 'USD')}
+                            {formatCurrency(position.profitLoss, resolveCurrency(position))}
                           </td>
                           <td className="py-3 px-4 text-center">
                             <Badge variant="outline" className="text-xs">

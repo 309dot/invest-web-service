@@ -21,6 +21,7 @@ export async function generateAutoInvestTransactions(
     amount: number;
     startDate: string; // YYYY-MM-DD
     pricePerShare: number; // 평균 가격 또는 시작일 가격
+    currency: 'USD' | 'KRW';
   }
 ): Promise<{ count: number; totalShares: number; totalAmount: number }> {
   try {
@@ -84,6 +85,7 @@ export async function generateAutoInvestTransactions(
         amount: tx.amount,
         date: tx.date,
         note: `자동 투자 (${config.frequency})`,
+        currency: config.currency,
       });
 
       // 포지션 업데이트
@@ -98,7 +100,14 @@ export async function generateAutoInvestTransactions(
       totalAmount += tx.amount;
     }
 
-    console.log(`✅ 자동 투자 거래 내역 생성 완료: ${transactions.length}건, 총 ${totalShares.toFixed(4)}주, 총 $${totalAmount.toFixed(2)}`);
+    const totalAmountDisplay =
+      config.currency === 'KRW'
+        ? `${Math.round(totalAmount).toLocaleString('ko-KR')}원`
+        : `$${totalAmount.toFixed(2)}`;
+
+    console.log(
+      `✅ 자동 투자 거래 내역 생성 완료: ${transactions.length}건, 총 ${totalShares.toFixed(4)}주, 총 ${totalAmountDisplay}`
+    );
 
     return {
       count: transactions.length,

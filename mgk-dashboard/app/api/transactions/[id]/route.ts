@@ -19,8 +19,8 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const userId = 'default_user'; // 실제로는 인증에서 가져와야 함
-    const portfolioId = 'main'; // URL 파라미터로 받아야 함
+    const userId = request.nextUrl.searchParams.get('userId') || 'default_user';
+    const portfolioId = request.nextUrl.searchParams.get('portfolioId') || 'main';
     const transactionId = params.id;
 
     const transaction = await getTransaction(userId, portfolioId, transactionId);
@@ -51,7 +51,7 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const userId = 'default_user'; // 실제로는 인증에서 가져와야 함
+    const userId = request.nextUrl.searchParams.get('userId') || 'default_user';
     const searchParams = request.nextUrl.searchParams;
     const portfolioId = searchParams.get('portfolioId') || 'main';
     const transactionId = params.id;

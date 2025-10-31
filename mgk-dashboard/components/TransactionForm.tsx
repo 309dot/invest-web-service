@@ -30,6 +30,7 @@ import { Alert, AlertDescription } from './ui/alert';
 import { Loader2, AlertCircle, TrendingUp, TrendingDown, Calculator } from 'lucide-react';
 import type { Position, Transaction } from '@/types';
 import { formatInputDate, formatCurrency } from '@/lib/utils/formatters';
+import { useAuth } from '@/lib/contexts/AuthContext';
 
 interface TransactionFormProps {
   open: boolean;
@@ -48,6 +49,7 @@ export function TransactionForm({
 }: TransactionFormProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { user } = useAuth();
 
   // 거래 정보
   const [transactionType, setTransactionType] = useState<'buy' | 'sell'>('buy');
@@ -123,6 +125,11 @@ export function TransactionForm({
     setError(null);
 
     try {
+      if (!user) {
+        setError('로그인이 필요합니다.');
+        return;
+      }
+
       const sharesValue = parseFloat(shares);
       const priceValue = parseFloat(price);
       const feeValue = parseFloat(fee);
@@ -130,6 +137,7 @@ export function TransactionForm({
       const amount = sharesValue * priceValue;
 
       const transactionData = {
+        userId: user.uid,
         portfolioId,
         positionId: position.id,
         type: transactionType,
@@ -142,6 +150,7 @@ export function TransactionForm({
         date,
         note,
         exchangeRate: exchangeRate ? parseFloat(exchangeRate) : undefined,
+        currency: currency,
       };
 
       const response = await fetch('/api/transactions', {
@@ -184,7 +193,13 @@ export function TransactionForm({
     ? (position.shares * position.averagePrice + amount) / predictedShares
     : position.averagePrice; // 매도 시 평균가는 유지
 
-  const currency = position.symbol.match(/^[0-9]/) ? 'KRW' : 'USD';
+  const currency: 'USD' | 'KRW' = position.currency === 'KRW'
+    ? 'KRW'
+    : position.currency === 'USD'
+    ? 'USD'
+    : position.symbol.match(/^[0-9]/)
+    ? 'KRW'
+    : 'USD';
 
   return (
     <Dialog open={open} onOpenChange={(open) => {

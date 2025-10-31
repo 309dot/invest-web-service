@@ -62,20 +62,17 @@ export function AddStockModal({
         return;
       }
 
-      // US 주식만 지원
-      if (selectedStock.market !== 'US') {
-        return;
-      }
-
       setLoadingPrice(true);
       try {
+        const marketParam = selectedStock.market ?? 'US';
         const response = await fetch(
-          `/api/stocks/historical-price?symbol=${selectedStock.symbol}&date=${purchaseDate}`
+          `/api/stocks/historical-price?symbol=${selectedStock.symbol}&date=${purchaseDate}&method=${purchaseMethod}&market=${marketParam}`
         );
         const data = await response.json();
 
         if (data.success && data.price) {
-          setPurchasePrice(data.price.toFixed(2));
+          const decimals = selectedStock.currency === 'KRW' ? 0 : 2;
+          setPurchasePrice(data.price.toFixed(decimals));
         }
       } catch (err) {
         console.error('Failed to fetch historical price:', err);
@@ -163,6 +160,9 @@ export function AddStockModal({
     setError(null);
 
     try {
+      if (!user) {
+        throw new Error('로그인이 필요합니다.');
+      }
       // 포지션 생성 API 호출
       const positionData = {
         userId: user?.uid,
@@ -330,17 +330,15 @@ export function AddStockModal({
                     <Input
                       id="purchasePrice"
                       type="number"
-                      step="0.01"
+                      step={selectedStock?.currency === 'KRW' ? 1 : 0.01}
                       placeholder="0.00"
                       value={purchasePrice}
                       onChange={(e) => setPurchasePrice(e.target.value)}
                       disabled={loadingPrice}
                     />
-                    {selectedStock?.market === 'US' && (
-                      <p className="text-xs text-muted-foreground">
-                        💡 날짜 선택 시 실제 종가가 자동으로 입력됩니다.
-                      </p>
-                    )}
+                    <p className="text-xs text-muted-foreground">
+                      💡 날짜 선택 시 실제 종가가 자동으로 입력됩니다.
+                    </p>
                   </div>
 
                   {/* 구매 단위 선택 */}

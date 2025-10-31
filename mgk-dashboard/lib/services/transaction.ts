@@ -39,6 +39,7 @@ export async function createTransaction(
     tax?: number;
     note?: string;
     exchangeRate?: number;
+    currency?: 'USD' | 'KRW';
   }
 ): Promise<string> {
   try {
@@ -64,6 +65,7 @@ export async function createTransaction(
       purchaseMethod: 'manual',
       purchaseUnit: 'shares',
       createdAt: Timestamp.now(),
+      currency: transactionData.currency || 'USD',
       ...(typeof transactionData.exchangeRate === 'number' && {
         exchangeRate: transactionData.exchangeRate,
       }),

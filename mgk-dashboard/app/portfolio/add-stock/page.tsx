@@ -71,16 +71,11 @@ function AddStockContent() {
         return;
       }
 
-      // US 주식만 지원
-      if (selectedStock.market !== 'US') {
-        console.log('⚠️ Not US stock, skipping auto price fetch');
-        return;
-      }
-
       console.log('📡 Fetching price from API...');
       setLoadingPrice(true);
       try {
-        const url = `/api/stocks/historical-price?symbol=${selectedStock.symbol}&date=${dateToFetch}&method=${purchaseMethod}`;
+        const marketParam = selectedStock.market ?? 'US';
+        const url = `/api/stocks/historical-price?symbol=${selectedStock.symbol}&date=${dateToFetch}&method=${purchaseMethod}&market=${marketParam}`;
         console.log('API URL:', url);
         
         const response = await fetch(url);
@@ -89,8 +84,9 @@ function AddStockContent() {
         console.log('📊 Historical price response:', data);
 
         if (data.success && data.price) {
-          setPurchasePrice(data.price.toFixed(2));
-          console.log(`✅ 가격 자동 입력 성공: $${data.price} (${data.note})`);
+          const decimals = selectedStock.currency === 'KRW' ? 0 : 2;
+          setPurchasePrice(data.price.toFixed(decimals));
+          console.log(`✅ 가격 자동 입력 성공: ${data.price} (${data.note})`);
         } else {
           console.error('❌ 가격 조회 실패:', data.error);
         }
@@ -364,17 +360,15 @@ function AddStockContent() {
                         <Input
                           id="purchasePrice"
                           type="number"
-                          step="0.01"
+                          step={selectedStock?.currency === 'KRW' ? 1 : 0.01}
                           placeholder="0.00"
                           value={purchasePrice}
                           onChange={(e) => setPurchasePrice(e.target.value)}
                           disabled={loadingPrice}
                         />
-                        {selectedStock?.market === 'US' && (
-                          <p className="text-xs text-muted-foreground">
-                            💡 날짜 선택 시 실제 종가가 자동으로 입력됩니다.
-                          </p>
-                        )}
+                        <p className="text-xs text-muted-foreground">
+                          💡 날짜 선택 시 실제 종가가 자동으로 입력됩니다.
+                        </p>
                       </div>
 
                       {/* 구매 단위 선택 */}
