@@ -80,6 +80,10 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
     }
   }, [authLoading, user]);
 
+  if (authLoading || !user) {
+    return null;
+  }
+
   const handleAddStock = () => {
     router.push(`/portfolio/add-stock?portfolioId=${portfolioId}`);
   };
@@ -141,6 +145,22 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
     return position.market === 'KR' ? 'KRW' : 'USD';
   };
 
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-sm text-muted-foreground">
+        <p>로그인이 필요합니다.</p>
+      </div>
+    );
+  }
+
   return (
     <>
       <div className="space-y-6">
@@ -156,7 +176,7 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                 <Button
                   variant="outline"
                   size="icon"
-                  onClick={fetchPositions}
+                  onClick={() => user && fetchPositions(user.uid)}
                   disabled={loading}
                 >
                   <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
