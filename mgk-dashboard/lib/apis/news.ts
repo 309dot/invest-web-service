@@ -261,7 +261,9 @@ export async function collectNewsForSymbols(
         }
       });
 
-      for (const query of querySet) {
+      const queries = Array.from(querySet);
+
+      queries.forEach((query) => {
         const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=${language}&gl=${region}&ceid=${region}:${language}`;
 
         try {
@@ -286,7 +288,7 @@ export async function collectNewsForSymbols(
         } catch (error) {
           console.error(`Error fetching news for ${target.symbol}:`, error);
         }
-      }
+      });
     }
 
     // Filter to last 7 days for stock-specific news
