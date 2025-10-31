@@ -18,6 +18,8 @@ interface AIAdvisorData {
     [key: string]: unknown;
   };
   generatedAt?: string;
+  rawText?: string;
+  confidenceScore?: number;
 }
 
 interface AIAdvisorCardProps {
@@ -54,6 +56,9 @@ export function AIAdvisorCard({ initialData = null }: AIAdvisorCardProps) {
 
       const json = await response.json();
       setData(json.data);
+      if (json.data?.rawText?.startsWith('Fallback')) {
+        setError('외부 AI 서비스에 연결할 수 없어 기본 요약을 제공했습니다. 환경 설정을 확인해주세요.');
+      }
       if (json.stored) {
         setHistory(prev => [json.stored, ...prev].slice(0, 5));
       }

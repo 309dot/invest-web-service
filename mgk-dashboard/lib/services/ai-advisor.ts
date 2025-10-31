@@ -60,6 +60,44 @@ const toISOString = (value: unknown) => {
   return String(value);
 };
 
+function generateFallbackAdvisorResult(payload: AIAdvisorPromptPayload, reason: string): AIAdvisorResult {
+  const { context } = payload;
+  const { summary, news } = context;
+  const returnRate = summary.returnRate ?? 0;
+  const sellSignal = returnRate < -5;
+  const highlights = news
+    .slice(0, 3)
+    .map((item) => `${item.title}${item.source ? ` (${item.source})` : ''}`);
+
+  const recommendations: string[] = [];
+
+  if (sellSignal) {
+    recommendations.push('손실 구간이 길어지고 있습니다. 비중 조정을 검토하세요.');
+  } else {
+    recommendations.push('장기 관점에서 핵심 보유 종목을 유지하며 추가 기회를 탐색하세요.');
+  }
+
+  recommendations.push('주요 뉴스와 섹터 동향을 주기적으로 점검하세요.');
+  recommendations.push('추가 투자를 진행할 경우 자산 배분 비중을 재검토하세요.');
+
+  return {
+    weeklySummary:
+      summary.totalValue && summary.totalInvested
+        ? `최근 ${context.periodDays}일 기준으로 총 투자금은 ${summary.totalInvested.toLocaleString()}원, 평가 금액은 ${summary.totalValue.toLocaleString()}원 수준입니다. 수익률은 ${returnRate.toFixed(2)}% 입니다.`
+        : '최근 데이터를 기반으로 기본 요약을 제공합니다. 수익률 정보를 확인해주세요.',
+    newsHighlights: highlights.length > 0 ? highlights : ['주요 뉴스를 수집하지 못했습니다.'],
+    signals: {
+      sellSignal,
+      reason: sellSignal
+        ? '최근 수익률이 하락세이므로 방어적인 비중 조정이 필요합니다.'
+        : '현재 수익률과 지표가 안정적인 범위 내에 있습니다.',
+    },
+    recommendations,
+    confidenceScore: 0.2,
+    rawText: `Fallback generated locally. Reason: ${reason}`,
+  };
+}
+
 export async function fetchAIAdvisorContext({
   periodDays,
   tickers,
@@ -155,66 +193,72 @@ export async function callAIAdvisor(
   options: CallAIAdvisorOptions = {}
 ): Promise<AIAdvisorResult> {
   const apiKey = process.env.GPT_OSS_API_KEY;
-  if (!apiKey) {
-    throw new Error('GPT_OSS_API_KEY가 설정되지 않았습니다. 환경 변수를 확인하세요.');
-  }
-
   const model = options.model ?? DEFAULT_MODEL;
   const endpoint = options.endpoint ?? DEFAULT_ENDPOINT;
   const temperature = options.temperature ?? 0.2;
-
   const prompt = buildAdvisorPrompt(payload);
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      temperature,
-      messages: [
-        {
-          role: 'system',
-          content: 'You are a professional Korean stock market analyst.',
-        },
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
-    }),
-  });
-
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(`AI 어드바이저 호출 실패 (${response.status}): ${errorBody}`);
+  if (!apiKey) {
+    console.warn('GPT_OSS_API_KEY 미설정: 로컬 폴백 결과를 반환합니다.');
+    return generateFallbackAdvisorResult(payload, 'API key missing');
   }
 
-  const resultJson = await response.json();
-  const rawContent =
-    resultJson?.choices?.[0]?.message?.content ?? resultJson?.data ?? JSON.stringify(resultJson);
-
-  let parsed: AIAdvisorResult | null = null;
   try {
-    parsed = JSON.parse(rawContent);
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        temperature,
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a professional Korean stock market analyst.',
+          },
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      console.error('AI 어드바이저 호출 실패:', response.status, errorBody);
+      return generateFallbackAdvisorResult(payload, `HTTP ${response.status}`);
+    }
+
+    const resultJson = await response.json();
+    const rawContent =
+      resultJson?.choices?.[0]?.message?.content ?? resultJson?.data ?? JSON.stringify(resultJson);
+
+    let parsed: AIAdvisorResult | null = null;
+    try {
+      parsed = JSON.parse(rawContent);
+    } catch (error) {
+      console.warn('AI 응답 JSON 파싱 실패, 로컬 폴백으로 대체합니다.', error);
+      return generateFallbackAdvisorResult(payload, 'invalid JSON response');
+    }
+
+    return {
+      weeklySummary: parsed.weeklySummary ?? '',
+      newsHighlights: parsed.newsHighlights ?? [],
+      signals: parsed.signals ?? { sellSignal: false, reason: '' },
+      recommendations: parsed.recommendations ?? [],
+      confidenceScore: parsed.confidenceScore,
+      rawText: rawContent,
+    };
   } catch (error) {
-    console.warn('AI 응답 JSON 파싱 실패, 수동 파싱을 시도합니다.', error);
+    console.error('AI 어드바이저 호출 중 예외 발생:', error);
+    return generateFallbackAdvisorResult(
+      payload,
+      error instanceof Error ? error.message : 'unexpected error'
+    );
   }
-
-  if (!parsed) {
-    throw new Error('AI 응답에서 유효한 JSON을 찾을 수 없습니다.');
-  }
-
-  return {
-    weeklySummary: parsed.weeklySummary ?? '',
-    newsHighlights: parsed.newsHighlights ?? [],
-    signals: parsed.signals ?? { sellSignal: false, reason: '' },
-    recommendations: parsed.recommendations ?? [],
-    confidenceScore: parsed.confidenceScore,
-    rawText: rawContent,
-  };
 }
 
 export async function storeAIInsight(
