@@ -25,6 +25,7 @@ import { Alert, AlertDescription } from './ui/alert';
 import { Loader2, AlertCircle } from 'lucide-react';
 import type { Stock, PurchaseMethod, PurchaseUnit, AutoInvestFrequency } from '@/types';
 import { formatInputDate } from '@/lib/utils/formatters';
+import { useAuth } from '@/lib/contexts/AuthContext';
 
 interface AddStockModalProps {
   open: boolean;
@@ -39,6 +40,7 @@ export function AddStockModal({
   portfolioId,
   onSuccess 
 }: AddStockModalProps) {
+  const { user } = useAuth();
   const [step, setStep] = useState<'search' | 'details'>('search');
   const [selectedStock, setSelectedStock] = useState<Omit<Stock, 'id'> | null>(null);
   const [loading, setLoading] = useState(false);
@@ -163,6 +165,7 @@ export function AddStockModal({
     try {
       // 포지션 생성 API 호출
       const positionData = {
+        userId: user?.uid,
         portfolioId,
         stock: selectedStock,
         purchaseMethod,

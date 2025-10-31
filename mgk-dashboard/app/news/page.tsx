@@ -9,6 +9,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
   Newspaper,
   TrendingUp,
   TrendingDown,
@@ -32,6 +39,8 @@ export default function NewsPage() {
   const [selectedSymbol, setSelectedSymbol] = useState<string>('all');
   const [selectedSentiment, setSelectedSentiment] = useState<string>('all');
   const [selectedImpact, setSelectedImpact] = useState<string>('all');
+  const [selectedNews, setSelectedNews] = useState<PersonalizedNews | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -256,10 +265,19 @@ export default function NewsPage() {
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1">
                         {/* 제목 */}
-                        <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
-                          {getSentimentIcon(item.sentiment || 'neutral')}
-                          {item.title}
-                        </h3>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedNews(item);
+                            setIsModalOpen(true);
+                          }}
+                          className="text-left w-full"
+                        >
+                          <h3 className="text-lg font-semibold mb-2 flex items-center gap-2 hover:text-primary">
+                            {getSentimentIcon(item.sentiment || 'neutral')}
+                            {item.title}
+                          </h3>
+                        </button>
 
                         {/* 설명 */}
                         {item.description && (
@@ -327,6 +345,62 @@ export default function NewsPage() {
           )}
         </main>
       </div>
+
+      <Dialog
+        open={isModalOpen}
+        onOpenChange={(open) => {
+          setIsModalOpen(open);
+          if (!open) {
+            setSelectedNews(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {getSentimentIcon(selectedNews?.sentiment || 'neutral')}
+              {selectedNews?.title || '뉴스 상세'}
+            </DialogTitle>
+            <DialogDescription>
+              {selectedNews?.source}
+              {selectedNews ? ` • ${formatRelativeDate(selectedNews.publishedAt)}` : ''}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm leading-relaxed whitespace-pre-wrap">
+              {selectedNews?.summary || '요약 정보를 불러오지 못했습니다.'}
+            </p>
+            {selectedNews?.description && (
+              <div className="rounded-md bg-muted/40 p-4 text-sm leading-relaxed whitespace-pre-wrap">
+                {selectedNews.description}
+              </div>
+            )}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-medium">영향 종목:</span>
+              {selectedNews?.affectedPositions.map((pos, idx) => (
+                <div key={idx} className="flex items-center gap-1">
+                  <Badge variant="secondary">{pos.symbol}</Badge>
+                  {getImpactBadge(pos.estimatedImpact)}
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-between items-center pt-2">
+              <span className="text-xs text-muted-foreground">
+                개인화 점수: {selectedNews?.personalRelevance.toFixed(0)}%
+              </span>
+              {selectedNews?.url && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => window.open(selectedNews.url, '_blank')}
+                >
+                  원문 보기
+                </Button>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

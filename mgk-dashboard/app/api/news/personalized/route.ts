@@ -1,15 +1,34 @@
-/**
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
+/**
  * 개인화 뉴스 API
  * 
  * GET: 사용자 보유 종목 기반 개인화 뉴스 조회
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { collectNewsForSymbols, type RSSNewsItem } from '@/lib/apis/news';
-import { analyzePersonalizedNews, analyzeSentiment, type PersonalizedNews } from '@/lib/services/news-analysis';
+import { collectNewsForSymbols, type SymbolNewsTarget } from '@/lib/apis/news';
+import { analyzePersonalizedNews, analyzeSentiment } from '@/lib/services/news-analysis';
 import { getPortfolioPositions } from '@/lib/services/position';
+
+function summarizeContent(text?: string, maxSentences: number = 3): string {
+  if (!text) {
+    return '요약 정보를 불러오지 못했습니다.';
+  }
+
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  if (!normalized) {
+    return '요약 정보를 불러오지 못했습니다.';
+  }
+
+  const sentences = normalized.split(/(?<=[.!?。？！])\s+/u).slice(0, maxSentences);
+  if (sentences.length === 0) {
+    return normalized;
+  }
+
+  return sentences.join(' ');
+}
 
 /**
  * GET /api/news/personalized?userId=xxx&portfolioId=xxx
@@ -40,10 +59,22 @@ export async function GET(request: NextRequest) {
     }
 
     // 보유 종목 심볼 추출
-    const symbols = positions.map(p => p.symbol);
+    const symbolTargets: SymbolNewsTarget[] = positions.map((position) => ({
+      symbol: position.symbol,
+      displayName: position.name,
+      keywords: [
+        position.name,
+        `${position.name} ${position.symbol}`,
+        position.market === 'KR' ? `${position.name} 주가` : `${position.name} stock`,
+        position.market === 'KR' ? `${position.name} 뉴스` : `${position.name} news`,
+      ],
+    }));
 
-    // 종목별 뉴스 수집
-    const rawNews = await collectNewsForSymbols(symbols);
+    // 종목별 뉴스 수집 (한국어 우선, 결과가 없으면 영어로 재시도)
+    let rawNews = await collectNewsForSymbols(symbolTargets, 'ko');
+    if (rawNews.length === 0) {
+      rawNews = await collectNewsForSymbols(symbolTargets, 'en');
+    }
 
     // 감성 분석 추가
     const newsWithSentiment = rawNews.map(news => {
@@ -75,11 +106,18 @@ export async function GET(request: NextRequest) {
       positions
     );
 
+    const enrichedNews = personalizedNews.map((item) => ({
+      ...item,
+      summary: summarizeContent(item.description),
+    }));
+
+    const symbols = positions.map(p => p.symbol);
+
     return NextResponse.json({
       success: true,
-      news: personalizedNews,
+      news: enrichedNews,
       portfolioSymbols: symbols,
-      totalNews: personalizedNews.length,
+      totalNews: enrichedNews.length,
     });
   } catch (error) {
     console.error('Personalized news error:', error);

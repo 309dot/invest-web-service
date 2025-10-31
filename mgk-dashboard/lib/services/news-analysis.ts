@@ -33,6 +33,7 @@ export interface PersonalizedNews extends NewsItem {
     estimatedImpact: 'high' | 'medium' | 'low';
   }[];
   reason: string;
+  summary?: string;
 }
 
 /**

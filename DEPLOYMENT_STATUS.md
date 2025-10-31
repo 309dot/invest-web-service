@@ -15,6 +15,11 @@
   - `lib/services/position.ts`에서 포지션 삭제 시 연관 거래 일괄 삭제(batch)
   - `lib/services/transaction.ts`에서 `exchangeRate` 옵션 처리 (Firestore undefined 저장 방지)
   - `PortfolioOverview.tsx` 삭제 후 사용자 알림 개선
+- ✅ 한글 검색 & 뉴스 개인화 고도화 (2025-10-31)
+  - `lib/apis/yahoo-finance.ts`: 한국어 검색 파라미터(lang=ko-KR) 및 섹터/자산유형 정규화
+  - `components/AddStockModal.tsx`: 실제 사용자 UID 전달로 포지션 저장 실패 예방
+  - 뉴스 수집: `lib/apis/news.ts`, `app/api/news/personalized/route.ts` → 보유 종목 기반 한글 뉴스 우선 수집, 요약/HTML 정리
+  - 뉴스 UI: `app/news/page.tsx` → 카드 href 노출 제거, 모달 요약/원문 보기 제공
 
 **현황**:
 - ❌ `/api/stocks/historical-price`가 404 응답 (가격 데이터 조회 실패)
@@ -23,6 +28,9 @@
 - ⚠️ `/api/positions/[id]` 라우트는 로컬 수정 완료 (삭제 시 연관 거래 포함) → **재배포 후 프로덕션 확인 필요**
   - 최신 코드 기준: DELETE 요청 시 거래 일괄 삭제 및 JSON 응답(`deletedTransactions`) 반환
   - `/api/transactions` exchangeRate undefined 오류 해결 (옵션 필드)
+- ⚠️ 뉴스/검색 개선 사항 적용 후 프로덕션 재배포 필요
+  - 한글 종목 검색 (`/api/stocks/search?q=삼성전자`) 결과 확인
+  - 뉴스 모듈 모달/요약 기능 검증 및 한국어 기사 노출 여부 확인
 - ⏳ 수정 커밋 배포 필요 (재배포 전까지 프로덕션은 기존 동작 유지)
 
 **다음 단계**:

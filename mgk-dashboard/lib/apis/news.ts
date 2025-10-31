@@ -11,6 +11,12 @@ export interface RSSNewsItem {
   category?: string;
 }
 
+export interface SymbolNewsTarget {
+  symbol: string;
+  displayName?: string;
+  keywords?: string[];
+}
+
 // Cache for news (10 minutes)
 const cache = new Map<string, { data: any; timestamp: number }>();
 const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
@@ -95,7 +101,7 @@ function parseRSSFeed(xmlData: string, keyword: string): RSSNewsItem[] {
           link: link,
           pubDate: new Date(pubDate),
           source: source || 'Google News',
-          description: description ? decodeHTMLEntities(description) : undefined,
+          description: description ? stripHtml(decodeHTMLEntities(description)) : undefined,
         });
       }
     });
@@ -129,6 +135,15 @@ function decodeHTMLEntities(text: string): string {
   };
 
   return text.replace(/&[#\w]+;/g, entity => entities[entity] || entity);
+}
+
+function stripHtml(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /**
@@ -210,10 +225,10 @@ export function clearCache() {
  * Collect news for specific stock symbols
  */
 export async function collectNewsForSymbols(
-  symbols: string[],
+  targets: SymbolNewsTarget[],
   language: string = 'en'
 ): Promise<RSSNewsItem[]> {
-  const cacheKey = `stock-news-${symbols.join('-')}`;
+  const cacheKey = `stock-news-${targets.map(t => t.symbol).join('-')}-${language}`;
   const cached = cache.get(cacheKey);
 
   if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
@@ -223,16 +238,31 @@ export async function collectNewsForSymbols(
   try {
     const allNews: RSSNewsItem[] = [];
 
-    for (const symbol of symbols) {
-      // Search for stock-specific news
-      const queries = [
-        `${symbol} stock`,
-        `${symbol} earnings`,
-        `${symbol} market`,
-      ];
+    const region = language === 'ko' ? 'KR' : 'US';
 
-      for (const query of queries) {
-        const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=${language}&gl=US&ceid=US:${language}`;
+    for (const target of targets) {
+      // Search for stock-specific news
+      const querySet = new Set<string>();
+
+      querySet.add(`${target.symbol} stock`);
+      querySet.add(`${target.symbol} earnings`);
+      querySet.add(`${target.symbol} market`);
+
+      if (target.displayName) {
+        querySet.add(`${target.displayName}`);
+        querySet.add(`${target.displayName} 주가`);
+        querySet.add(`${target.displayName} 실적`);
+      }
+
+      target.keywords?.forEach(keyword => {
+        if (keyword) {
+          querySet.add(keyword);
+          querySet.add(`${keyword} 뉴스`);
+        }
+      });
+
+      for (const query of querySet) {
+        const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=${language}&gl=${region}&ceid=${region}:${language}`;
 
         try {
           const response = await axios.get(rssUrl, {
@@ -247,13 +277,14 @@ export async function collectNewsForSymbols(
 
           // Add symbol to related symbols
           newsItems.forEach(item => {
-            item.relatedSymbols = [symbol];
-            item.keywords = [symbol, ...query.split(' ')];
+            item.relatedSymbols = Array.from(new Set([target.symbol, ...(item.relatedSymbols || [])]));
+            const keywordPieces = query.split(' ').filter(Boolean);
+            item.keywords = Array.from(new Set([target.symbol, ...(target.displayName ? [target.displayName] : []), ...keywordPieces]));
           });
 
           allNews.push(...newsItems);
         } catch (error) {
-          console.error(`Error fetching news for ${symbol}:`, error);
+          console.error(`Error fetching news for ${target.symbol}:`, error);
         }
       }
     }

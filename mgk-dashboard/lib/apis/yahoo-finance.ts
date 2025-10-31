@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { Timestamp } from 'firebase/firestore';
 
 const BASE_URL = 'https://query2.finance.yahoo.com/v1';
 
@@ -30,27 +31,51 @@ export async function searchKoreanStocks(query: string): Promise<any[]> {
         enableCb: false,
         enableNavLinks: false,
         enableEnhancedTrivialQuery: false,
+        lang: 'ko-KR',
       },
       timeout: 10000,
     });
 
     const quotes = response.data?.quotes || [];
     
+    const sectorMap: Record<string, string> = {
+      technology: 'technology',
+      tech: 'technology',
+      healthcare: 'healthcare',
+      health: 'healthcare',
+      financial: 'financial',
+      finance: 'financial',
+      consumer: 'consumer',
+      industrial: 'industrial',
+      energy: 'energy',
+      materials: 'materials',
+      utilities: 'utilities',
+      realestate: 'real-estate',
+      communication: 'communication',
+    };
+
     // Filter for Korean exchanges (KS = KOSPI, KQ = KOSDAQ)
     const koreanStocks = quotes
       .filter((quote: any) => {
         const symbol = quote.symbol || '';
         return symbol.endsWith('.KS') || symbol.endsWith('.KQ');
       })
-      .map((quote: any) => ({
-        symbol: quote.symbol.replace(/\.(KS|KQ)$/, ''), // Remove exchange suffix
-        name: quote.longname || quote.shortname || quote.symbol,
-        market: 'KR',
-        exchange: quote.exchDisp || (quote.symbol.endsWith('.KS') ? 'KOSPI' : 'KOSDAQ'),
-        assetType: quote.quoteType === 'ETF' ? 'ETF' : 'Stock',
-        sector: quote.sector || '미분류',
-        currency: 'KRW',
-      }));
+      .map((quote: any) => {
+        const rawSector = (quote.sector || '').toLowerCase().replace(/\s+/g, '');
+
+        return {
+          symbol: quote.symbol.replace(/\.(KS|KQ)$/, ''), // Remove exchange suffix
+          name: quote.longname || quote.shortname || quote.symbol,
+          market: 'KR' as const,
+          exchange: quote.exchDisp || (quote.symbol.endsWith('.KS') ? 'KOSPI' : 'KOSDAQ'),
+          assetType: quote.quoteType?.toLowerCase() === 'etf' ? 'etf' : 'stock',
+          sector: sectorMap[rawSector] || 'other',
+          currency: 'KRW' as const,
+          description: quote.longbusinesssummary || quote.longname || quote.shortname || quote.symbol,
+          searchCount: 0,
+          createdAt: Timestamp.now(),
+        };
+      });
 
     cache.set(cacheKey, { data: koreanStocks, timestamp: Date.now() });
     return koreanStocks;
