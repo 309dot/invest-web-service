@@ -18,18 +18,19 @@ import {
   DialogHeader,
   DialogTitle,
 } from './ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from './ui/select';
 import { RadioGroup, RadioGroupItem } from './ui/radio-group';
 import { Alert, AlertDescription } from './ui/alert';
 import { Loader2, AlertCircle, TrendingUp, TrendingDown, Calculator } from 'lucide-react';
-import type { Position, Transaction } from '@/types';
+import type { Position } from '@/types';
 import { formatInputDate } from '@/lib/utils/formatters';
+import {
+  adjustToNextTradingDay,
+  determineMarketFromContext,
+  formatDate as formatMarketDate,
+  getMarketToday,
+  isFutureTradingDate,
+  isTradingDay,
+} from '@/lib/utils/tradingCalendar';
 import { useCurrency } from '@/lib/contexts/CurrencyContext';
 import { useAuth } from '@/lib/contexts/AuthContext';
 
@@ -64,6 +65,7 @@ export function TransactionForm({
   const [tax, setTax] = useState('0');
   const [note, setNote] = useState('');
   const [exchangeRate, setExchangeRate] = useState('');
+  const [tradingNotice, setTradingNotice] = useState<string | null>(null);
 
   // 환율 자동 조회
   useEffect(() => {
@@ -98,9 +100,19 @@ export function TransactionForm({
     setError(null);
   };
 
+  const marketCode = determineMarketFromContext(position.market, position.currency, position.symbol);
+
   const validateForm = (): string | null => {
     if (!date) {
       return '거래 날짜를 입력해주세요.';
+    }
+    if (!isTradingDay(date, marketCode)) {
+      const nextTrading = formatMarketDate(adjustToNextTradingDay(date, marketCode));
+      return `선택한 날짜는 휴장일입니다. 거래일 (${nextTrading})을 선택해주세요.`;
+    }
+    if (isFutureTradingDate(date, marketCode)) {
+      const today = formatMarketDate(getMarketToday(marketCode));
+      return `미래 날짜에는 거래를 기록할 수 없습니다. ${today} 이전 날짜를 선택해주세요.`;
     }
     if (!price || parseFloat(price) <= 0) {
       return '유효한 거래 가격을 입력해주세요.';
@@ -248,6 +260,34 @@ export function TransactionForm({
     };
   }, [open, transactionType, position.symbol, position.market, date, priceTouched, price, currency]);
 
+  useEffect(() => {
+    if (!date) {
+      return;
+    }
+
+    const normalizedMarket = marketCode;
+
+    if (!isTradingDay(date, normalizedMarket)) {
+      const adjusted = formatMarketDate(adjustToNextTradingDay(date, normalizedMarket));
+      if (adjusted !== date) {
+        setDate(adjusted);
+        setTradingNotice(`휴장일로 인해 거래일을 ${adjusted}로 자동 조정했습니다.`);
+      }
+      return;
+    }
+
+    if (isFutureTradingDate(date, normalizedMarket)) {
+      const todayString = formatMarketDate(getMarketToday(normalizedMarket));
+      if (todayString !== date) {
+        setDate(todayString);
+        setTradingNotice(`미래 날짜는 기록할 수 없어 ${todayString}로 조정했습니다.`);
+      }
+      return;
+    }
+
+    setTradingNotice(null);
+  }, [date, marketCode]);
+
   // 계산된 값
   const sharesValue = shares ? parseFloat(shares) : 0;
   const priceValue = price ? parseFloat(price) : 0;
@@ -346,6 +386,9 @@ export function TransactionForm({
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
               />
+              {tradingNotice && (
+                <p className="text-xs text-muted-foreground">{tradingNotice}</p>
+              )}
             </div>
 
             {/* 거래 가격 */}

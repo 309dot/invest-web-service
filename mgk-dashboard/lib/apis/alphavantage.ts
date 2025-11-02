@@ -18,6 +18,7 @@ console.log('🔑 Alpha Vantage API Key:', ALPHA_VANTAGE_API_KEY ? `${ALPHA_VANT
 // Cache for API responses (5 minutes)
 const cache = new Map<string, { data: any; timestamp: number }>();
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+const FX_SERIES_CACHE_DURATION = 12 * 60 * 60 * 1000; // 12 hours
 const KOREAN_SYMBOL_PATTERN = /^[0-9]{4,6}$/;
 
 function isKoreanMarketSymbol(symbol: string): boolean {
@@ -397,6 +398,99 @@ async function getKoreanHistoricalPrice(
 
   console.warn(`⚠️ Unable to fetch Korean historical price for ${symbol} on ${date}`);
   return null;
+}
+
+function subtractOneDay(dateString: string): string {
+  const date = new Date(`${dateString}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() - 1);
+  return date.toISOString().slice(0, 10);
+}
+
+export async function getHistoricalExchangeRate(
+  date: string,
+  fromSymbol = 'USD',
+  toSymbol = 'KRW'
+): Promise<number | null> {
+  const normalizedDate = date.slice(0, 10);
+  const cacheKey = `fx-series-${fromSymbol}-${toSymbol}`;
+
+  try {
+    let series: Record<string, any> | null = null;
+    const cachedSeries = cache.get(cacheKey);
+
+    if (cachedSeries && Date.now() - cachedSeries.timestamp < FX_SERIES_CACHE_DURATION) {
+      series = cachedSeries.data as Record<string, any>;
+    } else {
+      if (!ALPHA_VANTAGE_API_KEY) {
+        console.warn('❌ Alpha Vantage API 키가 없어 환율을 조회할 수 없습니다.');
+        return null;
+      }
+
+      const response = await axios.get(BASE_URL, {
+        params: {
+          function: 'FX_DAILY',
+          from_symbol: fromSymbol,
+          to_symbol: toSymbol,
+          outputsize: 'full',
+          apikey: ALPHA_VANTAGE_API_KEY,
+        },
+        timeout: 10000,
+      });
+
+      if (response.data['Error Message']) {
+        console.error('❌ Alpha Vantage FX Error:', response.data['Error Message']);
+        return null;
+      }
+
+      if (response.data['Note']) {
+        console.error('⚠️ Alpha Vantage FX Rate Limit:', response.data['Note']);
+        return null;
+      }
+
+      const rawSeries = response.data['Time Series FX (Daily)'];
+      if (!rawSeries) {
+        console.warn('⚠️ 환율 데이터가 응답에 없습니다.');
+        return null;
+      }
+
+      series = rawSeries as Record<string, any>;
+      cache.set(cacheKey, { data: series, timestamp: Date.now() });
+    }
+
+    if (!series) {
+      return null;
+    }
+
+    let lookupDate = normalizedDate;
+    let attempts = 0;
+
+    while (!series[lookupDate] && attempts < 10) {
+      lookupDate = subtractOneDay(lookupDate);
+      attempts += 1;
+    }
+
+    const entry = series[lookupDate];
+    if (!entry) {
+      console.warn(`⚠️ ${normalizedDate} 이전 10일 이내 환율 데이터를 찾지 못했습니다.`);
+      return null;
+    }
+
+    const close = parseFloat(entry['4. close']);
+    if (Number.isFinite(close)) {
+      return close;
+    }
+
+    const open = parseFloat(entry['1. open']);
+    if (Number.isFinite(open)) {
+      return open;
+    }
+
+    console.warn(`⚠️ ${lookupDate} 환율 데이터에 유효한 값이 없습니다.`);
+    return null;
+  } catch (error) {
+    console.error('Error fetching historical exchange rate:', error);
+    return null;
+  }
 }
 
 /**

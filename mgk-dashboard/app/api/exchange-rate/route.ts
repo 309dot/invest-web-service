@@ -7,6 +7,7 @@ export const dynamic = 'force-dynamic';
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { getHistoricalExchangeRate } from '@/lib/apis/alphavantage';
 
 // 간단한 캐시 (실제로는 Redis나 Firestore 사용 권장)
 const cache = new Map<string, { rate: number; timestamp: number }>();
@@ -31,10 +32,18 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // ExchangeRate-API 호출
-    // 실제 환율 API 연동 (무료 플랜은 최신 환율만 제공)
+    const historicalRate = await getHistoricalExchangeRate(date);
+    if (historicalRate !== null) {
+      cache.set(date, { rate: historicalRate, timestamp: Date.now() });
+      return NextResponse.json({
+        date,
+        rate: historicalRate,
+        source: 'alphavantage',
+      });
+    }
+
+    // ExchangeRate-API (fallback - 최신 환율)
     const API_URL = 'https://api.exchangerate-api.com/v4/latest/USD';
-    
     const response = await fetch(API_URL);
     if (!response.ok) {
       throw new Error('Failed to fetch exchange rate');
@@ -83,23 +92,44 @@ export async function POST(request: NextRequest) {
 
     const rates: Record<string, number> = {};
 
-    // 현재는 모든 날짜에 대해 최신 환율 반환
-    // 실제로는 historical data API 사용 필요 (유료)
-    const API_URL = 'https://api.exchangerate-api.com/v4/latest/USD';
-    const response = await fetch(API_URL);
-    
-    if (response.ok) {
-      const data = await response.json();
-      const rate = data.rates.KRW;
+    const results = await Promise.all(
+      dates.map(async (targetDate: string) => {
+        const historicalRate = await getHistoricalExchangeRate(targetDate);
+        if (historicalRate !== null) {
+          return { date: targetDate, rate: historicalRate };
+        }
+        return null;
+      })
+    );
 
-      dates.forEach((date: string) => {
-        rates[date] = rate;
-      });
-    } else {
-      // 폴백
-      dates.forEach((date: string) => {
-        rates[date] = 1300;
-      });
+    const missingDates: string[] = [];
+    results.forEach((result) => {
+      if (result) {
+        rates[result.date] = result.rate;
+        cache.set(result.date, { rate: result.rate, timestamp: Date.now() });
+      }
+    });
+
+    dates.forEach((targetDate: string) => {
+      if (rates[targetDate] === undefined) {
+        missingDates.push(targetDate);
+      }
+    });
+
+    if (missingDates.length > 0) {
+      const API_URL = 'https://api.exchangerate-api.com/v4/latest/USD';
+      const response = await fetch(API_URL);
+      if (response.ok) {
+        const data = await response.json();
+        const fallbackRate = data.rates.KRW;
+        missingDates.forEach((targetDate) => {
+          rates[targetDate] = fallbackRate;
+        });
+      } else {
+        missingDates.forEach((targetDate) => {
+          rates[targetDate] = 1300;
+        });
+      }
     }
 
     return NextResponse.json({ rates });

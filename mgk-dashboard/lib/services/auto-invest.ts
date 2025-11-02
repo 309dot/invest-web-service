@@ -19,7 +19,45 @@ import { db } from '@/lib/firebase';
 import { createTransaction } from './transaction';
 import { recalculatePositionFromTransactions } from './position';
 import type { AutoInvestFrequency, AutoInvestSchedule, Position, Transaction } from '@/types';
-import { getHistoricalPrice } from '@/lib/apis/alphavantage';
+import { getHistoricalPrice, getHistoricalExchangeRate } from '@/lib/apis/alphavantage';
+import {
+  adjustToNextTradingDay,
+  advanceByFrequency,
+  determineMarketFromContext,
+  formatDate,
+  getMarketToday,
+  parseISODate,
+} from '@/lib/utils/tradingCalendar';
+
+function computeScheduledTradingDates(
+  startDate: string,
+  frequency: AutoInvestFrequency,
+  market: 'US' | 'KR' | 'GLOBAL',
+  endBoundary: Date
+): string[] {
+  const purchaseDates: string[] = [];
+  const seen = new Set<string>();
+  let pointer = parseISODate(startDate);
+  let guard = 0;
+
+  while (pointer <= endBoundary && guard < 5000) {
+    const tradingDate = adjustToNextTradingDay(pointer, market);
+    if (tradingDate > endBoundary) {
+      break;
+    }
+
+    const dateString = formatDate(tradingDate);
+    if (!seen.has(dateString)) {
+      seen.add(dateString);
+      purchaseDates.push(dateString);
+    }
+
+    pointer = advanceByFrequency(pointer, frequency);
+    guard += 1;
+  }
+
+  return purchaseDates;
+}
 
 /**
  * 자동 투자 거래 내역 생성
@@ -41,44 +79,23 @@ export async function generateAutoInvestTransactions(
   }
 ): Promise<{ count: number; totalShares: number; totalAmount: number }> {
   try {
-    const startDate = new Date(config.startDate);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const market = determineMarketFromContext(config.market, config.currency, config.symbol);
+    const today = getMarketToday(market);
 
-    const currentDate = new Date(startDate);
+    const purchaseDates = computeScheduledTradingDates(
+      config.startDate,
+      config.frequency,
+      market,
+      today
+    );
 
-    // 빈도에 따라 거래 날짜 계산
-    const purchaseDates: string[] = [];
-    while (currentDate <= today) {
-      const dateString = currentDate.toISOString().split('T')[0];
-      purchaseDates.push(dateString);
-
-      // 다음 거래 날짜 계산
-      switch (config.frequency) {
-        case 'daily':
-          currentDate.setDate(currentDate.getDate() + 1);
-          break;
-        case 'weekly':
-          currentDate.setDate(currentDate.getDate() + 7);
-          break;
-        case 'biweekly':
-          currentDate.setDate(currentDate.getDate() + 14);
-          break;
-        case 'monthly':
-          currentDate.setMonth(currentDate.getMonth() + 1);
-          break;
-        case 'quarterly':
-          currentDate.setMonth(currentDate.getMonth() + 3);
-          break;
-      }
-    }
-
-    console.log(`📊 자동 투자 거래 내역 생성: ${purchaseDates.length}건`);
+    console.log(`📊 자동 투자 거래 내역 생성: ${purchaseDates.length}건 (시장: ${market})`);
 
     // 거래 내역 저장
     let totalShares = 0;
     let totalAmount = 0;
     let createdCount = 0;
+    const exchangeRateCache = new Map<string, number>();
 
     for (const targetDate of purchaseDates) {
       let unitPrice: number | null = null;
@@ -87,7 +104,7 @@ export async function generateAutoInvestTransactions(
           config.symbol,
           targetDate,
           'auto',
-          config.market
+          market
         );
       } catch (error) {
         console.warn(
@@ -112,6 +129,19 @@ export async function generateAutoInvestTransactions(
 
       const shares = Number((config.amount / unitPrice).toFixed(6));
 
+      let exchangeRate: number | undefined;
+      if (config.currency === 'USD') {
+        if (exchangeRateCache.has(targetDate)) {
+          exchangeRate = exchangeRateCache.get(targetDate);
+        } else {
+          const fx = await getHistoricalExchangeRate(targetDate, 'USD', 'KRW');
+          if (fx !== null && Number.isFinite(fx)) {
+            exchangeRateCache.set(targetDate, fx);
+            exchangeRate = fx;
+          }
+        }
+      }
+
       await createTransaction(userId, portfolioId, positionId, {
         type: 'buy',
         symbol: config.symbol,
@@ -123,6 +153,7 @@ export async function generateAutoInvestTransactions(
         currency: config.currency,
         purchaseMethod: 'auto',
         purchaseUnit: 'amount',
+        exchangeRate,
       });
 
       totalShares += shares;
@@ -149,13 +180,6 @@ export async function generateAutoInvestTransactions(
     throw error;
   }
 }
-
-const formatDate = (date: Date): string => {
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, '0');
-  const day = `${date.getDate()}`.padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
 
 export async function listAutoInvestSchedules(
   userId: string,
@@ -246,18 +270,23 @@ export async function createAutoInvestSchedule(
       ? ((positionSnapshot.data() as Position).autoInvestConfig ?? null)
       : null;
 
+    const sanitizedConfig: Record<string, unknown> = {
+      frequency: schedule.frequency,
+      amount: schedule.amount,
+      startDate: existingConfig?.startDate || schedule.effectiveFrom,
+      isActive: existingConfig?.isActive ?? true,
+      currentScheduleId: scheduleRef.id,
+      lastUpdated: schedule.effectiveFrom,
+    };
+
+    if (existingConfig?.lastExecuted) {
+      sanitizedConfig.lastExecuted = existingConfig.lastExecuted;
+    }
+
     batch.set(
       positionRef,
       {
-        autoInvestConfig: {
-          frequency: schedule.frequency,
-          amount: schedule.amount,
-          startDate: existingConfig?.startDate || schedule.effectiveFrom,
-          isActive: existingConfig?.isActive ?? true,
-          lastExecuted: existingConfig?.lastExecuted,
-          currentScheduleId: scheduleRef.id,
-          lastUpdated: schedule.effectiveFrom,
-        },
+        autoInvestConfig: sanitizedConfig,
         updatedAt: now,
       },
       { merge: true }
@@ -344,38 +373,13 @@ export async function rewriteAutoInvestTransactions(
 export function getAutoInvestDates(
   startDate: string,
   frequency: AutoInvestFrequency,
-  endDate?: string
+  endDate?: string,
+  market: 'US' | 'KR' | 'GLOBAL' = 'US'
 ): string[] {
-  const start = new Date(startDate);
-  const end = endDate ? new Date(endDate) : new Date();
-  end.setHours(0, 0, 0, 0);
+  const resolvedMarket = determineMarketFromContext(market);
+  const boundary = endDate ? parseISODate(endDate) : getMarketToday(resolvedMarket);
 
-  const dates: string[] = [];
-  const currentDate = new Date(start);
-
-  while (currentDate <= end) {
-    dates.push(currentDate.toISOString().split('T')[0]);
-
-    switch (frequency) {
-      case 'daily':
-        currentDate.setDate(currentDate.getDate() + 1);
-        break;
-      case 'weekly':
-        currentDate.setDate(currentDate.getDate() + 7);
-        break;
-      case 'biweekly':
-        currentDate.setDate(currentDate.getDate() + 14);
-        break;
-      case 'monthly':
-        currentDate.setMonth(currentDate.getMonth() + 1);
-        break;
-      case 'quarterly':
-        currentDate.setMonth(currentDate.getMonth() + 3);
-        break;
-    }
-  }
-
-  return dates;
+  return computeScheduledTradingDates(startDate, frequency, resolvedMarket, boundary);
 }
 
 /**
@@ -442,7 +446,6 @@ export async function updateAutoInvestSchedule(
     
     // effectiveFrom이 변경되는 경우, 이전 스케줄의 effectiveTo도 조정
     if (updateData.effectiveFrom) {
-      const currentData = scheduleDoc.data() as AutoInvestSchedule;
       const schedulesRef = collection(
         db,
         `users/${userId}/portfolios/${portfolioId}/positions/${positionId}/autoInvestSchedules`

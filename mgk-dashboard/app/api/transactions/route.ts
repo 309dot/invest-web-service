@@ -35,6 +35,7 @@ export async function POST(request: NextRequest) {
       tax,
       note,
       exchangeRate,
+      currency,
     } = body;
 
     if (!userId || userId === 'default_user') {
@@ -74,6 +75,7 @@ export async function POST(request: NextRequest) {
         tax,
         note,
         exchangeRate,
+        currency,
       }
     );
 

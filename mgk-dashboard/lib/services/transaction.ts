@@ -18,8 +18,40 @@ import {
   limit as firestoreLimit,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Transaction } from '@/types';
+import type { Position, Transaction } from '@/types';
 import { updatePositionAfterTransaction, recalculatePositionFromTransactions } from './position';
+
+function resolveTransactionCurrency(
+  transaction: Transaction,
+  positionMap: Map<string, Partial<Position>>
+): 'USD' | 'KRW' {
+  const raw = transaction.currency;
+  if (typeof raw === 'string') {
+    const upper = raw.toUpperCase();
+    if (upper === 'USD' || upper === 'KRW') {
+      return upper;
+    }
+  }
+
+  const position = transaction.positionId
+    ? positionMap.get(transaction.positionId)
+    : undefined;
+
+  if (position) {
+    if (position.currency === 'KRW' || position.currency === 'USD') {
+      return position.currency;
+    }
+    if (position.market === 'KR') {
+      return 'KRW';
+    }
+  }
+
+  if (/^[0-9]/.test(transaction.symbol || '')) {
+    return 'KRW';
+  }
+
+  return 'USD';
+}
 
 /**
  * 거래 생성
@@ -39,7 +71,7 @@ export async function createTransaction(
     tax?: number;
     note?: string;
     exchangeRate?: number;
-    currency?: 'USD' | 'KRW';
+    currency?: string;
     purchaseMethod?: Transaction['purchaseMethod'];
     purchaseUnit?: Transaction['purchaseUnit'];
   }
@@ -50,6 +82,16 @@ export async function createTransaction(
       `users/${userId}/portfolios/${portfolioId}/transactions`
     );
     const transactionRef = doc(transactionsRef);
+
+    const normalizedCurrency =
+      transactionData.currency && typeof transactionData.currency === 'string'
+        ? transactionData.currency.toUpperCase()
+        : undefined;
+
+    const resolvedCurrency: 'USD' | 'KRW' =
+      normalizedCurrency === 'KRW' || normalizedCurrency === 'USD'
+        ? normalizedCurrency
+        : 'USD';
 
     const transaction: Omit<Transaction, 'id'> = {
       portfolioId,
@@ -67,7 +109,7 @@ export async function createTransaction(
       purchaseMethod: transactionData.purchaseMethod || 'manual',
       purchaseUnit: transactionData.purchaseUnit || 'shares',
       createdAt: Timestamp.now(),
-      currency: transactionData.currency || 'USD',
+      currency: resolvedCurrency,
       ...(typeof transactionData.exchangeRate === 'number' && {
         exchangeRate: transactionData.exchangeRate,
       }),
@@ -191,20 +233,20 @@ export async function getPositionTransactions(
       `users/${userId}/portfolios/${portfolioId}/transactions`
     );
 
-    const q = query(
-      transactionsRef,
-      where('positionId', '==', positionId),
-      orderBy('date', 'desc')
-    );
+    const q = query(transactionsRef, where('positionId', '==', positionId));
 
     const snapshot = await getDocs(q);
 
-    const transactions: Transaction[] = [];
-    snapshot.forEach((doc) => {
-      transactions.push({
-        id: doc.id,
-        ...doc.data(),
-      } as Transaction);
+    const transactions: Transaction[] = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...(doc.data() as Transaction),
+    }));
+
+    transactions.sort((a, b) => {
+      if (a.date === b.date) {
+        return 0;
+      }
+      return a.date < b.date ? 1 : -1;
     });
 
     return transactions;
@@ -288,6 +330,14 @@ export async function calculateTransactionStats(
 
     const transactions = await getPortfolioTransactions(userId, portfolioId, options);
 
+    const positionMap = new Map<string, Partial<Position>>();
+    const positionsSnapshot = await getDocs(
+      collection(db, `users/${userId}/portfolios/${portfolioId}/positions`)
+    );
+    positionsSnapshot.forEach((docSnapshot) => {
+      positionMap.set(docSnapshot.id, docSnapshot.data() as Partial<Position>);
+    });
+
     const byCurrency = {
       USD: {
         totalBuys: 0,
@@ -309,7 +359,7 @@ export async function calculateTransactionStats(
     } as Record<'USD' | 'KRW', { totalBuys: number; totalSells: number; totalBuyAmount: number; totalSellAmount: number }>;
 
     transactions.forEach((transaction) => {
-      const currency = transaction.currency === 'KRW' ? 'KRW' : 'USD';
+      const currency = resolveTransactionCurrency(transaction, positionMap);
       if (transaction.type === 'buy') {
         mutableStats[currency].totalBuyAmount += transaction.amount;
         mutableStats[currency].totalBuys += transaction.shares;
