@@ -16,10 +16,93 @@ import {
   Timestamp,
   deleteDoc,
   limit as firestoreLimit,
+  updateDoc,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Position, Transaction } from '@/types';
 import { updatePositionAfterTransaction, recalculatePositionFromTransactions } from './position';
+import {
+  adjustToNextTradingDay,
+  determineMarketFromContext,
+  formatDate as formatMarketDate,
+  isTradingDay,
+} from '@/lib/utils/tradingCalendar';
+import { getHistoricalExchangeRate } from '@/lib/apis/alphavantage';
+
+async function normalizeAutoTransactions(
+  userId: string,
+  portfolioId: string,
+  transactions: Transaction[],
+  positionMap: Map<string, Partial<Position>>
+): Promise<void> {
+  const fxCache = new Map<string, number | null>();
+
+  for (const transaction of transactions) {
+    const resolvedCurrency = resolveTransactionCurrency(transaction, positionMap);
+    transaction.currency = resolvedCurrency;
+
+    if (
+      transaction.purchaseMethod !== 'auto' ||
+      !transaction.date ||
+      !transaction.id
+    ) {
+      continue;
+    }
+
+    const position = transaction.positionId
+      ? positionMap.get(transaction.positionId)
+      : undefined;
+
+    const market = determineMarketFromContext(
+      (position?.market as any) || undefined,
+      position?.currency,
+      transaction.symbol
+    );
+
+    if (isTradingDay(transaction.date, market)) {
+      continue;
+    }
+
+    const adjustedDate = formatMarketDate(adjustToNextTradingDay(transaction.date, market));
+
+    if (adjustedDate === transaction.date) {
+      continue;
+    }
+
+    const transactionRef = doc(
+      db,
+      `users/${userId}/portfolios/${portfolioId}/transactions`,
+      transaction.id
+    );
+
+    const updatePayload: Record<string, unknown> = {
+      date: adjustedDate,
+    };
+
+    if (resolvedCurrency === 'USD') {
+      let fx = fxCache.get(adjustedDate);
+      if (fx === undefined) {
+        fx = await getHistoricalExchangeRate(adjustedDate, 'USD', 'KRW');
+        fxCache.set(adjustedDate, fx ?? null);
+      }
+
+      if (fx !== null && Number.isFinite(fx)) {
+        updatePayload.exchangeRate = fx;
+        transaction.exchangeRate = fx as number;
+      }
+    }
+
+    await updateDoc(transactionRef, updatePayload);
+    transaction.date = adjustedDate;
+  }
+
+  transactions.sort((a, b) => {
+    if (a.date === b.date) {
+      return 0;
+    }
+    return a.date < b.date ? 1 : -1;
+  });
+}
 
 function resolveTransactionCurrency(
   transaction: Transaction,
@@ -212,6 +295,16 @@ export async function getPortfolioTransactions(
       } as Transaction);
     });
 
+    const positionMap = new Map<string, Partial<Position>>();
+    const positionsSnapshot = await getDocs(
+      collection(db, `users/${userId}/portfolios/${portfolioId}/positions`)
+    );
+    positionsSnapshot.forEach((docSnapshot) => {
+      positionMap.set(docSnapshot.id, docSnapshot.data() as Partial<Position>);
+    });
+
+    await normalizeAutoTransactions(userId, portfolioId, transactions, positionMap);
+
     return transactions;
   } catch (error) {
     console.error('Error getting portfolio transactions:', error);
@@ -242,12 +335,16 @@ export async function getPositionTransactions(
       ...(doc.data() as Transaction),
     }));
 
-    transactions.sort((a, b) => {
-      if (a.date === b.date) {
-        return 0;
-      }
-      return a.date < b.date ? 1 : -1;
-    });
+    const positionSnapshot = await getDoc(
+      doc(db, `users/${userId}/portfolios/${portfolioId}/positions`, positionId)
+    );
+
+    const positionMap = new Map<string, Partial<Position>>();
+    if (positionSnapshot.exists()) {
+      positionMap.set(positionId, positionSnapshot.data() as Partial<Position>);
+    }
+
+    await normalizeAutoTransactions(userId, portfolioId, transactions, positionMap);
 
     return transactions;
   } catch (error) {

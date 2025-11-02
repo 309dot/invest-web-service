@@ -39,6 +39,13 @@ export function TransactionTable({
 }: TransactionTableProps) {
   const [filter, setFilter] = useState<FilterType>('all');
 
+  const resolveRowCurrency = (transaction: Transaction): 'USD' | 'KRW' => {
+    if (transaction.currency === 'KRW' || transaction.currency === 'USD') {
+      return transaction.currency;
+    }
+    return /^[0-9]/.test(transaction.symbol) ? 'KRW' : currency;
+  };
+
   const filteredTransactions = transactions.filter((t) => {
     if (filter === 'all') return true;
     return t.purchaseMethod === filter;
@@ -109,10 +116,10 @@ export function TransactionTable({
                     {transaction.shares.toFixed(4)}주
                   </TableCell>
                   <TableCell className="text-right">
-                    {formatCurrency(transaction.price, currency)}
+                    {formatCurrency(transaction.price, resolveRowCurrency(transaction))}
                   </TableCell>
                   <TableCell className="text-right font-medium">
-                    {formatCurrency(transaction.amount, currency)}
+                    {formatCurrency(transaction.amount, resolveRowCurrency(transaction))}
                   </TableCell>
                   <TableCell>
                     {transaction.purchaseMethod === 'auto' ? (
