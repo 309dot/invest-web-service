@@ -5,6 +5,7 @@ import {
   rewriteAutoInvestTransactions,
 } from '@/lib/services/auto-invest';
 import { getPosition } from '@/lib/services/position';
+import { deriveDefaultPortfolioId } from '@/lib/utils/portfolio';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -21,7 +22,8 @@ export async function GET(
       return NextResponse.json({ error: 'Position ID가 필요합니다.' }, { status: 400 });
     }
 
-    const portfolioId = positionId.split('_')[0];
+    const fallbackPortfolioId = userId && userId !== 'default_user' ? deriveDefaultPortfolioId(userId) : 'main';
+    const portfolioId = request.nextUrl.searchParams.get('portfolioId') || fallbackPortfolioId;
     const schedules = await listAutoInvestSchedules(userId, portfolioId, positionId);
 
     return NextResponse.json({ success: true, schedules });
@@ -47,7 +49,8 @@ export async function POST(
       return NextResponse.json({ error: 'Position ID가 필요합니다.' }, { status: 400 });
     }
 
-    const portfolioId = positionId.split('_')[0];
+    const fallbackPortfolioId = userId && userId !== 'default_user' ? deriveDefaultPortfolioId(userId) : 'main';
+    const portfolioId = request.nextUrl.searchParams.get('portfolioId') || fallbackPortfolioId;
 
     const position = await getPosition(userId, portfolioId, positionId);
     if (!position) {

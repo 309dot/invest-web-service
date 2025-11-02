@@ -132,6 +132,18 @@ export function TransactionForm({
         return;
       }
 
+      if (!position.id) {
+        console.error('Position ID is missing:', position);
+        setError('포지션 ID가 없습니다. 페이지를 새로고침하세요.');
+        return;
+      }
+
+      if (!portfolioId) {
+        console.error('Portfolio ID is missing');
+        setError('포트폴리오 ID가 없습니다.');
+        return;
+      }
+
       const sharesValue = parseFloat(shares);
       const priceValue = parseFloat(price);
       const feeValue = parseFloat(fee);
@@ -155,6 +167,8 @@ export function TransactionForm({
         currency: currency,
       };
 
+      console.log('📤 Sending transaction:', transactionData);
+
       const response = await fetch('/api/transactions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -163,6 +177,7 @@ export function TransactionForm({
 
       if (!response.ok) {
         const errorData = await response.json();
+        console.error('❌ Transaction API error:', errorData);
         throw new Error(errorData.error || '거래 기록에 실패했습니다.');
       }
 

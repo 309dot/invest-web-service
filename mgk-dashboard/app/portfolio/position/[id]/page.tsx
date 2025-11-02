@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { Header } from '@/components/Header';
 import { Button } from '@/components/ui/button';
@@ -30,12 +30,15 @@ import { Loader2, ArrowLeft, Edit2, Save, X, TrendingUp, TrendingDown, DollarSig
 import { formatPercent, formatDate, formatInputDate } from '@/lib/utils/formatters';
 import type { AutoInvestFrequency, AutoInvestSchedule, Position } from '@/types';
 import { useCurrency } from '@/lib/contexts/CurrencyContext';
+import { deriveDefaultPortfolioId } from '@/lib/utils/portfolio';
 
 export default function PositionDetailPage() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const { user, loading: authLoading } = useAuth();
   const positionId = params.id as string;
+  const portfolioIdParam = searchParams?.get('portfolioId') || null;
 
 const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
   daily: '매일',
@@ -62,6 +65,7 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [scheduleSuccess, setScheduleSuccess] = useState<string | null>(null);
   const [scheduleSaving, setScheduleSaving] = useState(false);
+  const [portfolioIdState, setPortfolioIdState] = useState<string | null>(null);
   const [scheduleForm, setScheduleForm] = useState({
     frequency: 'monthly' as AutoInvestFrequency,
     amount: '',
@@ -94,9 +98,10 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
 
   useEffect(() => {
     if (user && positionId) {
-      fetchPosition(user.uid);
+      const activePortfolioId = portfolioIdParam || deriveDefaultPortfolioId(user.uid);
+      fetchPosition(user.uid, activePortfolioId);
     }
-  }, [user, positionId]);
+  }, [user, positionId, portfolioIdParam]);
 
   useEffect(() => {
     if (position?.purchaseMethod === 'auto') {
@@ -116,11 +121,10 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
     }
   }, [position]);
 
-  const fetchPosition = async (uid: string) => {
+  const fetchPosition = async (uid: string, activePortfolioId: string) => {
     try {
       setLoading(true);
-      const derivedPortfolioId = positionId?.includes('_') ? positionId.split('_')[0] : 'main';
-      const response = await fetch(`/api/positions?portfolioId=${derivedPortfolioId}&userId=${uid}`);
+      const response = await fetch(`/api/positions?portfolioId=${activePortfolioId}&userId=${uid}`);
       const data = await response.json();
       
       const found = data.positions?.find((p: Position) => p.id === positionId);
@@ -130,9 +134,10 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
           shares: found.shares.toString(),
           averagePrice: found.averagePrice.toString(),
         });
+        setPortfolioIdState(activePortfolioId);
 
         if (found.purchaseMethod === 'auto') {
-          await fetchAutoInvestSchedules(uid, found.id!);
+          await fetchAutoInvestSchedules(uid, activePortfolioId, found.id!);
         } else {
           setAutoInvestSchedules([]);
         }
@@ -147,11 +152,11 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
     }
   };
 
-  const fetchAutoInvestSchedules = async (uid: string, posId: string) => {
+  const fetchAutoInvestSchedules = async (uid: string, activePortfolioId: string, posId: string) => {
     try {
       setScheduleLoading(true);
       setScheduleError(null);
-      const response = await fetch(`/api/positions/${posId}/auto-invest?userId=${uid}`);
+      const response = await fetch(`/api/positions/${posId}/auto-invest?userId=${uid}&portfolioId=${activePortfolioId}`);
       if (response.ok) {
         const data = await response.json();
         setAutoInvestSchedules(data.schedules || []);
@@ -264,8 +269,9 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
       setScheduleError(null);
       setScheduleSuccess(null);
 
+      const activePortfolioId = portfolioIdState || deriveDefaultPortfolioId(user.uid);
       const response = await fetch(
-        `/api/positions/${position.id}/auto-invest?userId=${user.uid}`,
+        `/api/positions/${position.id}/auto-invest?userId=${user.uid}&portfolioId=${activePortfolioId}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -294,7 +300,7 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
         pricePerShare: priceValue.toString(),
       }));
 
-      await fetchPosition(user.uid);
+      await fetchPosition(user.uid, activePortfolioId);
     } catch (err) {
       console.error('Failed to save schedule:', err);
       setScheduleError(err instanceof Error ? err.message : '자동 투자 스케줄 저장 중 오류가 발생했습니다.');

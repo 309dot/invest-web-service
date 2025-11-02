@@ -44,9 +44,15 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
   const { formatAmount } = useCurrency();
   const [positions, setPositions] = useState<Position[]>([]);
   const [totals, setTotals] = useState({
-    totalInvested: 0,
-    totalValue: 0,
-    returnRate: 0,
+    byCurrency: {
+      USD: { totalInvested: 0, totalValue: 0, count: 0 },
+      KRW: { totalInvested: 0, totalValue: 0, count: 0 },
+    },
+    combined: {
+      totalInvested: 0,
+      totalValue: 0,
+      returnRate: 0,
+    },
   });
   const [loading, setLoading] = useState(true);
   const [selectedPosition, setSelectedPosition] = useState<Position | null>(null);
@@ -59,7 +65,13 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
       if (response.ok) {
         const data = await response.json();
         setPositions(data.positions || []);
-        setTotals(data.totals || { totalInvested: 0, totalValue: 0, returnRate: 0 });
+        setTotals(data.totals || {
+          byCurrency: {
+            USD: { totalInvested: 0, totalValue: 0, count: 0 },
+            KRW: { totalInvested: 0, totalValue: 0, count: 0 },
+          },
+          combined: { totalInvested: 0, totalValue: 0, returnRate: 0 },
+        });
       }
     } catch (error) {
       console.error('Error fetching positions:', error);
@@ -77,7 +89,13 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
   useEffect(() => {
     if (!authLoading && !user) {
       setPositions([]);
-      setTotals({ totalInvested: 0, totalValue: 0, returnRate: 0 });
+      setTotals({
+        byCurrency: {
+          USD: { totalInvested: 0, totalValue: 0, count: 0 },
+          KRW: { totalInvested: 0, totalValue: 0, count: 0 },
+        },
+        combined: { totalInvested: 0, totalValue: 0, returnRate: 0 },
+      });
       setLoading(false);
     }
   }, [authLoading, user]);
@@ -140,7 +158,7 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
     setSelectedPosition(null);
   };
 
-  const profitLoss = totals.totalValue - totals.totalInvested;
+  const profitLoss = totals.combined.totalValue - totals.combined.totalInvested;
   const isPositive = profitLoss >= 0;
 
   const resolveCurrency = (position: Position): 'USD' | 'KRW' => {
@@ -201,7 +219,7 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                   <span>총 투자금</span>
                 </div>
                 <p className="text-2xl font-bold">
-                  {formatAmount(totals.totalInvested, 'USD')}
+                  {formatAmount(totals.combined.totalInvested, 'USD')}
                 </p>
               </div>
 
@@ -211,7 +229,7 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                   <span>평가 금액</span>
                 </div>
                 <p className="text-2xl font-bold">
-                  {formatAmount(totals.totalValue, 'USD')}
+                  {formatAmount(totals.combined.totalValue, 'USD')}
                 </p>
               </div>
 
@@ -228,7 +246,7 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                   <p className={`text-2xl font-bold ${
                     isPositive ? 'text-green-600' : 'text-red-600'
                   }`}>
-                    {formatPercent(totals.returnRate)}
+                    {formatPercent(totals.combined.returnRate)}
                   </p>
                   <span className={`text-sm ${
                     isPositive ? 'text-green-600' : 'text-red-600'
@@ -243,6 +261,26 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
 
         {/* 포지션 목록 */}
         <Card>
+        {/* 통화별 상세 정보 */}
+        {(totals.byCurrency.USD.count > 0 || totals.byCurrency.KRW.count > 0) && (
+          <div className="space-y-3 text-xs text-muted-foreground mb-4">
+            <div className="flex gap-3">
+              {totals.byCurrency.USD.count > 0 && (
+                <div className="flex-1 p-2 bg-muted rounded">
+                  <div className="font-semibold mb-1">USD ({totals.byCurrency.USD.count})</div>
+                  <div>${totals.byCurrency.USD.totalInvested.toFixed(2)} → ${totals.byCurrency.USD.totalValue.toFixed(2)}</div>
+                </div>
+              )}
+              {totals.byCurrency.KRW.count > 0 && (
+                <div className="flex-1 p-2 bg-muted rounded">
+                  <div className="font-semibold mb-1">KRW ({totals.byCurrency.KRW.count})</div>
+                  <div>₩{Math.round(totals.byCurrency.KRW.totalInvested).toLocaleString('ko-KR')} → ₩{Math.round(totals.byCurrency.KRW.totalValue).toLocaleString('ko-KR')}</div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
           <CardHeader>
             <CardTitle>보유 종목</CardTitle>
             <CardDescription>
@@ -276,7 +314,7 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                         <div className="flex items-start justify-between mb-3">
                           <div 
                             className="cursor-pointer hover:opacity-75"
-                            onClick={() => router.push(`/portfolio/position/${position.id}`)}
+                            onClick={() => router.push(`/portfolio/position/${position.id}?portfolioId=${portfolioId}`)}
                           >
                             <h4 className="font-semibold text-lg">{position.symbol}</h4>
                             <Badge variant="outline" className="text-xs">
@@ -285,7 +323,12 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                           </div>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={(event) => event.stopPropagation()}
+                              >
                                 <MoreVertical className="h-4 w-4" />
                               </Button>
                             </DropdownMenuTrigger>
@@ -377,7 +420,7 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                         <tr 
                           key={position.id} 
                           className="border-b hover:bg-muted/50 cursor-pointer"
-                          onClick={() => router.push(`/portfolio/position/${position.id}`)}
+                          onClick={() => router.push(`/portfolio/position/${position.id}?portfolioId=${portfolioId}`)}
                         >
                           <td className="py-3 px-4">
                             <div className="font-semibold">{position.symbol}</div>
@@ -413,7 +456,12 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                           <td className="py-3 px-4">
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={(event) => event.stopPropagation()}
+                                >
                                   <MoreVertical className="h-4 w-4" />
                                 </Button>
                               </DropdownMenuTrigger>

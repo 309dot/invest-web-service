@@ -549,35 +549,62 @@ export async function updatePositionPrices(
 }
 
 /**
- * 포트폴리오 총계 계산
+ * 포트폴리오 총계 계산 (통화별 분리)
  */
 export async function calculatePortfolioTotals(
   userId: string,
   portfolioId: string
 ): Promise<{
-  totalInvested: number;
-  totalValue: number;
-  returnRate: number;
+  byCurrency: {
+    USD: { totalInvested: number; totalValue: number; count: number };
+    KRW: { totalInvested: number; totalValue: number; count: number };
+  };
+  combined: {
+    totalInvested: number;
+    totalValue: number;
+    returnRate: number;
+  };
 }> {
   try {
     const positions = await getPortfolioPositions(userId, portfolioId);
 
-    const totalInvested = positions.reduce((sum, p) => sum + p.totalInvested, 0);
-    const totalValue = positions.reduce((sum, p) => sum + p.totalValue, 0);
+    const byCurrency = {
+      USD: { totalInvested: 0, totalValue: 0, count: 0 },
+      KRW: { totalInvested: 0, totalValue: 0, count: 0 },
+    };
+
+    positions.forEach((p) => {
+      const currency = (p.currency === 'USD' || p.currency === 'KRW') ? p.currency : (p.market === 'KR' ? 'KRW' : 'USD');
+      byCurrency[currency].totalInvested += p.totalInvested;
+      byCurrency[currency].totalValue += p.totalValue;
+      byCurrency[currency].count += 1;
+    });
+
+    const totalInvested = byCurrency.USD.totalInvested + byCurrency.KRW.totalInvested;
+    const totalValue = byCurrency.USD.totalValue + byCurrency.KRW.totalValue;
     const returnRate =
       totalInvested > 0 ? ((totalValue - totalInvested) / totalInvested) * 100 : 0;
 
     return {
-      totalInvested,
-      totalValue,
-      returnRate,
+      byCurrency,
+      combined: {
+        totalInvested,
+        totalValue,
+        returnRate,
+      },
     };
   } catch (error) {
     console.error('Error calculating portfolio totals:', error);
     return {
-      totalInvested: 0,
-      totalValue: 0,
-      returnRate: 0,
+      byCurrency: {
+        USD: { totalInvested: 0, totalValue: 0, count: 0 },
+        KRW: { totalInvested: 0, totalValue: 0, count: 0 },
+      },
+      combined: {
+        totalInvested: 0,
+        totalValue: 0,
+        returnRate: 0,
+      },
     };
   }
 }
