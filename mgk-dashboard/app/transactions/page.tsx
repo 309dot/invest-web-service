@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { Header } from '@/components/Header';
@@ -47,6 +47,7 @@ import { formatCurrency, formatDate, formatPercent } from '@/lib/utils/formatter
 import { useCurrency } from '@/lib/contexts/CurrencyContext';
 import type { Transaction } from '@/types';
 import { deriveDefaultPortfolioId } from '@/lib/utils/portfolio';
+import { SellStockModal } from '@/components/SellStockModal';
 import { FeatureCurrencyToggle } from '@/components/FeatureCurrencyToggle';
 
 type TransactionCurrencyStats = {
@@ -96,7 +97,12 @@ export default function TransactionsPage() {
     }
   }, [user, authLoading, router]);
 
-  const fetchTransactions = async () => {
+  const defaultPortfolioId = useMemo(() => {
+    if (!user) return 'main';
+    return deriveDefaultPortfolioId(user.uid);
+  }, [user]);
+
+  const fetchTransactions = useCallback(async () => {
     try {
       setLoading(true);
       if (!user) {
@@ -104,10 +110,8 @@ export default function TransactionsPage() {
         setStats(null);
         return;
       }
-      const portfolioId = deriveDefaultPortfolioId(user.uid);
-
       const params = new URLSearchParams({
-        portfolioId,
+        portfolioId: defaultPortfolioId,
         includeStats: 'true',
         userId: user.uid,
       });
@@ -136,13 +140,15 @@ export default function TransactionsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user, defaultPortfolioId, selectedSymbol, selectedType, startDate, endDate]);
 
   useEffect(() => {
     if (user) {
       fetchTransactions();
     }
-  }, [user, selectedSymbol, selectedType, startDate, endDate]);
+  }, [user, fetchTransactions]);
+
+  const [sellModalOpen, setSellModalOpen] = useState(false);
 
   const handleDeleteClick = (transaction: Transaction) => {
     setTransactionToDelete(transaction);
@@ -211,10 +217,16 @@ export default function TransactionsPage() {
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <FeatureCurrencyToggle size="sm" label="통화 표시" />
-              <Button variant="outline">
-                <Download className="mr-2 h-4 w-4" />
-                내보내기
-              </Button>
+              <div className="flex gap-2">
+                <Button onClick={() => setSellModalOpen(true)} className="bg-red-600 hover:bg-red-700">
+                  <TrendingDown className="mr-2 h-4 w-4" />
+                  매도 기록
+                </Button>
+                <Button variant="outline">
+                  <Download className="mr-2 h-4 w-4" />
+                  내보내기
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -623,6 +635,13 @@ export default function TransactionsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <SellStockModal
+        open={sellModalOpen}
+        onOpenChange={setSellModalOpen}
+        portfolioId={defaultPortfolioId}
+        onSuccess={fetchTransactions}
+      />
     </>
   );
 }

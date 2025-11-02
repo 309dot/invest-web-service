@@ -387,7 +387,7 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem
-                                onSelect={(event) => {
+                                onClick={(event) => {
                                   event.preventDefault();
                                   event.stopPropagation();
                                   handleTransactionClick(position);
@@ -397,7 +397,7 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                                 거래 추가
                               </DropdownMenuItem>
                               <DropdownMenuItem
-                                onSelect={(event) => {
+                                onClick={(event) => {
                                   event.preventDefault();
                                   event.stopPropagation();
                                   handleEditPosition(position, event);
@@ -408,7 +408,7 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 className="text-destructive"
-                                onSelect={(event) => {
+                                onClick={(event) => {
                                   event.preventDefault();
                                   event.stopPropagation();
                                   handleDeletePosition(position, event);
@@ -530,7 +530,7 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
                                 <DropdownMenuItem
-                                  onSelect={(event) => {
+                                  onClick={(event) => {
                                     event.preventDefault();
                                     event.stopPropagation();
                                     handleTransactionClick(position);
@@ -540,7 +540,7 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                                   거래 추가
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
-                                  onSelect={(event) => {
+                                  onClick={(event) => {
                                     event.preventDefault();
                                     event.stopPropagation();
                                     handleEditPosition(position, event);
@@ -551,7 +551,7 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   className="text-destructive"
-                                  onSelect={(event) => {
+                                  onClick={(event) => {
                                     event.preventDefault();
                                     event.stopPropagation();
                                     handleDeletePosition(position, event);

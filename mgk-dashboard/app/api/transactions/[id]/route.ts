@@ -1,18 +1,19 @@
-/**
-export const dynamic = 'force-dynamic';
-
- * 개별 거래 관리 API
- * 
- * GET: 거래 조회
- * DELETE: 거래 삭제
- */
-
 import { NextRequest, NextResponse } from 'next/server';
-import { deleteTransaction, getTransaction } from '@/lib/services/transaction';
+import {
+  getTransaction,
+  deleteTransaction,
+} from '@/lib/services/transaction';
+import { doc, updateDoc, Timestamp } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { recalculatePositionFromTransactions } from '@/lib/services/position';
+import type { Transaction } from '@/types';
+
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 /**
  * GET /api/transactions/[id]
- * 거래 조회
+ * 개별 거래 조회
  */
 export async function GET(
   request: NextRequest,
@@ -20,19 +21,20 @@ export async function GET(
 ) {
   try {
     const userId = request.nextUrl.searchParams.get('userId') || 'default_user';
-    const portfolioId = request.nextUrl.searchParams.get('portfolioId') || 'main';
+    const portfolioId = request.nextUrl.searchParams.get('portfolioId');
     const transactionId = params.id;
+
+    if (!portfolioId) {
+      return NextResponse.json({ error: 'portfolioId가 필요합니다.' }, { status: 400 });
+    }
 
     const transaction = await getTransaction(userId, portfolioId, transactionId);
 
     if (!transaction) {
-      return NextResponse.json(
-        { error: '거래를 찾을 수 없습니다.' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: '거래를 찾을 수 없습니다.' }, { status: 404 });
     }
 
-    return NextResponse.json({ transaction });
+    return NextResponse.json({ success: true, transaction });
   } catch (error) {
     console.error('Get transaction error:', error);
     return NextResponse.json(
@@ -43,8 +45,85 @@ export async function GET(
 }
 
 /**
- * DELETE /api/transactions/[id]?portfolioId=xxx
- * 거래 삭제
+ * PUT /api/transactions/[id]
+ * 거래 수정 (수동 거래만 가능)
+ */
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const userId = request.nextUrl.searchParams.get('userId') || 'default_user';
+    const portfolioId = request.nextUrl.searchParams.get('portfolioId');
+    const transactionId = params.id;
+    const body = await request.json();
+
+    if (!portfolioId) {
+      return NextResponse.json({ error: 'portfolioId가 필요합니다.' }, { status: 400 });
+    }
+
+    const transaction = await getTransaction(userId, portfolioId, transactionId);
+
+    if (!transaction) {
+      return NextResponse.json({ error: '거래를 찾을 수 없습니다.' }, { status: 404 });
+    }
+
+    // 자동 생성된 거래는 수정 불가
+    if (transaction.purchaseMethod === 'auto') {
+      return NextResponse.json(
+        { error: '자동 생성된 거래는 수정할 수 없습니다. 스케줄을 수정해주세요.' },
+        { status: 400 }
+      );
+    }
+
+    const { shares, price, amount, date, memo, fee } = body;
+
+    const transactionRef = doc(
+      db,
+      `users/${userId}/portfolios/${portfolioId}/transactions`,
+      transactionId
+    );
+
+    const updateData: Partial<Transaction> = {
+      updatedAt: Timestamp.now(),
+    };
+
+    if (shares !== undefined) updateData.shares = shares;
+    if (price !== undefined) updateData.price = price;
+    if (amount !== undefined) updateData.amount = amount;
+    if (date !== undefined) updateData.date = date;
+    if (memo !== undefined) updateData.memo = memo;
+    if (fee !== undefined) updateData.fee = fee;
+
+    // totalAmount 재계산
+    if (amount !== undefined || fee !== undefined) {
+      updateData.totalAmount = (amount || transaction.amount) + (fee || transaction.fee);
+    }
+
+    await updateDoc(transactionRef, updateData);
+
+    // 포지션 재계산
+    await recalculatePositionFromTransactions(userId, portfolioId, transaction.positionId);
+
+    const updatedTransaction = await getTransaction(userId, portfolioId, transactionId);
+
+    return NextResponse.json({
+      success: true,
+      message: '거래가 수정되었습니다.',
+      transaction: updatedTransaction,
+    });
+  } catch (error) {
+    console.error('Update transaction error:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : '거래 수정에 실패했습니다.' },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * DELETE /api/transactions/[id]
+ * 거래 삭제 (수동 거래만 가능)
  */
 export async function DELETE(
   request: NextRequest,
@@ -52,9 +131,26 @@ export async function DELETE(
 ) {
   try {
     const userId = request.nextUrl.searchParams.get('userId') || 'default_user';
-    const searchParams = request.nextUrl.searchParams;
-    const portfolioId = searchParams.get('portfolioId') || 'main';
+    const portfolioId = request.nextUrl.searchParams.get('portfolioId');
     const transactionId = params.id;
+
+    if (!portfolioId) {
+      return NextResponse.json({ error: 'portfolioId가 필요합니다.' }, { status: 400 });
+    }
+
+    const transaction = await getTransaction(userId, portfolioId, transactionId);
+
+    if (!transaction) {
+      return NextResponse.json({ error: '거래를 찾을 수 없습니다.' }, { status: 404 });
+    }
+
+    // 자동 생성된 거래는 삭제 불가
+    if (transaction.purchaseMethod === 'auto') {
+      return NextResponse.json(
+        { error: '자동 생성된 거래는 삭제할 수 없습니다. 스케줄을 삭제해주세요.' },
+        { status: 400 }
+      );
+    }
 
     await deleteTransaction(userId, portfolioId, transactionId);
 
@@ -65,9 +161,8 @@ export async function DELETE(
   } catch (error) {
     console.error('Delete transaction error:', error);
     return NextResponse.json(
-      { error: '거래 삭제에 실패했습니다.' },
+      { error: error instanceof Error ? error.message : '거래 삭제에 실패했습니다.' },
       { status: 500 }
     );
   }
 }
-

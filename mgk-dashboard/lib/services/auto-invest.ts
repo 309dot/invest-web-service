@@ -13,6 +13,7 @@ import {
   writeBatch,
   limit,
   Timestamp,
+  deleteDoc,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { createTransaction } from './transaction';
@@ -374,6 +375,262 @@ export function getAutoInvestDates(
     }
   }
 
-    return dates;
+  return dates;
+}
+
+/**
+ * 개별 자동 투자 스케줄 조회
+ */
+export async function getAutoInvestSchedule(
+  userId: string,
+  portfolioId: string,
+  positionId: string,
+  scheduleId: string
+): Promise<AutoInvestSchedule | null> {
+  try {
+    const scheduleRef = doc(
+      db,
+      `users/${userId}/portfolios/${portfolioId}/positions/${positionId}/autoInvestSchedules`,
+      scheduleId
+    );
+    
+    const scheduleDoc = await getDoc(scheduleRef);
+    
+    if (!scheduleDoc.exists()) {
+      return null;
+    }
+    
+    return {
+      id: scheduleDoc.id,
+      ...(scheduleDoc.data() as AutoInvestSchedule),
+    };
+  } catch (error) {
+    console.error('Error getting auto invest schedule:', error);
+    throw error;
+  }
+}
+
+/**
+ * 자동 투자 스케줄 수정
+ */
+export async function updateAutoInvestSchedule(
+  userId: string,
+  portfolioId: string,
+  positionId: string,
+  scheduleId: string,
+  updateData: {
+    frequency?: AutoInvestFrequency;
+    amount?: number;
+    effectiveFrom?: string;
+    note?: string;
+  }
+): Promise<void> {
+  try {
+    const scheduleRef = doc(
+      db,
+      `users/${userId}/portfolios/${portfolioId}/positions/${positionId}/autoInvestSchedules`,
+      scheduleId
+    );
+    
+    const scheduleDoc = await getDoc(scheduleRef);
+    if (!scheduleDoc.exists()) {
+      throw new Error('스케줄을 찾을 수 없습니다.');
+    }
+    
+    const batch = writeBatch(db);
+    const now = Timestamp.now();
+    
+    // effectiveFrom이 변경되는 경우, 이전 스케줄의 effectiveTo도 조정
+    if (updateData.effectiveFrom) {
+      const currentData = scheduleDoc.data() as AutoInvestSchedule;
+      const schedulesRef = collection(
+        db,
+        `users/${userId}/portfolios/${portfolioId}/positions/${positionId}/autoInvestSchedules`
+      );
+      
+      // 현재 스케줄보다 이전의 스케줄 중 effectiveTo가 설정되지 않았거나 새 시작일 이후인 것 찾기
+      const previousSnapshot = await getDocs(
+        query(
+          schedulesRef,
+          where('effectiveFrom', '<', updateData.effectiveFrom),
+          orderBy('effectiveFrom', 'desc'),
+          limit(1)
+        )
+      );
+      
+      if (!previousSnapshot.empty) {
+        const previousDoc = previousSnapshot.docs[0];
+        const prevEndDate = new Date(updateData.effectiveFrom);
+        prevEndDate.setDate(prevEndDate.getDate() - 1);
+        batch.update(previousDoc.ref, {
+          effectiveTo: formatDate(prevEndDate),
+          updatedAt: now,
+        });
+      }
+    }
+    
+    // 스케줄 업데이트
+    batch.update(scheduleRef, {
+      ...updateData,
+      updatedAt: now,
+    });
+    
+    await batch.commit();
+    console.log(`✅ 자동 투자 스케줄 수정: ${scheduleId}`);
+  } catch (error) {
+    console.error('Error updating auto invest schedule:', error);
+    throw error;
+  }
+}
+
+/**
+ * 자동 투자 스케줄 삭제
+ */
+export async function deleteAutoInvestSchedule(
+  userId: string,
+  portfolioId: string,
+  positionId: string,
+  scheduleId: string,
+  deleteRelatedTransactions: boolean = false
+): Promise<{ deletedTransactions: number }> {
+  try {
+    const scheduleRef = doc(
+      db,
+      `users/${userId}/portfolios/${portfolioId}/positions/${positionId}/autoInvestSchedules`,
+      scheduleId
+    );
+    
+    const scheduleDoc = await getDoc(scheduleRef);
+    if (!scheduleDoc.exists()) {
+      throw new Error('스케줄을 찾을 수 없습니다.');
+    }
+    
+    const scheduleData = scheduleDoc.data() as AutoInvestSchedule;
+    let deletedTransactions = 0;
+    
+    // 관련 거래 삭제 옵션이 활성화된 경우
+    if (deleteRelatedTransactions) {
+      const transactionsRef = collection(
+        db,
+        `users/${userId}/portfolios/${portfolioId}/transactions`
+      );
+      
+      const autoTransactionsSnapshot = await getDocs(
+        query(
+          transactionsRef,
+          where('positionId', '==', positionId),
+          where('purchaseMethod', '==', 'auto'),
+          where('date', '>=', scheduleData.effectiveFrom)
+        )
+      );
+      
+      const toDelete = autoTransactionsSnapshot.docs.filter((doc) => {
+        const data = doc.data();
+        // effectiveTo가 있으면 그 범위 내의 거래만 삭제
+        if (scheduleData.effectiveTo) {
+          return data.date <= scheduleData.effectiveTo;
+        }
+        return true;
+      });
+      
+      if (toDelete.length > 0) {
+        const deleteBatch = writeBatch(db);
+        toDelete.forEach((docRef) => deleteBatch.delete(docRef.ref));
+        await deleteBatch.commit();
+        deletedTransactions = toDelete.length;
+      }
+    }
+    
+    // 스케줄 삭제
+    await deleteDoc(scheduleRef);
+    console.log(`✅ 자동 투자 스케줄 삭제: ${scheduleId}, 거래 삭제: ${deletedTransactions}건`);
+    
+    // 포지션 재계산
+    if (deletedTransactions > 0) {
+      await recalculatePositionFromTransactions(userId, portfolioId, positionId);
+    }
+    
+    return { deletedTransactions };
+  } catch (error) {
+    console.error('Error deleting auto invest schedule:', error);
+    throw error;
+  }
+}
+
+/**
+ * 과거 스케줄 재적용
+ * 선택한 스케줄을 현재 활성 스케줄로 만들고 거래 재생성
+ */
+export async function reapplySchedule(
+  userId: string,
+  portfolioId: string,
+  positionId: string,
+  scheduleId: string,
+  options: {
+    effectiveFrom: string;
+    pricePerShare?: number;
+    symbol: string;
+    stockId: string;
+    currency: 'USD' | 'KRW';
+    market?: 'US' | 'KR' | 'GLOBAL';
+  }
+): Promise<{ removed: number; created: number; newScheduleId: string }> {
+  try {
+    const scheduleRef = doc(
+      db,
+      `users/${userId}/portfolios/${portfolioId}/positions/${positionId}/autoInvestSchedules`,
+      scheduleId
+    );
+    
+    const scheduleDoc = await getDoc(scheduleRef);
+    if (!scheduleDoc.exists()) {
+      throw new Error('스케줄을 찾을 수 없습니다.');
+    }
+    
+    const scheduleData = scheduleDoc.data() as AutoInvestSchedule;
+    
+    // 새로운 스케줄 생성 (기존 스케줄의 frequency와 amount 사용)
+    const newScheduleId = await createAutoInvestSchedule(
+      userId,
+      portfolioId,
+      positionId,
+      {
+        frequency: scheduleData.frequency,
+        amount: scheduleData.amount,
+        currency: options.currency,
+        effectiveFrom: options.effectiveFrom,
+        createdBy: userId,
+        note: `스케줄 재적용: ${scheduleId}`,
+      }
+    );
+    
+    // 거래 재생성
+    const rewriteSummary = await rewriteAutoInvestTransactions(
+      userId,
+      portfolioId,
+      positionId,
+      {
+        effectiveFrom: options.effectiveFrom,
+        frequency: scheduleData.frequency,
+        amount: scheduleData.amount,
+        currency: options.currency,
+        pricePerShare: options.pricePerShare,
+        symbol: options.symbol,
+        stockId: options.stockId,
+        market: options.market,
+      }
+    );
+    
+    console.log(`✅ 스케줄 재적용 완료: ${scheduleId} -> ${newScheduleId}`);
+    
+    return {
+      removed: rewriteSummary.removed,
+      created: rewriteSummary.created,
+      newScheduleId,
+    };
+  } catch (error) {
+    console.error('Error reapplying schedule:', error);
+    throw error;
+  }
 }
 

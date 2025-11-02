@@ -26,11 +26,14 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Loader2, ArrowLeft, Edit2, Save, X, TrendingUp, TrendingDown, DollarSign, Calendar, Trash2 } from 'lucide-react';
+import { Loader2, ArrowLeft, Edit2, Save, X, TrendingUp, TrendingDown, DollarSign, Calendar, Trash2, RefreshCw } from 'lucide-react';
 import { formatPercent, formatDate, formatInputDate } from '@/lib/utils/formatters';
-import type { AutoInvestFrequency, AutoInvestSchedule, Position } from '@/types';
+import type { AutoInvestFrequency, AutoInvestSchedule, Position, Transaction } from '@/types';
 import { useCurrency } from '@/lib/contexts/CurrencyContext';
 import { deriveDefaultPortfolioId } from '@/lib/utils/portfolio';
+import { AutoInvestScheduleDialog } from '@/components/AutoInvestScheduleDialog';
+import { ReapplyScheduleDialog } from '@/components/ReapplyScheduleDialog';
+import { TransactionTable } from '@/components/TransactionTable';
 
 export default function PositionDetailPage() {
   const router = useRouter();
@@ -73,6 +76,16 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
     pricePerShare: '',
     note: '',
   });
+  
+  // 거래 내역 관련 상태
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [transactionsLoading, setTransactionsLoading] = useState(false);
+  const [transactionsError, setTransactionsError] = useState<string | null>(null);
+  
+  // 다이얼로그 상태
+  const [editScheduleDialogOpen, setEditScheduleDialogOpen] = useState(false);
+  const [reapplyScheduleDialogOpen, setReapplyScheduleDialogOpen] = useState(false);
+  const [selectedSchedule, setSelectedSchedule] = useState<AutoInvestSchedule | null>(null);
 
   const formatScheduleDate = (value: unknown): string => {
     if (!value) return '-';
@@ -110,6 +123,31 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
         setScheduleError('자동 투자 스케줄 조회 중 오류가 발생했습니다.');
       } finally {
         setScheduleLoading(false);
+      }
+    },
+    []
+  );
+
+  const fetchTransactions = useCallback(
+    async (uid: string, activePortfolioId: string, posId: string) => {
+      try {
+        setTransactionsLoading(true);
+        setTransactionsError(null);
+        const response = await fetch(
+          `/api/positions/${posId}/transactions?userId=${uid}&portfolioId=${activePortfolioId}`
+        );
+        if (response.ok) {
+          const data = await response.json();
+          setTransactions(data.transactions || []);
+        } else {
+          const errorData = await response.json().catch(() => null);
+          setTransactionsError(errorData?.error || '거래 내역을 불러오지 못했습니다.');
+        }
+      } catch (err) {
+        console.error('Failed to fetch transactions:', err);
+        setTransactionsError('거래 내역 조회 중 오류가 발생했습니다.');
+      } finally {
+        setTransactionsLoading(false);
       }
     },
     []
@@ -155,6 +193,9 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
         } else {
           setAutoInvestSchedules([]);
         }
+        
+        // 거래 내역 조회
+        await fetchTransactions(uid, resolvedPortfolioId, found.id!);
       } catch (err) {
         console.error('Failed to fetch position:', err);
         setError('포지션 조회에 실패했습니다.');
@@ -170,7 +211,7 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
       const activePortfolioId = portfolioIdParam || deriveDefaultPortfolioId(user.uid);
       fetchPosition(user.uid, activePortfolioId);
     }
-  }, [user, positionId, portfolioIdParam, fetchPosition]);
+  }, [user, positionId, portfolioIdParam, fetchPosition, fetchTransactions]);
 
   const handleEdit = () => {
     setEditMode(true);
@@ -332,6 +373,114 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
     });
     setScheduleError(null);
     setScheduleSuccess(null);
+  };
+
+  const handleEditSchedule = (schedule: AutoInvestSchedule) => {
+    setSelectedSchedule(schedule);
+    setEditScheduleDialogOpen(true);
+  };
+
+  const handleScheduleSave = async (data: {
+    scheduleId: string;
+    frequency?: AutoInvestFrequency;
+    amount?: number;
+    effectiveFrom?: string;
+    note?: string;
+    regenerateTransactions: boolean;
+  }) => {
+    if (!position || !user) return;
+
+    const activePortfolioId = portfolioIdState || position.portfolioId || deriveDefaultPortfolioId(user.uid);
+    
+    const response = await fetch(
+      `/api/positions/${position.id}/auto-invest?userId=${user.uid}&portfolioId=${activePortfolioId}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      }
+    );
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => null);
+      throw new Error(errorData?.error || '스케줄 수정에 실패했습니다.');
+    }
+
+    const result = await response.json();
+    setAutoInvestSchedules(result.schedules || []);
+    setScheduleSuccess('스케줄이 수정되었습니다.');
+    await fetchPosition(user.uid, activePortfolioId);
+  };
+
+  const handleDeleteSchedule = async (scheduleId: string, deleteTransactions: boolean = false) => {
+    if (!position || !user) {
+      setScheduleError('로그인 정보 또는 포지션 정보를 확인해주세요.');
+      return;
+    }
+
+    if (!confirm(`정말로 이 스케줄을 삭제하시겠습니까?${deleteTransactions ? ' (관련 거래도 함께 삭제됩니다)' : ''}`)) {
+      return;
+    }
+
+    try {
+      setScheduleError(null);
+      setScheduleSuccess(null);
+
+      const activePortfolioId = portfolioIdState || position.portfolioId || deriveDefaultPortfolioId(user.uid);
+      const response = await fetch(
+        `/api/positions/${position.id}/auto-invest?userId=${user.uid}&portfolioId=${activePortfolioId}&scheduleId=${scheduleId}&deleteTransactions=${deleteTransactions}`,
+        {
+          method: 'DELETE',
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.error || '스케줄 삭제에 실패했습니다.');
+      }
+
+      const data = await response.json();
+      setAutoInvestSchedules(data.schedules || []);
+      setScheduleSuccess(`스케줄이 삭제되었습니다. (거래 삭제: ${data.deletedTransactions}건)`);
+      await fetchPosition(user.uid, activePortfolioId);
+    } catch (err) {
+      console.error('Failed to delete schedule:', err);
+      setScheduleError(err instanceof Error ? err.message : '스케줄 삭제 중 오류가 발생했습니다.');
+    }
+  };
+
+  const handleReapplySchedule = (schedule: AutoInvestSchedule) => {
+    setSelectedSchedule(schedule);
+    setReapplyScheduleDialogOpen(true);
+  };
+
+  const handleReapplyConfirm = async (data: {
+    scheduleId: string;
+    effectiveFrom: string;
+    pricePerShare?: number;
+  }) => {
+    if (!position || !user) return;
+
+    const activePortfolioId = portfolioIdState || position.portfolioId || deriveDefaultPortfolioId(user.uid);
+    
+    const response = await fetch(
+      `/api/positions/${position.id}/auto-invest/reapply?userId=${user.uid}&portfolioId=${activePortfolioId}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      }
+    );
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => null);
+      throw new Error(errorData?.error || '스케줄 재적용에 실패했습니다.');
+    }
+
+    const result = await response.json();
+    setScheduleSuccess(`스케줄이 재적용되었습니다. (거래 생성: ${result.created}건)`);
+    await fetchAutoInvestSchedules(user.uid, activePortfolioId, position.id!);
+    await fetchPosition(user.uid, activePortfolioId);
   };
 
   if (authLoading || loading) {
@@ -566,9 +715,45 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
                   <CardDescription>이 종목의 모든 매수/매도 기록</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-center text-muted-foreground py-8">
-                    거래 내역 기능은 준비 중입니다.
-                  </div>
+                  {transactionsLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                      <span className="text-muted-foreground">불러오는 중...</span>
+                    </div>
+                  ) : transactionsError ? (
+                    <Alert variant="destructive">
+                      <AlertDescription>{transactionsError}</AlertDescription>
+                    </Alert>
+                  ) : (
+                    <TransactionTable
+                      transactions={transactions}
+                      currency={position.currency}
+                      onEdit={(transaction) => {
+                        // TODO: 거래 수정 다이얼로그 구현
+                        console.log('Edit transaction:', transaction);
+                      }}
+                      onDelete={async (transaction) => {
+                        if (!confirm('정말로 이 거래를 삭제하시겠습니까?')) return;
+                        
+                        try {
+                          const activePortfolioId = portfolioIdState || position.portfolioId || deriveDefaultPortfolioId(user!.uid);
+                          const response = await fetch(
+                            `/api/transactions/${transaction.id}?userId=${user!.uid}&portfolioId=${activePortfolioId}`,
+                            { method: 'DELETE' }
+                          );
+                          
+                          if (!response.ok) {
+                            throw new Error('거래 삭제에 실패했습니다.');
+                          }
+                          
+                          await fetchTransactions(user!.uid, activePortfolioId, position.id!);
+                          await fetchPosition(user!.uid, activePortfolioId);
+                        } catch (err) {
+                          alert(err instanceof Error ? err.message : '거래 삭제 중 오류가 발생했습니다.');
+                        }
+                      }}
+                    />
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
@@ -753,38 +938,80 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
                         <Table>
                           <TableHeader>
                             <TableRow>
+                              <TableHead>상태</TableHead>
                               <TableHead>적용 기간</TableHead>
                               <TableHead>투자 금액</TableHead>
                               <TableHead>주기</TableHead>
                               <TableHead>등록일</TableHead>
                               <TableHead>메모</TableHead>
+                              <TableHead className="text-right">작업</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {autoInvestSchedules.map((schedule) => (
-                              <TableRow key={schedule.id}>
-                                <TableCell>
-                                  <div className="flex items-center gap-1">
-                                    <Calendar className="h-4 w-4 text-muted-foreground" />
-                                    <span>
-                                      {schedule.effectiveFrom}
-                                      {schedule.effectiveTo && ` ~ ${schedule.effectiveTo}`}
-                                      {!schedule.effectiveTo && ' 이후'}
-                                    </span>
-                                  </div>
-                                </TableCell>
-                                <TableCell className="font-medium">
-                                  {formatAmount(schedule.amount, schedule.currency)}
-                                </TableCell>
-                                <TableCell>{FREQUENCY_LABELS[schedule.frequency]}</TableCell>
-                                <TableCell>
-                                  {formatScheduleDate(schedule.createdAt)}
-                                </TableCell>
-                                <TableCell className="text-sm text-muted-foreground">
-                                  {schedule.note || '-'}
-                                </TableCell>
-                              </TableRow>
-                            ))}
+                            {autoInvestSchedules.map((schedule) => {
+                              const isActive = !schedule.effectiveTo;
+                              return (
+                                <TableRow key={schedule.id} className={isActive ? 'bg-blue-50/50' : ''}>
+                                  <TableCell>
+                                    {isActive ? (
+                                      <Badge variant="default">활성</Badge>
+                                    ) : (
+                                      <Badge variant="secondary">종료</Badge>
+                                    )}
+                                  </TableCell>
+                                  <TableCell>
+                                    <div className="flex items-center gap-1">
+                                      <Calendar className="h-4 w-4 text-muted-foreground" />
+                                      <span>
+                                        {schedule.effectiveFrom}
+                                        {schedule.effectiveTo && ` ~ ${schedule.effectiveTo}`}
+                                        {!schedule.effectiveTo && ' 이후'}
+                                      </span>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="font-medium">
+                                    {formatAmount(schedule.amount, schedule.currency)}
+                                  </TableCell>
+                                  <TableCell>{FREQUENCY_LABELS[schedule.frequency]}</TableCell>
+                                  <TableCell>
+                                    {formatScheduleDate(schedule.createdAt)}
+                                  </TableCell>
+                                  <TableCell className="text-sm text-muted-foreground">
+                                    {schedule.note || '-'}
+                                  </TableCell>
+                                  <TableCell className="text-right">
+                                    <div className="flex items-center justify-end gap-1">
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleReapplySchedule(schedule)}
+                                        title="재적용"
+                                      >
+                                        <RefreshCw className="h-3 w-3" />
+                                      </Button>
+                                      {isActive && (
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => handleEditSchedule(schedule)}
+                                          title="수정"
+                                        >
+                                          <Edit2 className="h-3 w-3" />
+                                        </Button>
+                                      )}
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleDeleteSchedule(schedule.id!, false)}
+                                        title="삭제"
+                                      >
+                                        <Trash2 className="h-3 w-3" />
+                                      </Button>
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })}
                           </TableBody>
                         </Table>
                       )}
@@ -796,6 +1023,23 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
           </Tabs>
         </div>
       </div>
+
+      {/* 다이얼로그 */}
+      <AutoInvestScheduleDialog
+        open={editScheduleDialogOpen}
+        onOpenChange={setEditScheduleDialogOpen}
+        schedule={selectedSchedule}
+        onSave={handleScheduleSave}
+        currency={position.currency}
+      />
+
+      <ReapplyScheduleDialog
+        open={reapplyScheduleDialogOpen}
+        onOpenChange={setReapplyScheduleDialogOpen}
+        schedule={selectedSchedule}
+        onConfirm={handleReapplyConfirm}
+        currency={position.currency}
+      />
     </>
   );
 }

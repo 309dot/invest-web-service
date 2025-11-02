@@ -3,6 +3,9 @@ import {
   createAutoInvestSchedule,
   listAutoInvestSchedules,
   rewriteAutoInvestTransactions,
+  updateAutoInvestSchedule,
+  deleteAutoInvestSchedule,
+  reapplySchedule,
 } from '@/lib/services/auto-invest';
 import { getPosition } from '@/lib/services/position';
 import { deriveDefaultPortfolioId } from '@/lib/utils/portfolio';
@@ -121,6 +124,131 @@ export async function POST(
     console.error('Create auto invest schedule error:', error);
     return NextResponse.json(
       { error: '자동 투자 스케줄 저장에 실패했습니다.' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const userId = request.nextUrl.searchParams.get('userId') || 'default_user';
+    const positionId = params.id;
+    const body = await request.json();
+
+    if (!positionId) {
+      return NextResponse.json({ error: 'Position ID가 필요합니다.' }, { status: 400 });
+    }
+
+    const fallbackPortfolioId =
+      userId && userId !== 'default_user' ? deriveDefaultPortfolioId(userId) : 'main';
+    const portfolioIdParam = request.nextUrl.searchParams.get('portfolioId');
+    const tentativePortfolioId = portfolioIdParam || fallbackPortfolioId;
+
+    const position = await getPosition(userId, tentativePortfolioId, positionId);
+    if (!position) {
+      return NextResponse.json({ error: '포지션을 찾을 수 없습니다.' }, { status: 404 });
+    }
+
+    const portfolioId = position.portfolioId || tentativePortfolioId;
+
+    const { scheduleId, frequency, amount, effectiveFrom, note, regenerateTransactions = false } = body;
+
+    if (!scheduleId) {
+      return NextResponse.json({ error: 'scheduleId가 필요합니다.' }, { status: 400 });
+    }
+
+    // 스케줄 업데이트
+    await updateAutoInvestSchedule(userId, portfolioId, positionId, scheduleId, {
+      frequency,
+      amount,
+      effectiveFrom,
+      note,
+    });
+
+    // 거래 재생성 옵션이 활성화된 경우
+    let rewriteSummary: { removed: number; created: number; error?: string } | null = null;
+    if (regenerateTransactions && effectiveFrom) {
+      rewriteSummary = await rewriteAutoInvestTransactions(userId, portfolioId, positionId, {
+        effectiveFrom,
+        frequency: frequency || position.autoInvestConfig?.frequency || 'monthly',
+        amount: amount || position.autoInvestConfig?.amount || 0,
+        currency: position.currency,
+        symbol: position.symbol,
+        stockId: position.stockId,
+        market: position.market === 'GLOBAL' ? undefined : position.market,
+      });
+    }
+
+    const schedules = await listAutoInvestSchedules(userId, portfolioId, positionId);
+
+    return NextResponse.json({
+      success: true,
+      message: '자동 투자 스케줄이 수정되었습니다.',
+      schedules,
+      rewriteSummary,
+    });
+  } catch (error) {
+    console.error('Update auto invest schedule error:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : '자동 투자 스케줄 수정에 실패했습니다.' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const userId = request.nextUrl.searchParams.get('userId') || 'default_user';
+    const positionId = params.id;
+    const scheduleId = request.nextUrl.searchParams.get('scheduleId');
+    const deleteTransactions = request.nextUrl.searchParams.get('deleteTransactions') === 'true';
+
+    if (!positionId) {
+      return NextResponse.json({ error: 'Position ID가 필요합니다.' }, { status: 400 });
+    }
+
+    if (!scheduleId) {
+      return NextResponse.json({ error: 'scheduleId가 필요합니다.' }, { status: 400 });
+    }
+
+    const fallbackPortfolioId =
+      userId && userId !== 'default_user' ? deriveDefaultPortfolioId(userId) : 'main';
+    const portfolioIdParam = request.nextUrl.searchParams.get('portfolioId');
+    const tentativePortfolioId = portfolioIdParam || fallbackPortfolioId;
+
+    const position = await getPosition(userId, tentativePortfolioId, positionId);
+    if (!position) {
+      return NextResponse.json({ error: '포지션을 찾을 수 없습니다.' }, { status: 404 });
+    }
+
+    const portfolioId = position.portfolioId || tentativePortfolioId;
+
+    const result = await deleteAutoInvestSchedule(
+      userId,
+      portfolioId,
+      positionId,
+      scheduleId,
+      deleteTransactions
+    );
+
+    const schedules = await listAutoInvestSchedules(userId, portfolioId, positionId);
+
+    return NextResponse.json({
+      success: true,
+      message: '자동 투자 스케줄이 삭제되었습니다.',
+      deletedTransactions: result.deletedTransactions,
+      schedules,
+    });
+  } catch (error) {
+    console.error('Delete auto invest schedule error:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : '자동 투자 스케줄 삭제에 실패했습니다.' },
       { status: 500 }
     );
   }

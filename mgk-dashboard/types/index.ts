@@ -449,3 +449,27 @@ export interface WeeklySummary {
   highestPrice: number;
   lowestPrice: number;
 }
+
+// 스케줄 업데이트 요청
+export interface UpdateAutoInvestScheduleRequest {
+  scheduleId: string;
+  frequency?: AutoInvestFrequency;
+  amount?: number;
+  effectiveFrom?: string;
+  note?: string;
+  regenerateTransactions?: boolean;
+}
+
+// 스케줄 재적용 요청
+export interface ReapplyScheduleRequest {
+  scheduleId: string;
+  effectiveFrom: string;
+  pricePerShare?: number;
+}
+
+// 거래 재생성 미리보기
+export interface TransactionRewritePreview {
+  toDelete: number;
+  toCreate: number;
+  dateRange: { from: string; to: string };
+}

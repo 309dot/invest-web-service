@@ -104,7 +104,9 @@ function aggregatePositionMetrics(
       }
     }
 
-    currentPrice = price;
+    if (!Number.isFinite(currentPrice) || currentPrice <= 0) {
+      currentPrice = price;
+    }
     if (!firstPurchaseDate) {
       firstPurchaseDate = tx.date;
     }
