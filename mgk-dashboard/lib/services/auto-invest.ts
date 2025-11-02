@@ -2,9 +2,22 @@
  * 자동 투자 관련 서비스
  */
 
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  orderBy,
+  query,
+  where,
+  writeBatch,
+  limit,
+  Timestamp,
+} from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { createTransaction } from './transaction';
-import { updatePositionAfterTransaction } from './position';
-import type { AutoInvestFrequency } from '@/types';
+import { recalculatePositionFromTransactions } from './position';
+import type { AutoInvestFrequency, AutoInvestSchedule, Position, Transaction } from '@/types';
 
 /**
  * 자동 투자 거래 내역 생성
@@ -36,7 +49,7 @@ export async function generateAutoInvestTransactions(
       amount: number;
     }> = [];
 
-    let currentDate = new Date(startDate);
+    const currentDate = new Date(startDate);
 
     // 빈도에 따라 거래 날짜 계산
     while (currentDate <= today) {
@@ -86,14 +99,8 @@ export async function generateAutoInvestTransactions(
         date: tx.date,
         note: `자동 투자 (${config.frequency})`,
         currency: config.currency,
-      });
-
-      // 포지션 업데이트
-      await updatePositionAfterTransaction(userId, portfolioId, positionId, {
-        type: 'buy',
-        shares: tx.shares,
-        price: tx.price,
-        date: tx.date,
+        purchaseMethod: 'auto',
+        purchaseUnit: 'amount',
       });
 
       totalShares += tx.shares;
@@ -120,6 +127,188 @@ export async function generateAutoInvestTransactions(
   }
 }
 
+const formatDate = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+export async function listAutoInvestSchedules(
+  userId: string,
+  portfolioId: string,
+  positionId: string
+): Promise<AutoInvestSchedule[]> {
+  try {
+    const schedulesRef = collection(
+      db,
+      `users/${userId}/portfolios/${portfolioId}/positions/${positionId}/autoInvestSchedules`
+    );
+
+    const snapshot = await getDocs(query(schedulesRef, orderBy('effectiveFrom', 'desc')));
+
+    return snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...(doc.data() as AutoInvestSchedule),
+    }));
+  } catch (error) {
+    console.error('Error listing auto invest schedules:', error);
+    throw error;
+  }
+}
+
+export async function createAutoInvestSchedule(
+  userId: string,
+  portfolioId: string,
+  positionId: string,
+  schedule: {
+    frequency: AutoInvestFrequency;
+    amount: number;
+    currency: 'USD' | 'KRW';
+    effectiveFrom: string;
+    createdBy: string;
+    note?: string;
+  }
+): Promise<string> {
+  try {
+    const schedulesRef = collection(
+      db,
+      `users/${userId}/portfolios/${portfolioId}/positions/${positionId}/autoInvestSchedules`
+    );
+    const scheduleRef = doc(schedulesRef);
+    const batch = writeBatch(db);
+    const now = Timestamp.now();
+
+    const previousSnapshot = await getDocs(
+      query(schedulesRef, orderBy('effectiveFrom', 'desc'), limit(1))
+    );
+
+    if (!previousSnapshot.empty) {
+      const previousDoc = previousSnapshot.docs[0];
+      const previousData = previousDoc.data() as AutoInvestSchedule;
+      const prevEffectiveTo = previousData.effectiveTo;
+
+      if (!prevEffectiveTo || prevEffectiveTo >= schedule.effectiveFrom) {
+        const prevEndDate = new Date(schedule.effectiveFrom);
+        prevEndDate.setDate(prevEndDate.getDate() - 1);
+        batch.update(previousDoc.ref, {
+          effectiveTo: formatDate(prevEndDate),
+          updatedAt: now,
+        });
+      }
+    }
+
+    batch.set(scheduleRef, {
+      userId,
+      portfolioId,
+      positionId,
+      frequency: schedule.frequency,
+      amount: schedule.amount,
+      currency: schedule.currency,
+      effectiveFrom: schedule.effectiveFrom,
+      effectiveTo: null,
+      note: schedule.note || '',
+      createdBy: schedule.createdBy,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const positionRef = doc(
+      db,
+      `users/${userId}/portfolios/${portfolioId}/positions`,
+      positionId
+    );
+    const positionSnapshot = await getDoc(positionRef);
+    const existingConfig = positionSnapshot.exists()
+      ? ((positionSnapshot.data() as Position).autoInvestConfig ?? null)
+      : null;
+
+    batch.set(
+      positionRef,
+      {
+        autoInvestConfig: {
+          frequency: schedule.frequency,
+          amount: schedule.amount,
+          startDate: existingConfig?.startDate || schedule.effectiveFrom,
+          isActive: existingConfig?.isActive ?? true,
+          lastExecuted: existingConfig?.lastExecuted,
+          currentScheduleId: scheduleRef.id,
+          lastUpdated: schedule.effectiveFrom,
+        },
+        updatedAt: now,
+      },
+      { merge: true }
+    );
+
+    await batch.commit();
+    return scheduleRef.id;
+  } catch (error) {
+    console.error('Error creating auto invest schedule:', error);
+    throw error;
+  }
+}
+
+export async function rewriteAutoInvestTransactions(
+  userId: string,
+  portfolioId: string,
+  positionId: string,
+  options: {
+    effectiveFrom: string;
+    frequency: AutoInvestFrequency;
+    amount: number;
+    currency: 'USD' | 'KRW';
+    pricePerShare: number;
+    symbol: string;
+    stockId: string;
+  }
+): Promise<{ removed: number; created: number }> {
+  try {
+    const transactionsRef = collection(
+      db,
+      `users/${userId}/portfolios/${portfolioId}/transactions`
+    );
+
+    const autoTransactionsSnapshot = await getDocs(
+      query(
+        transactionsRef,
+        where('positionId', '==', positionId),
+        where('purchaseMethod', '==', 'auto')
+      )
+    );
+
+    const toDelete = autoTransactionsSnapshot.docs.filter((doc) => {
+      const data = doc.data() as Transaction;
+      return data.date >= options.effectiveFrom;
+    });
+
+    if (toDelete.length > 0) {
+      const deleteBatch = writeBatch(db);
+      toDelete.forEach((docRef) => deleteBatch.delete(docRef.ref));
+      await deleteBatch.commit();
+    }
+
+    const generationResult = await generateAutoInvestTransactions(userId, portfolioId, positionId, {
+      symbol: options.symbol,
+      stockId: options.stockId,
+      frequency: options.frequency,
+      amount: options.amount,
+      startDate: options.effectiveFrom,
+      pricePerShare: options.pricePerShare,
+      currency: options.currency,
+    });
+
+    await recalculatePositionFromTransactions(userId, portfolioId, positionId);
+
+    return {
+      removed: toDelete.length,
+      created: generationResult.count,
+    };
+  } catch (error) {
+    console.error('Error rewriting auto invest transactions:', error);
+    throw error;
+  }
+}
+
 /**
  * 정기 구매 날짜 목록 생성 (미리보기용)
  */
@@ -133,7 +322,7 @@ export function getAutoInvestDates(
   end.setHours(0, 0, 0, 0);
 
   const dates: string[] = [];
-  let currentDate = new Date(start);
+  const currentDate = new Date(start);
 
   while (currentDate <= end) {
     dates.push(currentDate.toISOString().split('T')[0]);
@@ -157,6 +346,6 @@ export function getAutoInvestDates(
     }
   }
 
-  return dates;
+    return dates;
 }
 

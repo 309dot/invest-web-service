@@ -27,12 +27,14 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, AlertCircle, ArrowLeft, Check } from 'lucide-react';
 import type { Stock, PurchaseMethod, PurchaseUnit, AutoInvestFrequency } from '@/types';
 import { formatInputDate } from '@/lib/utils/formatters';
+import { deriveDefaultPortfolioId } from '@/lib/utils/portfolio';
 
 function AddStockContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, loading: authLoading } = useAuth();
-  const portfolioId = searchParams.get('portfolioId') || 'main';
+  const derivedPortfolioId = deriveDefaultPortfolioId(user?.uid);
+  const portfolioId = searchParams.get('portfolioId') || derivedPortfolioId;
 
   const [step, setStep] = useState<'search' | 'details'>('search');
   const [selectedStock, setSelectedStock] = useState<Omit<Stock, 'id'> | null>(null);

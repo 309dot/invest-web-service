@@ -29,9 +29,10 @@ import {
   Trash2,
 } from 'lucide-react';
 import { TransactionForm } from './TransactionForm';
-import { formatCurrency, formatPercent } from '@/lib/utils/formatters';
+import { formatPercent } from '@/lib/utils/formatters';
 import type { Position } from '@/types';
 import { useAuth } from '@/lib/contexts/AuthContext';
+import { useCurrency } from '@/lib/contexts/CurrencyContext';
 
 interface PortfolioOverviewProps {
   portfolioId: string;
@@ -40,6 +41,7 @@ interface PortfolioOverviewProps {
 export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
+  const { formatAmount } = useCurrency();
   const [positions, setPositions] = useState<Position[]>([]);
   const [totals, setTotals] = useState({
     totalInvested: 0,
@@ -93,8 +95,11 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
     setShowTransactionForm(true);
   };
 
-  const handleDeletePosition = async (positionId: string, e: React.MouseEvent) => {
-    e.stopPropagation(); // 상세 페이지로 이동 방지
+  const handleDeletePosition = async (
+    positionId: string,
+    e?: { stopPropagation?: () => void }
+  ) => {
+    e?.stopPropagation?.(); // 상세 페이지로 이동 방지
     
     if (!confirm('정말로 이 포지션을 삭제하시겠습니까? 모든 거래 내역이 함께 삭제됩니다.')) {
       return;
@@ -196,7 +201,7 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                   <span>총 투자금</span>
                 </div>
                 <p className="text-2xl font-bold">
-                  {formatCurrency(totals.totalInvested, 'USD')}
+                  {formatAmount(totals.totalInvested, 'USD')}
                 </p>
               </div>
 
@@ -206,7 +211,7 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                   <span>평가 금액</span>
                 </div>
                 <p className="text-2xl font-bold">
-                  {formatCurrency(totals.totalValue, 'USD')}
+                  {formatAmount(totals.totalValue, 'USD')}
                 </p>
               </div>
 
@@ -228,7 +233,7 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                   <span className={`text-sm ${
                     isPositive ? 'text-green-600' : 'text-red-600'
                   }`}>
-                    ({isPositive ? '+' : ''}{formatCurrency(profitLoss, 'USD')})
+                    ({isPositive ? '+' : ''}{formatAmount(profitLoss, 'USD')})
                   </span>
                 </div>
               </div>
@@ -285,13 +290,23 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => handleTransactionClick(position)}>
+                              <DropdownMenuItem
+                                onSelect={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  handleTransactionClick(position);
+                                }}
+                              >
                                 <ArrowUpDown className="mr-2 h-4 w-4" />
                                 거래 추가
                               </DropdownMenuItem>
-                              <DropdownMenuItem 
+                              <DropdownMenuItem
                                 className="text-destructive"
-                                onClick={(e) => handleDeletePosition(position.id!, e)}
+                                onSelect={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  handleDeletePosition(position.id!);
+                                }}
                               >
                                 <Trash2 className="mr-2 h-4 w-4" />
                                 포지션 삭제
@@ -307,15 +322,15 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                           </div>
                           <div>
                             <p className="text-muted-foreground">평균 단가</p>
-                            <p className="font-medium">{formatCurrency(position.averagePrice, resolveCurrency(position))}</p>
+                            <p className="font-medium">{formatAmount(position.averagePrice, resolveCurrency(position))}</p>
                           </div>
                           <div>
                             <p className="text-muted-foreground">투자 금액</p>
-                            <p className="font-medium">{formatCurrency(position.totalInvested, resolveCurrency(position))}</p>
+                            <p className="font-medium">{formatAmount(position.totalInvested, resolveCurrency(position))}</p>
                           </div>
                           <div>
                             <p className="text-muted-foreground">평가 금액</p>
-                            <p className="font-medium">{formatCurrency(position.totalValue, resolveCurrency(position))}</p>
+                            <p className="font-medium">{formatAmount(position.totalValue, resolveCurrency(position))}</p>
                           </div>
                         </div>
 
@@ -331,7 +346,7 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                               <span className={`text-xs ${
                                 position.profitLoss >= 0 ? 'text-green-600' : 'text-red-600'
                               }`}>
-                                ({position.profitLoss >= 0 ? '+' : ''}{formatCurrency(position.profitLoss, resolveCurrency(position))})
+                                ({position.profitLoss >= 0 ? '+' : ''}{formatAmount(position.profitLoss, resolveCurrency(position))})
                               </span>
                             </div>
                           </div>
@@ -371,13 +386,13 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                             {position.shares.toFixed(4)} 주
                           </td>
                           <td className="py-3 px-4 text-right">
-                            {formatCurrency(position.averagePrice, resolveCurrency(position))}
+                            {formatAmount(position.averagePrice, resolveCurrency(position))}
                           </td>
                           <td className="py-3 px-4 text-right">
-                            {formatCurrency(position.totalInvested, resolveCurrency(position))}
+                            {formatAmount(position.totalInvested, resolveCurrency(position))}
                           </td>
                           <td className="py-3 px-4 text-right font-medium">
-                            {formatCurrency(position.totalValue, resolveCurrency(position))}
+                            {formatAmount(position.totalValue, resolveCurrency(position))}
                           </td>
                           <td className={`py-3 px-4 text-right font-semibold ${
                             position.returnRate >= 0 ? 'text-green-600' : 'text-red-600'
@@ -388,7 +403,7 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                             position.profitLoss >= 0 ? 'text-green-600' : 'text-red-600'
                           }`}>
                             {position.profitLoss >= 0 ? '+' : ''}
-                            {formatCurrency(position.profitLoss, resolveCurrency(position))}
+                            {formatAmount(position.profitLoss, resolveCurrency(position))}
                           </td>
                           <td className="py-3 px-4 text-center">
                             <Badge variant="outline" className="text-xs">
@@ -403,13 +418,23 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => handleTransactionClick(position)}>
+                                <DropdownMenuItem
+                                  onSelect={(event) => {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    handleTransactionClick(position);
+                                  }}
+                                >
                                   <ArrowUpDown className="mr-2 h-4 w-4" />
                                   거래 추가
                                 </DropdownMenuItem>
-                                <DropdownMenuItem 
+                                <DropdownMenuItem
                                   className="text-destructive"
-                                  onClick={(e) => handleDeletePosition(position.id!, e)}
+                                  onSelect={(event) => {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    handleDeletePosition(position.id!);
+                                  }}
                                 >
                                   <Trash2 className="mr-2 h-4 w-4" />
                                   포지션 삭제

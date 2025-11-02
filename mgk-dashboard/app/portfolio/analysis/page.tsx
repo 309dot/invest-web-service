@@ -32,19 +32,24 @@ import {
   Target,
   Activity,
 } from 'lucide-react';
-import { formatCurrency, formatPercent } from '@/lib/utils/formatters';
+import { formatPercent } from '@/lib/utils/formatters';
 import type { PortfolioAnalysis } from '@/lib/services/portfolio-analysis';
 import type { Position } from '@/types';
+import { useCurrency } from '@/lib/contexts/CurrencyContext';
+import { deriveDefaultPortfolioId } from '@/lib/utils/portfolio';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658', '#ff7c7c'];
 
 export default function PortfolioAnalysisPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
+  const { formatAmount } = useCurrency();
 
   const [analysis, setAnalysis] = useState<PortfolioAnalysis | null>(null);
   const [positions, setPositions] = useState<Position[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const portfolioId = deriveDefaultPortfolioId(user?.uid);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -52,10 +57,10 @@ export default function PortfolioAnalysisPage() {
     }
   }, [user, authLoading, router]);
 
-  const fetchAnalysis = async () => {
+  const fetchAnalysis = async (uid: string) => {
     try {
       setLoading(true);
-      const response = await fetch('/api/portfolio/analysis?portfolioId=main');
+      const response = await fetch(`/api/portfolio/analysis?portfolioId=${portfolioId}&userId=${uid}`);
       if (response.ok) {
         const data = await response.json();
         setAnalysis(data.analysis);
@@ -70,7 +75,7 @@ export default function PortfolioAnalysisPage() {
 
   useEffect(() => {
     if (user) {
-      fetchAnalysis();
+      fetchAnalysis(user.uid);
     }
   }, [user]);
 
@@ -138,7 +143,7 @@ export default function PortfolioAnalysisPage() {
                 섹터/지역별 분산도 및 리스크 분석
               </p>
             </div>
-            <Button onClick={fetchAnalysis} variant="outline">
+            <Button onClick={() => user && fetchAnalysis(user.uid)} variant="outline">
               <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
               새로고침
             </Button>
@@ -230,7 +235,7 @@ export default function PortfolioAnalysisPage() {
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>
-                    <Tooltip formatter={(value: number) => formatCurrency(value, 'USD')} />
+                    <Tooltip formatter={(value: number) => formatAmount(value as number, 'USD')} />
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="mt-4 space-y-2">
@@ -280,7 +285,7 @@ export default function PortfolioAnalysisPage() {
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>
-                    <Tooltip formatter={(value: number) => formatCurrency(value, 'USD')} />
+                    <Tooltip formatter={(value: number) => formatAmount(value as number, 'USD')} />
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="mt-4 space-y-2">
@@ -318,7 +323,7 @@ export default function PortfolioAnalysisPage() {
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="symbol" />
                   <YAxis />
-                  <Tooltip formatter={(value: number) => formatCurrency(value, 'USD')} />
+                  <Tooltip formatter={(value: number) => formatAmount(value as number, 'USD')} />
                   <Bar dataKey="contribution" fill="#8884d8">
                     {analysis.topContributors.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.contribution >= 0 ? '#00C49F' : '#FF8042'} />
@@ -369,7 +374,7 @@ export default function PortfolioAnalysisPage() {
                           현재: {suggestion.currentWeight.toFixed(1)}% → 목표: {suggestion.targetWeight.toFixed(1)}%
                         </div>
                         <div className="font-semibold">
-                          {formatCurrency(suggestion.amount, 'USD')}
+                          {formatAmount(suggestion.amount, 'USD')}
                         </div>
                       </div>
                     </div>

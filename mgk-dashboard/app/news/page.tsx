@@ -7,14 +7,6 @@ import { Header } from '@/components/Header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import {
   Newspaper,
   TrendingUp,
@@ -22,13 +14,12 @@ import {
   Minus,
   ExternalLink,
   RefreshCw,
-  Bookmark,
   Filter,
-  ChevronDown,
   AlertCircle,
 } from 'lucide-react';
 import { formatRelativeDate } from '@/lib/utils/formatters';
 import type { PersonalizedNews } from '@/lib/services/news-analysis';
+import { deriveDefaultPortfolioId } from '@/lib/utils/portfolio';
 
 export default function NewsPage() {
   const { user, loading: authLoading } = useAuth();
@@ -39,9 +30,6 @@ export default function NewsPage() {
   const [selectedSymbol, setSelectedSymbol] = useState<string>('all');
   const [selectedSentiment, setSelectedSentiment] = useState<string>('all');
   const [selectedImpact, setSelectedImpact] = useState<string>('all');
-  const [selectedNews, setSelectedNews] = useState<PersonalizedNews | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-
   useEffect(() => {
     if (!authLoading && !user) {
       router.push('/login');
@@ -53,7 +41,8 @@ export default function NewsPage() {
 
     try {
       setLoading(true);
-      const response = await fetch(`/api/news/personalized?userId=${user.uid}&portfolioId=main`);
+      const portfolioId = deriveDefaultPortfolioId(user.uid);
+      const response = await fetch(`/api/news/personalized?userId=${user.uid}&portfolioId=${portfolioId}`);
       
       if (response.ok) {
         const data = await response.json();
@@ -260,79 +249,54 @@ export default function NewsPage() {
           ) : (
             <div className="space-y-4">
               {filteredNews.map((item, index) => (
-                <Card key={index} className="hover:shadow-lg transition-shadow">
-                  <CardContent className="p-6">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1">
-                        {/* 제목 */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedNews(item);
-                            setIsModalOpen(true);
-                          }}
-                          className="text-left w-full"
-                        >
-                          <h3 className="text-lg font-semibold mb-2 flex items-center gap-2 hover:text-primary">
+                <a
+                  key={index}
+                  href={item.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block"
+                >
+                  <Card className="transition-all hover:shadow-lg hover:-translate-y-0.5 cursor-pointer">
+                    <CardContent className="p-6">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 space-y-3">
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                             {getSentimentIcon(item.sentiment || 'neutral')}
+                            <span className="font-medium text-foreground">{item.source}</span>
+                            <span>• {formatRelativeDate(item.publishedAt)}</span>
+                            {getSentimentBadge(item.sentiment || 'neutral')}
+                            <Badge variant="outline">관련성 {item.personalRelevance.toFixed(0)}%</Badge>
+                          </div>
+
+                          <h3 className="text-lg font-semibold leading-snug line-clamp-2">
                             {item.title}
                           </h3>
-                        </button>
 
-                        {/* 설명 */}
-                        {(item.summary || item.description) && (
-                          <p className="text-muted-foreground text-sm mb-3 line-clamp-2">
-                            {item.summary || item.description}
-                          </p>
-                        )}
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                            <span className="font-medium text-foreground">영향 종목</span>
+                            {item.affectedPositions.map((pos, idx) => (
+                              <div key={idx} className="flex items-center gap-1">
+                                <Badge variant="secondary">{pos.symbol}</Badge>
+                                {getImpactBadge(pos.estimatedImpact)}
+                              </div>
+                            ))}
+                          </div>
 
-                        {/* 메타 정보 */}
-                        <div className="flex flex-wrap items-center gap-2 mb-3">
-                          <span className="text-xs text-muted-foreground">
-                            {item.source} • {formatRelativeDate(item.publishedAt)}
-                          </span>
-                          {getSentimentBadge(item.sentiment || 'neutral')}
-                          <Badge variant="outline">
-                            관련성: {item.personalRelevance.toFixed(0)}%
-                          </Badge>
+                          {item.reason && (
+                            <p className="text-xs text-muted-foreground line-clamp-2">
+                              {item.reason}
+                            </p>
+                          )}
                         </div>
 
-                        {/* 영향받는 종목 */}
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-xs font-medium">영향 종목:</span>
-                          {item.affectedPositions.map((pos, idx) => (
-                            <div key={idx} className="flex items-center gap-1">
-                              <Badge variant="secondary">{pos.symbol}</Badge>
-                              {getImpactBadge(pos.estimatedImpact)}
-                            </div>
-                          ))}
+                        <div className="flex items-start text-primary gap-1 text-sm">
+                          <ExternalLink className="h-4 w-4 mt-1" />
+                          <span className="font-medium">원문 이동</span>
                         </div>
-
-                        {/* 이유 */}
-                        <p className="text-xs text-muted-foreground mt-2">
-                          {item.reason}
-                        </p>
                       </div>
-
-                      {/* 액션 버튼 */}
-                      <div className="flex flex-col gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => window.open(item.url, '_blank')}
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                        >
-                          <Bookmark className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                    </CardContent>
+                  </Card>
+                </a>
               ))}
             </div>
           )}
@@ -346,61 +310,7 @@ export default function NewsPage() {
         </main>
       </div>
 
-      <Dialog
-        open={isModalOpen}
-        onOpenChange={(open) => {
-          setIsModalOpen(open);
-          if (!open) {
-            setSelectedNews(null);
-          }
-        }}
-      >
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              {getSentimentIcon(selectedNews?.sentiment || 'neutral')}
-              {selectedNews?.title || '뉴스 상세'}
-            </DialogTitle>
-            <DialogDescription>
-              {selectedNews?.source}
-              {selectedNews ? ` • ${formatRelativeDate(selectedNews.publishedAt)}` : ''}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <p className="text-sm leading-relaxed whitespace-pre-wrap">
-              {selectedNews?.summary || '요약 정보를 불러오지 못했습니다.'}
-            </p>
-            {(selectedNews?.content || selectedNews?.description) && (
-              <div className="rounded-md bg-muted/40 p-4 text-sm leading-relaxed whitespace-pre-wrap max-h-80 overflow-y-auto">
-                {selectedNews?.content || selectedNews?.description}
-              </div>
-            )}
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-medium">영향 종목:</span>
-              {selectedNews?.affectedPositions.map((pos, idx) => (
-                <div key={idx} className="flex items-center gap-1">
-                  <Badge variant="secondary">{pos.symbol}</Badge>
-                  {getImpactBadge(pos.estimatedImpact)}
-                </div>
-              ))}
-            </div>
-            <div className="flex justify-between items-center pt-2">
-              <span className="text-xs text-muted-foreground">
-                개인화 점수: {selectedNews?.personalRelevance.toFixed(0)}%
-              </span>
-              {selectedNews?.url && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => window.open(selectedNews.url, '_blank')}
-                >
-                  원문 보기
-                </Button>
-              )}
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      
     </>
   );
 }

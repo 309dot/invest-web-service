@@ -7,7 +7,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ChartDataPoint } from '@/types';
-import { formatCurrency, formatPercent, formatDate } from '@/lib/utils/formatters';
+import { formatPercent, formatDate } from '@/lib/utils/formatters';
+import { useCurrency } from '@/lib/contexts/CurrencyContext';
 import { ShoppingCart, Maximize2, Minimize2 } from 'lucide-react';
 
 interface PriceChartProps {
@@ -22,6 +23,7 @@ export function PriceChart({ data, purchasePoints = [], showPurchaseMarkers = fa
   const [period, setPeriod] = useState<Period>('30d');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const chartRef = useRef<HTMLDivElement>(null);
+  const { formatAmount } = useCurrency();
 
   // 터치 제스처 지원
   const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null);
@@ -119,11 +121,11 @@ export function PriceChart({ data, purchasePoints = [], showPurchaseMarkers = fa
         <div className="bg-popover text-popover-foreground p-3 rounded-lg border shadow-lg">
           <p className="text-sm font-medium mb-2">{formatDate(data.date, 'yyyy-MM-dd')}</p>
           <div className="space-y-1 text-sm">
-            <p>주가: {formatCurrency(data.price)}</p>
+            <p>주가: {formatAmount(data.price, 'USD')}</p>
             <p className={data.returnRate >= 0 ? 'text-green-600' : 'text-red-600'}>
               수익률: {formatPercent(data.returnRate)}
             </p>
-            <p>평가액: {formatCurrency(data.totalValue)}</p>
+            <p>평가액: {formatAmount(data.totalValue, 'USD')}</p>
           </div>
         </div>
       );

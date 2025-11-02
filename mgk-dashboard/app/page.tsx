@@ -9,6 +9,7 @@ import { PortfolioOverview } from '@/components/PortfolioOverview';
 import { BalanceDashboard } from '@/components/BalanceDashboard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import dynamic from "next/dynamic";
+import { deriveDefaultPortfolioId } from '@/lib/utils/portfolio';
 const AIAdvisorCard = dynamic(
   () => import("@/components/AIAdvisorCard").then((mod) => mod.AIAdvisorCard),
   {
@@ -47,6 +48,8 @@ export default function Dashboard() {
     return null;
   }
 
+  const portfolioId = deriveDefaultPortfolioId(user.uid);
+
   return (
     <>
       <Header />
@@ -66,17 +69,17 @@ export default function Dashboard() {
           </div>
 
           {/* Tabs for Multi-Portfolio Support */}
-          <Tabs defaultValue="main" className="space-y-6">
+          <Tabs defaultValue={portfolioId} className="space-y-6">
             <TabsList>
-              <TabsTrigger value="main">메인 포트폴리오</TabsTrigger>
+              <TabsTrigger value={portfolioId}>메인 포트폴리오</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="main" className="space-y-6">
+            <TabsContent value={portfolioId} className="space-y-6">
               {/* 잔액 대시보드 */}
-              <BalanceDashboard portfolioId="main" />
+              <BalanceDashboard portfolioId={portfolioId} />
 
               {/* Portfolio Overview - 새로운 다중 종목 지원 */}
-              <PortfolioOverview portfolioId="main" />
+              <PortfolioOverview portfolioId={portfolioId} />
 
               {/* AI Advisor */}
               <AIAdvisorCard />

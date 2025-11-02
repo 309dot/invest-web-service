@@ -169,14 +169,30 @@ export async function createChargeRecord(
       type: chargeData.type,
       currency: chargeData.currency,
       amount: chargeData.amount,
-      exchangeRate: chargeData.exchangeRate,
-      convertedAmount: chargeData.convertedAmount,
       date: chargeData.date,
       note: chargeData.note || '',
       createdAt: Timestamp.now(),
     };
 
-    await setDoc(chargeRef, charge);
+    if (
+      typeof chargeData.exchangeRate === 'number' &&
+      Number.isFinite(chargeData.exchangeRate)
+    ) {
+      charge.exchangeRate = chargeData.exchangeRate;
+    }
+
+    if (
+      typeof chargeData.convertedAmount === 'number' &&
+      Number.isFinite(chargeData.convertedAmount)
+    ) {
+      charge.convertedAmount = chargeData.convertedAmount;
+    }
+
+    const sanitizedCharge = Object.fromEntries(
+      Object.entries(charge).filter(([, value]) => value !== undefined)
+    ) as ChargeRecord;
+
+    await setDoc(chargeRef, sanitizedCharge);
     console.log(`✅ 충전 기록 생성: ${chargeRef.id}`);
 
     // 잔액 업데이트

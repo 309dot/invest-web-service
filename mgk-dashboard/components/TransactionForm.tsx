@@ -29,7 +29,8 @@ import { RadioGroup, RadioGroupItem } from './ui/radio-group';
 import { Alert, AlertDescription } from './ui/alert';
 import { Loader2, AlertCircle, TrendingUp, TrendingDown, Calculator } from 'lucide-react';
 import type { Position, Transaction } from '@/types';
-import { formatInputDate, formatCurrency } from '@/lib/utils/formatters';
+import { formatInputDate } from '@/lib/utils/formatters';
+import { useCurrency } from '@/lib/contexts/CurrencyContext';
 import { useAuth } from '@/lib/contexts/AuthContext';
 
 interface TransactionFormProps {
@@ -50,6 +51,7 @@ export function TransactionForm({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
+  const { formatAmount } = useCurrency();
 
   // 거래 정보
   const [transactionType, setTransactionType] = useState<'buy' | 'sell'>('buy');
@@ -230,11 +232,11 @@ export function TransactionForm({
               </div>
               <div>
                 <p className="text-muted-foreground">평균 단가</p>
-                <p className="font-medium">{formatCurrency(position.averagePrice, currency)}</p>
+                <p className="font-medium">{formatAmount(position.averagePrice, currency)}</p>
               </div>
               <div>
                 <p className="text-muted-foreground">투자 금액</p>
-                <p className="font-medium">{formatCurrency(position.totalInvested, currency)}</p>
+                <p className="font-medium">{formatAmount(position.totalInvested, currency)}</p>
               </div>
             </div>
           </div>
@@ -379,19 +381,19 @@ export function TransactionForm({
               <div className="grid gap-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">거래 금액</span>
-                  <span className="font-medium">{formatCurrency(amount, currency)}</span>
+                  <span className="font-medium">{formatAmount(amount, currency)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">수수료</span>
-                  <span className="font-medium">{formatCurrency(feeValue, currency)}</span>
+                  <span className="font-medium">{formatAmount(feeValue, currency)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">세금</span>
-                  <span className="font-medium">{formatCurrency(taxValue, currency)}</span>
+                  <span className="font-medium">{formatAmount(taxValue, currency)}</span>
                 </div>
                 <div className="flex justify-between pt-2 border-t">
                   <span className="font-semibold">총 금액</span>
-                  <span className="font-semibold">{formatCurrency(totalCost, currency)}</span>
+                  <span className="font-semibold">{formatAmount(totalCost, currency)}</span>
                 </div>
                 {currency === 'USD' && exchangeRate && (
                   <div className="flex justify-between text-xs">
@@ -408,7 +410,7 @@ export function TransactionForm({
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">예상 평균 단가</span>
                     <span className="font-medium text-primary">
-                      {formatCurrency(predictedAveragePrice, currency)}
+                      {formatAmount(predictedAveragePrice, currency)}
                     </span>
                   </div>
                   <div className="flex justify-between text-sm mt-1">

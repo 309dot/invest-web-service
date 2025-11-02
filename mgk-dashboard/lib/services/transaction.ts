@@ -19,7 +19,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Transaction } from '@/types';
-import { updatePositionAfterTransaction } from './position';
+import { updatePositionAfterTransaction, recalculatePositionFromTransactions } from './position';
 
 /**
  * 거래 생성
@@ -40,6 +40,8 @@ export async function createTransaction(
     note?: string;
     exchangeRate?: number;
     currency?: 'USD' | 'KRW';
+    purchaseMethod?: Transaction['purchaseMethod'];
+    purchaseUnit?: Transaction['purchaseUnit'];
   }
 ): Promise<string> {
   try {
@@ -62,8 +64,8 @@ export async function createTransaction(
       totalAmount: transactionData.amount + (transactionData.fee || 0),
       date: transactionData.date,
       memo: transactionData.note || '',
-      purchaseMethod: 'manual',
-      purchaseUnit: 'shares',
+      purchaseMethod: transactionData.purchaseMethod || 'manual',
+      purchaseUnit: transactionData.purchaseUnit || 'shares',
       createdAt: Timestamp.now(),
       currency: transactionData.currency || 'USD',
       ...(typeof transactionData.exchangeRate === 'number' && {
@@ -227,10 +229,21 @@ export async function deleteTransaction(
       transactionId
     );
 
+    const transactionSnapshot = await getDoc(transactionRef);
+    if (!transactionSnapshot.exists()) {
+      console.warn(`⚠️ 거래가 존재하지 않아 삭제할 수 없습니다: ${transactionId}`);
+      return;
+    }
+
+    const transactionData = transactionSnapshot.data() as Transaction;
+    const positionId = transactionData.positionId;
+
     await deleteDoc(transactionRef);
     console.log(`✅ 거래 삭제: ${transactionId}`);
 
-    // TODO: 거래 삭제 시 포지션 재계산 필요
+    if (positionId) {
+      await recalculatePositionFromTransactions(userId, portfolioId, positionId);
+    }
   } catch (error) {
     console.error('Error deleting transaction:', error);
     throw error;

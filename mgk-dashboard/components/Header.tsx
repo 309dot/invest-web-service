@@ -4,6 +4,8 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/contexts/AuthContext';
+import { useCurrency } from '@/lib/contexts/CurrencyContext';
+import type { DisplayCurrency } from '@/lib/contexts/CurrencyContext';
 import { Button } from '@/components/ui/button';
 import {
   Menu,
@@ -17,6 +19,8 @@ import {
   FileText,
   BarChart3,
   ArrowLeftRight,
+  DollarSign,
+  Check,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -32,6 +36,23 @@ export function Header() {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const {
+    displayCurrency,
+    setDisplayCurrency,
+    exchangeRate,
+    loading: currencyLoading,
+    refreshExchangeRate,
+  } = useCurrency();
+
+  const currencyLabelMap: Record<DisplayCurrency, string> = {
+    original: '표시: 원본',
+    USD: '표시: 달러',
+    KRW: '표시: 원화',
+  };
+  const currencyDisplayLabel = currencyLabelMap[displayCurrency];
+  const formattedExchangeRate = exchangeRate
+    ? `1달러 = ${exchangeRate.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}원`
+    : '환율 정보 없음';
 
   const navigation = [
     { name: '대시보드', href: '/', icon: LayoutDashboard },
@@ -104,8 +125,54 @@ export function Header() {
           })}
         </div>
 
-        {/* User menu */}
-        <div className="hidden lg:flex lg:flex-1 lg:justify-end">
+        {/* Currency & User menu */}
+        <div className="hidden lg:flex lg:flex-1 lg:items-center lg:justify-end lg:gap-4">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="flex items-center gap-2">
+                <DollarSign className="h-4 w-4" />
+                {currencyDisplayLabel}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>통화 표시</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => setDisplayCurrency('original')}
+                className={displayCurrency === 'original' ? 'bg-muted focus:bg-muted' : ''}
+              >
+                <span className="flex items-center gap-2">
+                  {displayCurrency === 'original' && <Check className="h-4 w-4" />}
+                  원본 통화
+                </span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => setDisplayCurrency('USD')}
+                className={displayCurrency === 'USD' ? 'bg-muted focus:bg-muted' : ''}
+              >
+                <span className="flex items-center gap-2">
+                  {displayCurrency === 'USD' && <Check className="h-4 w-4" />}
+                  달러 보기
+                </span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => setDisplayCurrency('KRW')}
+                className={displayCurrency === 'KRW' ? 'bg-muted focus:bg-muted' : ''}
+              >
+                <span className="flex items-center gap-2">
+                  {displayCurrency === 'KRW' && <Check className="h-4 w-4" />}
+                  원화 보기
+                </span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={refreshExchangeRate} disabled={currencyLoading}>
+                {currencyLoading ? '환율 갱신 중...' : '환율 새로고침'}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <span className="text-xs text-muted-foreground">
+            {formattedExchangeRate}
+          </span>
           {user ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -177,6 +244,32 @@ export function Header() {
                 </Link>
               );
             })}
+            <div className="border-t pt-3 mt-3 space-y-2">
+              <p className="text-xs text-muted-foreground">통화 표시</p>
+              <div className="flex gap-2">
+                {(['original', 'USD', 'KRW'] as DisplayCurrency[]).map((option) => (
+                  <Button
+                    key={option}
+                    size="sm"
+                    variant={displayCurrency === option ? 'default' : 'outline'}
+                    onClick={() => setDisplayCurrency(option)}
+                  >
+                    {option === 'original' ? '원본' : option === 'USD' ? '달러' : '원화'}
+                  </Button>
+                ))}
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">{formattedExchangeRate}</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={refreshExchangeRate}
+                  disabled={currencyLoading}
+                >
+                  {currencyLoading ? '갱신 중' : '환율 새로고침'}
+                </Button>
+              </div>
+            </div>
             <div className="border-t pt-3 mt-3">
               {user ? (
                 <>

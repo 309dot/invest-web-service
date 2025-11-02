@@ -1,6 +1,7 @@
-/**
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
+/**
  * 포트폴리오 분석 API
  * 
  * GET: 포트폴리오 분석 결과 조회
@@ -17,8 +18,8 @@ import { getPortfolioPositions } from '@/lib/services/position';
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    const userId = 'default_user'; // 실제로는 인증에서 가져와야 함
     const portfolioId = searchParams.get('portfolioId');
+    const userId = searchParams.get('userId') || 'default_user';
 
     if (!portfolioId) {
       return NextResponse.json(

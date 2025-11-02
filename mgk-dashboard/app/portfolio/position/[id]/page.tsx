@@ -11,15 +11,39 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { Loader2, ArrowLeft, Edit2, Save, X, TrendingUp, TrendingDown, DollarSign, Calendar, Trash2 } from 'lucide-react';
-import { formatCurrency, formatPercent, formatDate } from '@/lib/utils/formatters';
-import type { Position } from '@/types';
+import { formatPercent, formatDate, formatInputDate } from '@/lib/utils/formatters';
+import type { AutoInvestFrequency, AutoInvestSchedule, Position } from '@/types';
+import { useCurrency } from '@/lib/contexts/CurrencyContext';
 
 export default function PositionDetailPage() {
   const router = useRouter();
   const params = useParams();
   const { user, loading: authLoading } = useAuth();
   const positionId = params.id as string;
+
+const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
+  daily: '매일',
+  weekly: '매주',
+  biweekly: '격주',
+  monthly: '매월',
+  quarterly: '분기',
+};
 
   const [position, setPosition] = useState<Position | null>(null);
   const [loading, setLoading] = useState(true);
@@ -33,6 +57,35 @@ export default function PositionDetailPage() {
     averagePrice: '',
   });
 
+  const [autoInvestSchedules, setAutoInvestSchedules] = useState<AutoInvestSchedule[]>([]);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
+  const [scheduleSuccess, setScheduleSuccess] = useState<string | null>(null);
+  const [scheduleSaving, setScheduleSaving] = useState(false);
+  const [scheduleForm, setScheduleForm] = useState({
+    frequency: 'monthly' as AutoInvestFrequency,
+    amount: '',
+    effectiveFrom: formatInputDate(),
+    pricePerShare: '',
+    note: '',
+  });
+
+  const formatScheduleDate = (value: unknown): string => {
+    if (!value) return '-';
+    if (typeof value === 'string') {
+      return formatDate(value, 'yyyy-MM-dd');
+    }
+    if (typeof (value as any)?.toDate === 'function') {
+      return formatDate((value as any).toDate(), 'yyyy-MM-dd');
+    }
+    if ((value as any)?.seconds) {
+      return formatDate(new Date((value as any).seconds * 1000), 'yyyy-MM-dd');
+    }
+    return '-';
+  };
+
+  const { formatAmount } = useCurrency();
+
   useEffect(() => {
     if (!authLoading && !user) {
       router.push('/login');
@@ -41,16 +94,33 @@ export default function PositionDetailPage() {
 
   useEffect(() => {
     if (user && positionId) {
-      fetchPosition();
+      fetchPosition(user.uid);
     }
   }, [user, positionId]);
 
-  const fetchPosition = async () => {
+  useEffect(() => {
+    if (position?.purchaseMethod === 'auto') {
+      setScheduleForm((prev) => ({
+        ...prev,
+        frequency: position.autoInvestConfig?.frequency || prev.frequency,
+        amount:
+          position.autoInvestConfig?.amount !== undefined
+            ? position.autoInvestConfig.amount.toString()
+            : prev.amount,
+        pricePerShare:
+          position.currentPrice !== undefined && position.currentPrice !== null
+            ? position.currentPrice.toString()
+            : prev.pricePerShare,
+        effectiveFrom: formatInputDate(),
+      }));
+    }
+  }, [position]);
+
+  const fetchPosition = async (uid: string) => {
     try {
       setLoading(true);
-      // TODO: API에서 특정 포지션 조회
-      // 현재는 임시로 전체 포지션에서 찾기
-      const response = await fetch(`/api/positions?portfolioId=main&userId=${user?.uid}`);
+      const derivedPortfolioId = positionId?.includes('_') ? positionId.split('_')[0] : 'main';
+      const response = await fetch(`/api/positions?portfolioId=${derivedPortfolioId}&userId=${uid}`);
       const data = await response.json();
       
       const found = data.positions?.find((p: Position) => p.id === positionId);
@@ -60,6 +130,12 @@ export default function PositionDetailPage() {
           shares: found.shares.toString(),
           averagePrice: found.averagePrice.toString(),
         });
+
+        if (found.purchaseMethod === 'auto') {
+          await fetchAutoInvestSchedules(uid, found.id!);
+        } else {
+          setAutoInvestSchedules([]);
+        }
       } else {
         setError('포지션을 찾을 수 없습니다.');
       }
@@ -68,6 +144,26 @@ export default function PositionDetailPage() {
       setError('포지션 조회에 실패했습니다.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchAutoInvestSchedules = async (uid: string, posId: string) => {
+    try {
+      setScheduleLoading(true);
+      setScheduleError(null);
+      const response = await fetch(`/api/positions/${posId}/auto-invest?userId=${uid}`);
+      if (response.ok) {
+        const data = await response.json();
+        setAutoInvestSchedules(data.schedules || []);
+      } else {
+        const errorData = await response.json().catch(() => null);
+        setScheduleError(errorData?.error || '자동 투자 스케줄을 불러오지 못했습니다.');
+      }
+    } catch (err) {
+      console.error('Failed to fetch auto invest schedules:', err);
+      setScheduleError('자동 투자 스케줄 조회 중 오류가 발생했습니다.');
+    } finally {
+      setScheduleLoading(false);
     }
   };
 
@@ -132,6 +228,99 @@ export default function PositionDetailPage() {
       console.error('Failed to delete position:', err);
       setError('포지션 삭제에 실패했습니다.');
     }
+  };
+
+  const handleScheduleSubmit = async (event?: React.FormEvent) => {
+    event?.preventDefault();
+
+    if (!position || !user) {
+      setScheduleError('로그인 정보 또는 포지션 정보를 확인해주세요.');
+      return;
+    }
+
+    const amountValue = parseFloat(scheduleForm.amount);
+    const fallbackPrice = position.currentPrice || position.averagePrice || 0;
+    const priceValue = scheduleForm.pricePerShare
+      ? parseFloat(scheduleForm.pricePerShare)
+      : fallbackPrice;
+
+    if (Number.isNaN(amountValue) || amountValue <= 0) {
+      setScheduleError('유효한 투자 금액을 입력해주세요.');
+      return;
+    }
+
+    if (Number.isNaN(priceValue) || priceValue <= 0) {
+      setScheduleError('유효한 기준 단가를 입력해주세요.');
+      return;
+    }
+
+    if (!scheduleForm.effectiveFrom) {
+      setScheduleError('적용 시작일을 선택해주세요.');
+      return;
+    }
+
+    try {
+      setScheduleSaving(true);
+      setScheduleError(null);
+      setScheduleSuccess(null);
+
+      const response = await fetch(
+        `/api/positions/${position.id}/auto-invest?userId=${user.uid}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            frequency: scheduleForm.frequency,
+            amount: amountValue,
+            effectiveFrom: scheduleForm.effectiveFrom,
+        pricePerShare: priceValue,
+            note: scheduleForm.note || undefined,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.error || '자동 투자 스케줄 저장에 실패했습니다.');
+      }
+
+      const data = await response.json();
+      setAutoInvestSchedules(data.schedules || []);
+      setScheduleSuccess('자동 투자 스케줄이 업데이트되었습니다.');
+      setScheduleForm((prev) => ({
+        ...prev,
+        note: '',
+        amount: amountValue.toString(),
+        pricePerShare: priceValue.toString(),
+      }));
+
+      await fetchPosition(user.uid);
+    } catch (err) {
+      console.error('Failed to save schedule:', err);
+      setScheduleError(err instanceof Error ? err.message : '자동 투자 스케줄 저장 중 오류가 발생했습니다.');
+    } finally {
+      setScheduleSaving(false);
+    }
+  };
+
+  const handleScheduleReset = () => {
+    if (!position) return;
+
+    setScheduleForm({
+      frequency: position.autoInvestConfig?.frequency || 'monthly',
+      amount:
+        position.autoInvestConfig?.amount !== undefined
+          ? position.autoInvestConfig.amount.toString()
+          : '',
+      effectiveFrom: formatInputDate(),
+      pricePerShare:
+        position.currentPrice !== undefined && position.currentPrice !== null
+          ? position.currentPrice.toString()
+          : '',
+      note: '',
+    });
+    setScheduleError(null);
+    setScheduleSuccess(null);
   };
 
   if (authLoading || loading) {
@@ -233,7 +422,7 @@ export default function PositionDetailPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {formatCurrency(position.currentPrice, position.currency)}
+                  {formatAmount(position.currentPrice, position.currency)}
                 </div>
               </CardContent>
             </Card>
@@ -244,7 +433,7 @@ export default function PositionDetailPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {formatCurrency(position.totalValue, position.currency)}
+                  {formatAmount(position.totalValue, position.currency)}
                 </div>
               </CardContent>
             </Card>
@@ -256,7 +445,7 @@ export default function PositionDetailPage() {
               <CardContent>
                 <div className={`text-2xl font-bold flex items-center ${isProfit ? 'text-green-600' : 'text-red-600'}`}>
                   {isProfit ? <TrendingUp className="h-5 w-5 mr-2" /> : <TrendingDown className="h-5 w-5 mr-2" />}
-                  {formatCurrency(Math.abs(profitLoss), position.currency)}
+                  {formatAmount(Math.abs(profitLoss), position.currency)}
                 </div>
               </CardContent>
             </Card>
@@ -278,6 +467,9 @@ export default function PositionDetailPage() {
             <TabsList>
               <TabsTrigger value="info">기본 정보</TabsTrigger>
               <TabsTrigger value="transactions">거래 내역</TabsTrigger>
+          {position.purchaseMethod === 'auto' && (
+            <TabsTrigger value="autoInvest">자동 투자</TabsTrigger>
+          )}
             </TabsList>
 
             <TabsContent value="info">
@@ -314,7 +506,7 @@ export default function PositionDetailPage() {
                         />
                       ) : (
                         <div className="text-xl font-semibold">
-                          {formatCurrency(position.averagePrice, position.currency)}
+                          {formatAmount(position.averagePrice, position.currency)}
                         </div>
                       )}
                     </div>
@@ -322,7 +514,7 @@ export default function PositionDetailPage() {
                     <div className="space-y-2">
                       <Label>총 투자금</Label>
                       <div className="text-xl font-semibold">
-                        {formatCurrency(position.totalInvested, position.currency)}
+                        {formatAmount(position.totalInvested, position.currency)}
                       </div>
                     </div>
 
@@ -369,6 +561,227 @@ export default function PositionDetailPage() {
                 </CardContent>
               </Card>
             </TabsContent>
+
+            {position.purchaseMethod === 'auto' && (
+              <TabsContent value="autoInvest">
+                <div className="space-y-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>현재 자동 투자 설정</CardTitle>
+                      <CardDescription>
+                        변경 사항은 기록으로 남으며, 과거 금액을 재적용할 수 있습니다.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-1">
+                          <p className="text-sm text-muted-foreground">투자 금액</p>
+                          <p className="text-xl font-semibold">
+                            {formatAmount(position.autoInvestConfig?.amount || 0, position.currency)}
+                          </p>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-sm text-muted-foreground">투자 주기</p>
+                          <p className="text-xl font-semibold">
+                            {FREQUENCY_LABELS[position.autoInvestConfig?.frequency || 'monthly']}
+                          </p>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-sm text-muted-foreground">시작일</p>
+                          <p className="text-xl font-semibold">
+                            {position.autoInvestConfig?.startDate || '-'}
+                          </p>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-sm text-muted-foreground">마지막 변경</p>
+                          <p className="text-xl font-semibold">
+                            {position.autoInvestConfig?.lastUpdated || '-'}
+                          </p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {scheduleError && (
+                    <Alert variant="destructive">
+                      <AlertDescription>{scheduleError}</AlertDescription>
+                    </Alert>
+                  )}
+
+                  {scheduleSuccess && (
+                    <Alert>
+                      <AlertDescription>{scheduleSuccess}</AlertDescription>
+                    </Alert>
+                  )}
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>자동 투자 금액 변경</CardTitle>
+                      <CardDescription>
+                        새 투자 금액과 적용 시작일을 입력하면 해당 시점 이후의 자동 거래 내역이 재생성됩니다.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <form onSubmit={handleScheduleSubmit} className="space-y-4">
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <div className="space-y-2">
+                            <Label className="text-sm font-medium">투자 주기</Label>
+                            <Select
+                              value={scheduleForm.frequency}
+                              onValueChange={(value) =>
+                                setScheduleForm((prev) => ({
+                                  ...prev,
+                                  frequency: value as AutoInvestFrequency,
+                                }))
+                              }
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="주기를 선택하세요" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="daily">매일</SelectItem>
+                                <SelectItem value="weekly">매주</SelectItem>
+                                <SelectItem value="biweekly">격주</SelectItem>
+                                <SelectItem value="monthly">매월</SelectItem>
+                                <SelectItem value="quarterly">분기</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label className="text-sm font-medium">투자 금액 ({position.currency})</Label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={scheduleForm.amount}
+                              onChange={(e) =>
+                                setScheduleForm((prev) => ({ ...prev, amount: e.target.value }))
+                              }
+                              placeholder="예: 10"
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label className="text-sm font-medium">적용 시작일</Label>
+                            <Input
+                              type="date"
+                              value={scheduleForm.effectiveFrom}
+                              max={formatInputDate()}
+                              onChange={(e) =>
+                                setScheduleForm((prev) => ({ ...prev, effectiveFrom: e.target.value }))
+                              }
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label className="text-sm font-medium">재생성 기준 단가 ({position.currency})</Label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={scheduleForm.pricePerShare}
+                              onChange={(e) =>
+                                setScheduleForm((prev) => ({ ...prev, pricePerShare: e.target.value }))
+                              }
+                              placeholder={position.currentPrice
+                                ? position.currentPrice.toString()
+                                : '예: 5.25'}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label className="text-sm font-medium">메모 (선택)</Label>
+                          <Input
+                            type="text"
+                            value={scheduleForm.note}
+                            onChange={(e) =>
+                              setScheduleForm((prev) => ({ ...prev, note: e.target.value }))
+                            }
+                            placeholder="변경 이유를 남겨주세요"
+                          />
+                        </div>
+
+                        <div className="flex justify-end gap-3">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={handleScheduleReset}
+                            disabled={scheduleSaving}
+                          >
+                            초기화
+                          </Button>
+                          <Button type="submit" disabled={scheduleSaving}>
+                            {scheduleSaving ? (
+                              <>
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" /> 저장 중
+                              </>
+                            ) : (
+                              '스케줄 저장'
+                            )}
+                          </Button>
+                        </div>
+                      </form>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>자동 투자 변경 이력</CardTitle>
+                      <CardDescription>최신 순으로 정렬된 스케줄 히스토리</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {scheduleLoading ? (
+                        <div className="flex items-center justify-center py-8 text-muted-foreground">
+                          <Loader2 className="h-5 w-5 animate-spin mr-2" /> 불러오는 중입니다...
+                        </div>
+                      ) : autoInvestSchedules.length === 0 ? (
+                        <div className="py-8 text-center text-muted-foreground text-sm">
+                          아직 등록된 자동 투자 스케줄이 없습니다.
+                        </div>
+                      ) : (
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>적용 기간</TableHead>
+                              <TableHead>투자 금액</TableHead>
+                              <TableHead>주기</TableHead>
+                              <TableHead>등록일</TableHead>
+                              <TableHead>메모</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {autoInvestSchedules.map((schedule) => (
+                              <TableRow key={schedule.id}>
+                                <TableCell>
+                                  <div className="flex items-center gap-1">
+                                    <Calendar className="h-4 w-4 text-muted-foreground" />
+                                    <span>
+                                      {schedule.effectiveFrom}
+                                      {schedule.effectiveTo && ` ~ ${schedule.effectiveTo}`}
+                                      {!schedule.effectiveTo && ' 이후'}
+                                    </span>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="font-medium">
+                                  {formatAmount(schedule.amount, schedule.currency)}
+                                </TableCell>
+                                <TableCell>{FREQUENCY_LABELS[schedule.frequency]}</TableCell>
+                                <TableCell>
+                                  {formatScheduleDate(schedule.createdAt)}
+                                </TableCell>
+                                <TableCell className="text-sm text-muted-foreground">
+                                  {schedule.note || '-'}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+              </TabsContent>
+            )}
           </Tabs>
         </div>
       </div>

@@ -21,8 +21,9 @@ import {
   TrendingUp,
   TrendingDown,
 } from 'lucide-react';
-import { formatCurrency, formatPercent } from '@/lib/utils/formatters';
+import { formatPercent } from '@/lib/utils/formatters';
 import type { Position } from '@/types';
+import { useCurrency } from '@/lib/contexts/CurrencyContext';
 
 interface RebalancingSimulatorProps {
   positions: Position[];
@@ -44,6 +45,7 @@ export function RebalancingSimulator({ positions, totalValue }: RebalancingSimul
   const [simulationResult, setSimulationResult] = useState<TargetWeight[]>([]);
   const [rebalanceMode, setRebalanceMode] = useState<'equal' | 'custom'>('equal');
   const [showResult, setShowResult] = useState(false);
+  const { formatAmount } = useCurrency();
 
   // 초기 가중치 설정
   useEffect(() => {
@@ -199,7 +201,7 @@ export function RebalancingSimulator({ positions, totalValue }: RebalancingSimul
                   <div className="flex-1">
                     <div className="font-semibold">{position.symbol}</div>
                     <div className="text-sm text-muted-foreground">
-                      현재: {currentWeight.toFixed(1)}% ({formatCurrency(position.totalValue, 'USD')})
+                      현재: {currentWeight.toFixed(1)}% ({formatAmount(position.totalValue, 'USD')})
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -269,8 +271,8 @@ export function RebalancingSimulator({ positions, totalValue }: RebalancingSimul
                       <td className="py-2 px-2 font-semibold">{result.symbol}</td>
                       <td className="py-2 px-2 text-right">{result.currentWeight.toFixed(1)}%</td>
                       <td className="py-2 px-2 text-right font-medium">{result.targetWeight.toFixed(1)}%</td>
-                      <td className="py-2 px-2 text-right">{formatCurrency(result.currentValue, 'USD')}</td>
-                      <td className="py-2 px-2 text-right font-medium">{formatCurrency(result.targetValue, 'USD')}</td>
+                      <td className="py-2 px-2 text-right">{formatAmount(result.currentValue, 'USD')}</td>
+                      <td className="py-2 px-2 text-right font-medium">{formatAmount(result.targetValue, 'USD')}</td>
                       <td className="py-2 px-2 text-center">
                         <Badge
                           variant={
@@ -290,7 +292,7 @@ export function RebalancingSimulator({ positions, totalValue }: RebalancingSimul
                         result.difference < 0 ? 'text-red-600' : 
                         'text-muted-foreground'
                       }`}>
-                        {result.difference >= 0 ? '+' : ''}{formatCurrency(result.difference, 'USD')}
+                        {result.difference >= 0 ? '+' : ''}{formatAmount(result.difference, 'USD')}
                       </td>
                     </tr>
                   ))}
@@ -327,11 +329,11 @@ export function RebalancingSimulator({ positions, totalValue }: RebalancingSimul
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">현재 금액</span>
-                        <span className="font-medium">{formatCurrency(result.currentValue, 'USD')}</span>
+                        <span className="font-medium">{formatAmount(result.currentValue, 'USD')}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">목표 금액</span>
-                        <span className="font-medium">{formatCurrency(result.targetValue, 'USD')}</span>
+                        <span className="font-medium">{formatAmount(result.targetValue, 'USD')}</span>
                       </div>
                       <div className="flex justify-between pt-2 border-t">
                         <span className="font-semibold">차이</span>
@@ -340,7 +342,7 @@ export function RebalancingSimulator({ positions, totalValue }: RebalancingSimul
                           result.difference < 0 ? 'text-red-600' : 
                           'text-muted-foreground'
                         }`}>
-                          {result.difference >= 0 ? '+' : ''}{formatCurrency(result.difference, 'USD')}
+                          {result.difference >= 0 ? '+' : ''}{formatAmount(result.difference, 'USD')}
                         </span>
                       </div>
                     </div>

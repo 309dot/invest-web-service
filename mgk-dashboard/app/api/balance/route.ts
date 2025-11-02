@@ -80,6 +80,11 @@ export async function POST(request: NextRequest) {
       note,
     } = body;
 
+    const parsedExchangeRate =
+      typeof exchangeRate === 'string' ? parseFloat(exchangeRate) : exchangeRate;
+    const parsedConvertedAmount =
+      typeof convertedAmount === 'string' ? parseFloat(convertedAmount) : convertedAmount;
+
     // 유효성 검사
     if (!portfolioId || !type || !currency || !amount || !date) {
       return NextResponse.json(
@@ -106,8 +111,8 @@ export async function POST(request: NextRequest) {
       type,
       currency,
       amount,
-      exchangeRate,
-      convertedAmount,
+      exchangeRate: Number.isFinite(parsedExchangeRate) ? parsedExchangeRate : undefined,
+      convertedAmount: Number.isFinite(parsedConvertedAmount) ? parsedConvertedAmount : undefined,
       date,
       note,
     });

@@ -20,6 +20,119 @@ import {
 import { db } from '@/lib/firebase';
 import type { Position, Stock, Transaction } from '@/types';
 
+const formatDateString = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const FLOAT_TOLERANCE = 1e-6;
+
+function metricsNeedUpdate(
+  existing: Position,
+  calculated: {
+    shares: number;
+    averagePrice: number;
+    totalInvested: number;
+    currentPrice: number;
+    totalValue: number;
+    returnRate: number;
+    profitLoss: number;
+    transactionCount: number;
+  }
+): boolean {
+  const conditions = [
+    Math.abs((existing.shares ?? 0) - calculated.shares) > FLOAT_TOLERANCE,
+    Math.abs((existing.averagePrice ?? 0) - calculated.averagePrice) > FLOAT_TOLERANCE,
+    Math.abs((existing.totalInvested ?? 0) - calculated.totalInvested) > FLOAT_TOLERANCE,
+    Math.abs((existing.totalValue ?? 0) - calculated.totalValue) > FLOAT_TOLERANCE,
+    (existing.transactionCount ?? 0) !== calculated.transactionCount,
+  ];
+
+  return conditions.some(Boolean);
+}
+
+function aggregatePositionMetrics(
+  transactions: Transaction[],
+  existingPosition: Position | null
+) {
+  if (transactions.length === 0) {
+    return {
+      shares: 0,
+      averagePrice: 0,
+      totalInvested: 0,
+      currentPrice: existingPosition?.currentPrice ?? 0,
+      totalValue: 0,
+      returnRate: 0,
+      profitLoss: 0,
+      transactionCount: 0,
+      firstPurchaseDate:
+        existingPosition?.firstPurchaseDate || formatDateString(new Date()),
+      lastTransactionDate:
+        existingPosition?.lastTransactionDate ||
+        existingPosition?.firstPurchaseDate ||
+        formatDateString(new Date()),
+    };
+  }
+
+  let shares = 0;
+  let totalInvested = 0;
+  let averagePrice = existingPosition?.averagePrice ?? 0;
+  let currentPrice = existingPosition?.currentPrice ?? 0;
+  let firstPurchaseDate: string | null = null;
+  let lastTransactionDate: string | null = null;
+
+  transactions.forEach((tx) => {
+    const price = tx.price || 0;
+    const quantity = tx.shares || 0;
+
+    if (tx.type === 'buy') {
+      const cost = quantity * price;
+      totalInvested += cost;
+      shares += quantity;
+      averagePrice = shares > 0 ? totalInvested / shares : 0;
+    } else if (tx.type === 'sell') {
+      shares -= quantity;
+      if (shares < 0) {
+        shares = 0;
+      }
+      const costBasis = averagePrice * quantity;
+      totalInvested = Math.max(0, totalInvested - costBasis);
+      if (shares === 0) {
+        averagePrice = 0;
+      }
+    }
+
+    currentPrice = price;
+    if (!firstPurchaseDate) {
+      firstPurchaseDate = tx.date;
+    }
+    lastTransactionDate = tx.date;
+  });
+
+  const totalValue = shares * currentPrice;
+  const returnRate = totalInvested > 0 ? ((totalValue - totalInvested) / totalInvested) * 100 : 0;
+  const profitLoss = totalValue - totalInvested;
+
+  return {
+    shares,
+    averagePrice,
+    totalInvested,
+    currentPrice,
+    totalValue,
+    returnRate,
+    profitLoss,
+    transactionCount: transactions.length,
+    firstPurchaseDate: firstPurchaseDate || existingPosition?.firstPurchaseDate || formatDateString(new Date()),
+    lastTransactionDate:
+      lastTransactionDate ||
+      firstPurchaseDate ||
+      existingPosition?.lastTransactionDate ||
+      formatDateString(new Date()),
+  } as const;
+}
+
 /**
  * 포지션 생성
  */
@@ -136,12 +249,71 @@ export async function getPortfolioPositions(
     const snapshot = await getDocs(q);
 
     const positions: Position[] = [];
-    snapshot.forEach((doc) => {
-      positions.push({
-        id: doc.id,
-        ...doc.data(),
-      } as Position);
-    });
+
+    for (const docSnapshot of snapshot.docs) {
+      const positionData = {
+        id: docSnapshot.id,
+        ...docSnapshot.data(),
+      } as Position;
+
+      const transactionsRef = collection(
+        db,
+        `users/${userId}/portfolios/${portfolioId}/transactions`
+      );
+      const transactionsSnapshot = await getDocs(
+        query(
+          transactionsRef,
+          where('positionId', '==', docSnapshot.id),
+          orderBy('date', 'asc')
+        )
+      );
+
+      const transactions: Transaction[] = [];
+      transactionsSnapshot.forEach((txDoc) => {
+        transactions.push({
+          id: txDoc.id,
+          ...txDoc.data(),
+        } as Transaction);
+      });
+
+      const metrics = aggregatePositionMetrics(transactions, positionData);
+
+      if (positionData && metricsNeedUpdate(positionData, metrics)) {
+        const positionRef = doc(
+          db,
+          `users/${userId}/portfolios/${portfolioId}/positions`,
+          docSnapshot.id
+        );
+
+        await setDoc(
+          positionRef,
+          {
+            shares: metrics.shares,
+            averagePrice: metrics.averagePrice,
+            totalInvested: metrics.totalInvested,
+            currentPrice: metrics.currentPrice,
+            totalValue: metrics.totalValue,
+            returnRate: metrics.returnRate,
+            profitLoss: metrics.profitLoss,
+            transactionCount: metrics.transactionCount,
+            firstPurchaseDate: metrics.firstPurchaseDate,
+            lastTransactionDate: metrics.lastTransactionDate,
+            updatedAt: Timestamp.now(),
+          },
+          { merge: true }
+        );
+
+        positions.push({
+          ...positionData,
+          ...metrics,
+        });
+      } else {
+        positions.push({
+          ...positionData,
+          ...metrics,
+        });
+      }
+    }
 
     return positions;
   } catch (error) {
@@ -224,66 +396,73 @@ export async function updatePositionAfterTransaction(
   }
 ): Promise<void> {
   try {
-    const position = await getPosition(userId, portfolioId, positionId);
-    if (!position) {
+    const existingPosition = await getPosition(userId, portfolioId, positionId);
+    if (!existingPosition) {
       throw new Error('Position not found');
     }
 
-    let newShares = position.shares;
-    let newAveragePrice = position.averagePrice;
-    let newTotalInvested = position.totalInvested;
+    await recalculatePositionFromTransactions(userId, portfolioId, positionId);
 
-    if (transaction.type === 'buy') {
-      // 매수
-      newAveragePrice = calculateAveragePrice(
-        position.shares,
-        position.averagePrice,
-        transaction.shares,
-        transaction.price
-      );
-      newShares = position.shares + transaction.shares;
-      newTotalInvested = position.totalInvested + transaction.shares * transaction.price;
-    } else if (transaction.type === 'sell') {
-      // 매도
-      newShares = position.shares - transaction.shares;
-      if (newShares < 0) {
-        throw new Error('Cannot sell more shares than owned');
-      }
-      // 평균 매수가는 그대로 유지
-      newTotalInvested = newShares * position.averagePrice;
-    }
+    console.log(`✅ 포지션 재계산 업데이트: ${positionId}`);
+  } catch (error) {
+    console.error('Error updating position after transaction:', error);
+    throw error;
+  }
+}
 
-    const currentPrice = transaction.price; // 실제로는 API에서 가져와야 함
-    const newTotalValue = newShares * currentPrice;
-    const newReturnRate = calculateReturnRate(currentPrice, newAveragePrice);
-    const newProfitLoss = newTotalValue - newTotalInvested;
-
+export async function recalculatePositionFromTransactions(
+  userId: string,
+  portfolioId: string,
+  positionId: string
+): Promise<void> {
+  try {
     const positionRef = doc(
       db,
       `users/${userId}/portfolios/${portfolioId}/positions`,
       positionId
     );
+    const positionSnapshot = await getDoc(positionRef);
+    const existingPosition = positionSnapshot.exists()
+      ? (positionSnapshot.data() as Position)
+      : null;
+
+    const transactionsRef = collection(
+      db,
+      `users/${userId}/portfolios/${portfolioId}/transactions`
+    );
+    const transactionsSnapshot = await getDocs(
+      query(transactionsRef, where('positionId', '==', positionId), orderBy('date', 'asc'))
+    );
+
+    const transactions: Transaction[] = [];
+    transactionsSnapshot.forEach((docSnapshot) => {
+      transactions.push({
+        id: docSnapshot.id,
+        ...docSnapshot.data(),
+      } as Transaction);
+    });
+
+    const metrics = aggregatePositionMetrics(transactions, existingPosition);
 
     await setDoc(
       positionRef,
       {
-        shares: newShares,
-        averagePrice: newAveragePrice,
-        totalInvested: newTotalInvested,
-        currentPrice,
-        totalValue: newTotalValue,
-        returnRate: newReturnRate,
-        profitLoss: newProfitLoss,
-        lastTransactionDate: transaction.date,
-        transactionCount: position.transactionCount + 1,
+        shares: metrics.shares,
+        averagePrice: metrics.averagePrice,
+        totalInvested: metrics.totalInvested,
+        currentPrice: metrics.currentPrice,
+        totalValue: metrics.totalValue,
+        returnRate: metrics.returnRate,
+        profitLoss: metrics.profitLoss,
+        transactionCount: metrics.transactionCount,
+        firstPurchaseDate: metrics.firstPurchaseDate,
+        lastTransactionDate: metrics.lastTransactionDate,
         updatedAt: Timestamp.now(),
       },
       { merge: true }
     );
-
-    console.log(`✅ 포지션 업데이트: ${positionId}`);
   } catch (error) {
-    console.error('Error updating position after transaction:', error);
+    console.error('Error recalculating position from transactions:', error);
     throw error;
   }
 }

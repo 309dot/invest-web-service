@@ -9,7 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { formatCurrency, formatPercent, formatDate } from '@/lib/utils/formatters';
+import { formatPercent, formatDate } from '@/lib/utils/formatters';
+import { useCurrency } from '@/lib/contexts/CurrencyContext';
 import type { WeeklyReportWithAI } from '@/types';
 
 interface TimelineItem {
@@ -25,6 +26,7 @@ interface TimelineItem {
 type LoadingState = 'idle' | 'loading' | 'error';
 
 export default function WeeklyReportsPage() {
+  const { formatAmount } = useCurrency();
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
   const [selectedReport, setSelectedReport] = useState<TimelineItem | null>(null);
   const [loading, setLoading] = useState<LoadingState>('loading');
@@ -187,11 +189,11 @@ export default function WeeklyReportsPage() {
                         </TableRow>
                         <TableRow>
                           <TableCell>평균 매수가 (예시)</TableCell>
-                          <TableCell className="text-right">{formatCurrency(512.45)}</TableCell>
+                          <TableCell className="text-right">{formatAmount(512.45, 'USD')}</TableCell>
                         </TableRow>
                         <TableRow>
                           <TableCell>총 평가액 (예시)</TableCell>
-                          <TableCell className="text-right">{formatCurrency(952.12)}</TableCell>
+                          <TableCell className="text-right">{formatAmount(952.12, 'USD')}</TableCell>
                         </TableRow>
                       </TableBody>
                     </Table>

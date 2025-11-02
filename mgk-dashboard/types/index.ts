@@ -98,6 +98,8 @@ export interface Position {
     startDate: string; // 시작일 (YYYY-MM-DD)
     isActive: boolean; // 활성화 여부
     lastExecuted?: string; // 마지막 실행일
+    currentScheduleId?: string; // 활성 스케줄 ID
+    lastUpdated?: string; // 마지막 수정일 (YYYY-MM-DD)
   };
   // 메타데이터
   firstPurchaseDate: string; // 최초 매수일 (YYYY-MM-DD)
@@ -134,6 +136,22 @@ export interface Transaction {
   // 메타데이터
   createdAt: Timestamp;
   updatedAt?: Timestamp;
+}
+
+export interface AutoInvestSchedule {
+  id?: string;
+  userId: string;
+  portfolioId: string;
+  positionId: string;
+  frequency: AutoInvestFrequency;
+  amount: number;
+  currency: 'USD' | 'KRW';
+  effectiveFrom: string; // YYYY-MM-DD
+  effectiveTo?: string | null; // YYYY-MM-DD
+  note?: string;
+  createdBy: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 }
 
 // 포트폴리오 분석 결과

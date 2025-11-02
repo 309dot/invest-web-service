@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import type { Stock } from '@/types';
+import type { Stock, Sector } from '@/types';
 import { Timestamp } from 'firebase/firestore';
 import { searchKoreanStocks as searchYahooKR } from '@/lib/apis/yahoo-finance';
 
@@ -10,8 +10,10 @@ const ALPHA_VANTAGE_API_KEY = process.env.ALPHA_VANTAGE_API_KEY || process.env.N
 const ALPHA_VANTAGE_BASE_URL = 'https://www.alphavantage.co/query';
 
 // 캐시 (5분)
-const searchCache = new Map<string, { data: any; timestamp: number }>();
+const searchCache = new Map<string, { data: Omit<Stock, 'id'>[]; timestamp: number }>();
 const CACHE_DURATION = 5 * 60 * 1000; // 5분
+const USER_AGENT =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36';
 
 interface AlphaVantageSearchResult {
   '1. symbol': string;
@@ -25,6 +27,72 @@ interface AlphaVantageSearchResult {
   '9. matchScore': string;
 }
 
+interface GoogleFinanceMatch {
+  t?: string;
+  symbol?: string;
+  id?: string;
+  n?: string;
+  name?: string;
+  e?: string;
+  exchange?: string;
+  type?: string;
+  sector?: string;
+  f?: string;
+}
+
+const SECTOR_MAP: Record<string, Sector> = {
+  technology: 'technology',
+  tech: 'technology',
+  healthcare: 'healthcare',
+  health: 'healthcare',
+  financial: 'financial',
+  finance: 'financial',
+  consumer: 'consumer',
+  industrial: 'industrial',
+  industry: 'industrial',
+  energy: 'energy',
+  materials: 'materials',
+  material: 'materials',
+  utilities: 'utilities',
+  utility: 'utilities',
+  'real-estate': 'real-estate',
+  'realestate': 'real-estate',
+  'real-estate-services': 'real-estate',
+  communication: 'communication',
+  telecom: 'communication',
+  telecommunications: 'communication',
+  other: 'other',
+};
+
+function normalizeKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z]+/g, '-');
+}
+
+function normalizeSector(value?: string): Sector {
+  if (!value) {
+    return 'other';
+  }
+  const key = normalizeKey(value);
+  return SECTOR_MAP[key] ?? 'other';
+}
+
+function normalizeAssetType(value?: string): Stock['assetType'] {
+  if (!value) {
+    return 'stock';
+  }
+  const normalized = value.toLowerCase();
+  if (normalized.includes('etf')) {
+    return 'etf';
+  }
+  if (normalized.includes('reit')) {
+    return 'reit';
+  }
+  if (normalized.includes('fund')) {
+    return 'fund';
+  }
+  return 'stock';
+}
+
 /**
  * Alpha Vantage 검색 결과를 Stock 타입으로 변환
  */
@@ -36,14 +104,7 @@ function mapAlphaVantageToStock(result: AlphaVantageSearchResult): Omit<Stock, '
   const currency = result['8. currency'];
 
   // 자산 유형 결정
-  let assetType: Stock['assetType'] = 'stock';
-  if (type.includes('etf')) {
-    assetType = 'etf';
-  } else if (type.includes('reit')) {
-    assetType = 'reit';
-  } else if (type.includes('fund')) {
-    assetType = 'fund';
-  }
+  const assetType = normalizeAssetType(type);
 
   // 시장 결정
   let market: Stock['market'] = 'US';
@@ -115,26 +176,86 @@ async function searchAlphaVantage(keyword: string): Promise<Omit<Stock, 'id'>[]>
   }
 }
 
+async function searchGoogleFinanceKR(keyword: string): Promise<Omit<Stock, 'id'>[]> {
+  try {
+    const url = new URL('https://www.google.com/finance/match');
+    url.searchParams.set('matchtype', 'matchall');
+    url.searchParams.set('q', keyword);
+    url.searchParams.set('hl', 'ko');
+    url.searchParams.set('gl', 'KR');
+
+    const response = await fetch(url.toString(), {
+      headers: {
+        'User-Agent': USER_AGENT,
+        Accept: 'application/json, text/plain, */*',
+      },
+      cache: 'no-store',
+    });
+
+    if (!response.ok) {
+      throw new Error(`Google Finance response ${response.status}`);
+    }
+
+    const raw = await response.text();
+    const trimmed = raw.trim().replace(/^\/+/, '');
+    const parsed = trimmed ? (JSON.parse(trimmed) as unknown) : [];
+    const matches: GoogleFinanceMatch[] = Array.isArray(parsed)
+      ? (parsed as GoogleFinanceMatch[])
+      : Array.isArray((parsed as { matches?: GoogleFinanceMatch[] })?.matches)
+        ? ((parsed as { matches?: GoogleFinanceMatch[] }).matches as GoogleFinanceMatch[])
+        : [];
+
+    return matches.map((match) => {
+      const symbol = match.t || match.symbol || match.id || keyword;
+      const name = match.n || match.name || symbol;
+      const exchange = match.e || match.exchange || 'KRX';
+      const assetType = normalizeAssetType(match.type);
+
+      return {
+        symbol,
+        name,
+        market: 'KR' as Stock['market'],
+        assetType,
+        sector: normalizeSector(match.sector),
+        currency: 'KRW' as const,
+        exchange,
+        description: match.f || `${name} (${symbol})`,
+        searchCount: 0,
+        createdAt: Timestamp.now(),
+      } satisfies Omit<Stock, 'id'>;
+    });
+  } catch (error) {
+    console.error('Google Finance search error:', error);
+    return [];
+  }
+}
+
 /**
  * 한국 주식 검색 (Yahoo Finance API 사용)
  */
 async function searchKoreanStocks(keyword: string): Promise<Omit<Stock, 'id'>[]> {
   try {
-    const yahooResults = await searchYahooKR(keyword);
-    
-    // Yahoo Finance 결과를 Stock 타입으로 변환
-    return yahooResults.map((result: any) => ({
+    const [yahooResults, googleResults] = await Promise.all([
+      searchYahooKR(keyword).catch(() => []),
+      searchGoogleFinanceKR(keyword).catch(() => []),
+    ]);
+
+    const yahooStocks = yahooResults.map((result: any) => ({
       symbol: result.symbol,
       name: result.name,
-      market: 'KR',
-      assetType: result.assetType === 'ETF' ? 'etf' : 'stock',
-      sector: result.sector || '미분류',
-      currency: 'KRW',
+      market: 'KR' as Stock['market'],
+      assetType: normalizeAssetType(result.assetType),
+      sector: normalizeSector(result.sector),
+      currency: 'KRW' as const,
       exchange: result.exchange,
       description: `${result.name} (${result.symbol})`,
       searchCount: 0,
       createdAt: Timestamp.now(),
-    }));
+    } satisfies Omit<Stock, 'id'>));
+
+    const all = [...googleResults, ...yahooStocks];
+    const unique = Array.from(new Map(all.map((stock) => [stock.symbol, stock])).values());
+    return unique;
   } catch (error) {
     console.error('Korean stock search error:', error);
     return [];

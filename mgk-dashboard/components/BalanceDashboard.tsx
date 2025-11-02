@@ -39,7 +39,8 @@ import {
   TrendingUp,
   DollarSign,
 } from 'lucide-react';
-import { formatCurrency, formatInputDate } from '@/lib/utils/formatters';
+import { formatInputDate } from '@/lib/utils/formatters';
+import { useCurrency } from '@/lib/contexts/CurrencyContext';
 
 interface BalanceDashboardProps {
   portfolioId: string;
@@ -51,6 +52,7 @@ export function BalanceDashboard({ portfolioId }: BalanceDashboardProps) {
   const [showChargeModal, setShowChargeModal] = useState(false);
   const [chargeLoading, setChargeLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { formatAmount } = useCurrency();
 
   // 충전 폼
   const [chargeType, setChargeType] = useState<'deposit' | 'withdrawal'>('deposit');
@@ -123,7 +125,7 @@ export function BalanceDashboard({ portfolioId }: BalanceDashboardProps) {
     if (chargeType === 'withdrawal') {
       const currentBalance = balances[currency];
       if (parseFloat(amount) > currentBalance) {
-        return `잔액이 부족합니다. (현재 잔액: ${formatCurrency(currentBalance, currency)})`;
+        return `잔액이 부족합니다. (현재 잔액: ${formatAmount(currentBalance, currency)})`;
       }
     }
     return null;
@@ -235,7 +237,7 @@ export function BalanceDashboard({ portfolioId }: BalanceDashboardProps) {
                   <TrendingUp className="h-4 w-4 text-primary" />
                 </div>
                 <p className="text-2xl font-bold">
-                  {formatCurrency(balances.KRW, 'KRW')}
+                  {formatAmount(balances.KRW, 'KRW')}
                 </p>
               </div>
 
@@ -246,7 +248,7 @@ export function BalanceDashboard({ portfolioId }: BalanceDashboardProps) {
                   <DollarSign className="h-4 w-4 text-green-500" />
                 </div>
                 <p className="text-2xl font-bold">
-                  {formatCurrency(balances.USD, 'USD')}
+                  {formatAmount(balances.USD, 'USD')}
                 </p>
               </div>
             </div>
@@ -370,7 +372,7 @@ export function BalanceDashboard({ portfolioId }: BalanceDashboardProps) {
                 />
                 {calculatedConversion !== null && (
                   <p className="text-sm text-muted-foreground">
-                    환전 후: {formatCurrency(
+                    환전 후: {formatAmount(
                       calculatedConversion,
                       currency === 'KRW' ? 'USD' : 'KRW'
                     )}

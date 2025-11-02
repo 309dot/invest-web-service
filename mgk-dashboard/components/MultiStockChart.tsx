@@ -11,7 +11,8 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { formatDate, formatPercent, formatCurrency } from '@/lib/utils/formatters';
+import { formatDate, formatPercent } from '@/lib/utils/formatters';
+import { useCurrency } from '@/lib/contexts/CurrencyContext';
 import { TrendingUp, TrendingDown, Eye, EyeOff } from 'lucide-react';
 import type { Position } from '@/types';
 
@@ -38,6 +39,7 @@ export function MultiStockChart({ positions }: MultiStockChartProps) {
     new Set(positions.map(p => p.symbol))
   );
   const [chartType, setChartType] = useState<'price' | 'return'>('return');
+  const { formatAmount } = useCurrency();
 
   // 차트 데이터 생성 (정규화된 수익률)
   const chartData = useMemo(() => {
@@ -125,7 +127,7 @@ export function MultiStockChart({ positions }: MultiStockChartProps) {
                 <span className="font-medium">
                   {chartType === 'return' 
                     ? formatPercent(item.value)
-                    : formatCurrency(item.value, 'USD')
+                    : formatAmount(item.value, 'USD')
                   }
                 </span>
               </div>
@@ -312,7 +314,7 @@ export function MultiStockChart({ positions }: MultiStockChartProps) {
                         {formatPercent(position.returnRate)}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        {formatCurrency(position.totalValue, 'USD')}
+                        {formatAmount(position.totalValue, 'USD')}
                       </div>
                     </div>
                   );

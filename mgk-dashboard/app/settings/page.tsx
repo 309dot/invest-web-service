@@ -1,26 +1,32 @@
 "use client";
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ArrowLeft, Plus, X } from 'lucide-react';
+import { useAuth } from '@/lib/contexts/AuthContext';
 
 export default function SettingsPage() {
+  const { user } = useAuth();
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const [settings, setSettings] = useState({
-    sellSignalThreshold: 5,
-    sellRatio: 30,
-    minDollarBalance: 50,
-    goodExchangeRate: 1350,
-    notificationEmail: 'user@example.com',
-    dailyPurchaseAmount: 10,
+    notificationEmail: '',
     autoCollectNews: true,
     newsImportanceThreshold: 2,
   });
+
+  useEffect(() => {
+    if (user?.email) {
+      setSettings((prev) => ({
+        ...prev,
+        notificationEmail: prev.notificationEmail || user.email!,
+      }));
+    }
+  }, [user?.email]);
 
   const [monitoringStocks, setMonitoringStocks] = useState(['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN']);
   const [newStock, setNewStock] = useState('');
@@ -71,80 +77,30 @@ export default function SettingsPage() {
           </Alert>
         )}
 
-        {/* 투자 설정 */}
         <Card>
           <CardHeader>
-            <CardTitle>투자 설정</CardTitle>
-            <CardDescription>매도 신호 및 투자 관련 설정</CardDescription>
+            <CardTitle>알림 설정</CardTitle>
+            <CardDescription>계정 기본 이메일로 알림이 전송됩니다.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">매도 신호 기준 (%)</label>
-                <input
-                  type="number"
-                  value={settings.sellSignalThreshold}
-                  onChange={(e) => setSettings({ ...settings, sellSignalThreshold: parseFloat(e.target.value) })}
-                  className="w-full px-3 py-2 border rounded-md"
-                />
-                <p className="text-xs text-muted-foreground">수익률이 이 값 이상이면 매도 신호</p>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">매도 비율 (%)</label>
-                <input
-                  type="number"
-                  value={settings.sellRatio}
-                  onChange={(e) => setSettings({ ...settings, sellRatio: parseFloat(e.target.value) })}
-                  className="w-full px-3 py-2 border rounded-md"
-                />
-                <p className="text-xs text-muted-foreground">매도 신호 발생 시 매도할 비율</p>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">최소 달러 잔고 (USD)</label>
-                <input
-                  type="number"
-                  value={settings.minDollarBalance}
-                  onChange={(e) => setSettings({ ...settings, minDollarBalance: parseFloat(e.target.value) })}
-                  className="w-full px-3 py-2 border rounded-md"
-                />
-                <p className="text-xs text-muted-foreground">이 금액 이하면 충전 알림</p>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">좋은 환율 기준 (KRW)</label>
-                <input
-                  type="number"
-                  value={settings.goodExchangeRate}
-                  onChange={(e) => setSettings({ ...settings, goodExchangeRate: parseFloat(e.target.value) })}
-                  className="w-full px-3 py-2 border rounded-md"
-                />
-                <p className="text-xs text-muted-foreground">이 환율 이하면 충전 추천 알림</p>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">일일 매수 금액 (USD)</label>
-                <input
-                  type="number"
-                  value={settings.dailyPurchaseAmount}
-                  onChange={(e) => setSettings({ ...settings, dailyPurchaseAmount: parseFloat(e.target.value) })}
-                  className="w-full px-3 py-2 border rounded-md"
-                />
-                <p className="text-xs text-muted-foreground">매일 자동 매수할 금액</p>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">알림 이메일</label>
-                <input
-                  type="email"
-                  value={settings.notificationEmail}
-                  onChange={(e) => setSettings({ ...settings, notificationEmail: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-md"
-                />
-                <p className="text-xs text-muted-foreground">알림을 받을 이메일 주소</p>
-              </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">알림 이메일</label>
+              <input
+                type="email"
+                value={settings.notificationEmail}
+                onChange={(e) => setSettings({ ...settings, notificationEmail: e.target.value })}
+                className="w-full px-3 py-2 border rounded-md"
+                placeholder="이메일 주소를 입력하세요"
+              />
+              <p className="text-xs text-muted-foreground">
+                기본값은 로그인한 계정의 이메일입니다.
+              </p>
             </div>
+            <Alert>
+              <AlertDescription className="text-sm text-muted-foreground">
+                투자 관련 세부 설정은 각 종목 상세 화면에서 개별적으로 관리할 수 있습니다.
+              </AlertDescription>
+            </Alert>
           </CardContent>
         </Card>
 

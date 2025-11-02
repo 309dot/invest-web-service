@@ -82,13 +82,14 @@ export function ManualEntry() {
       return;
     }
 
+    const memo = chargeForm.memo.trim();
     const payload: (DollarChargeForm & { krwAmount: number }) = {
       chargeDate: chargeForm.chargeDate,
       amount,
       exchangeRate: rate,
       fee,
-      memo: chargeForm.memo.trim() ? chargeForm.memo.trim() : undefined,
       krwAmount: chargeSummary?.krwAmount ?? amount * rate,
+      ...(memo ? { memo } : {}),
     };
 
     setIsSubmitting(true);

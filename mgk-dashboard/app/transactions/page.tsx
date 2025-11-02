@@ -43,10 +43,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { formatCurrency, formatDate } from '@/lib/utils/formatters';
+import { formatDate } from '@/lib/utils/formatters';
+import { useCurrency } from '@/lib/contexts/CurrencyContext';
 import type { Transaction } from '@/types';
+import { deriveDefaultPortfolioId } from '@/lib/utils/portfolio';
 
 export default function TransactionsPage() {
+  const { formatAmount } = useCurrency();
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
 
@@ -78,8 +81,10 @@ export default function TransactionsPage() {
         setStats(null);
         return;
       }
+      const portfolioId = deriveDefaultPortfolioId(user.uid);
+
       const params = new URLSearchParams({
-        portfolioId: 'main',
+        portfolioId,
         includeStats: 'true',
         userId: user.uid,
       });
@@ -129,8 +134,9 @@ export default function TransactionsPage() {
     }
 
     try {
+      const portfolioId = deriveDefaultPortfolioId(user.uid);
       const response = await fetch(
-        `/api/transactions/${transactionToDelete.id}?portfolioId=main&userId=${user.uid}`,
+        `/api/transactions/${transactionToDelete.id}?portfolioId=${portfolioId}&userId=${user.uid}`,
         { method: 'DELETE' }
       );
 
@@ -210,7 +216,7 @@ export default function TransactionsPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-green-600">
-                    {formatCurrency(stats.totalBuyAmount, 'USD')}
+                    {formatAmount(stats.totalBuyAmount, 'USD')}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
                     {stats.totalBuys.toFixed(2)} 주
@@ -226,7 +232,7 @@ export default function TransactionsPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-red-600">
-                    {formatCurrency(stats.totalSellAmount, 'USD')}
+                    {formatAmount(stats.totalSellAmount, 'USD')}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
                     {stats.totalSells.toFixed(2)} 주
@@ -242,7 +248,7 @@ export default function TransactionsPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
-                    {formatCurrency(stats.averageBuyPrice, 'USD')}
+                    {formatAmount(stats.averageBuyPrice, 'USD')}
                   </div>
                 </CardContent>
               </Card>
@@ -378,15 +384,15 @@ export default function TransactionsPage() {
                             </div>
                             <div>
                               <p className="text-muted-foreground">가격</p>
-                              <p className="font-medium">{formatCurrency(transaction.price, resolveTransactionCurrency(transaction))}</p>
+                              <p className="font-medium">{formatAmount(transaction.price, resolveTransactionCurrency(transaction))}</p>
                             </div>
                             <div>
                               <p className="text-muted-foreground">거래 금액</p>
-                              <p className="font-medium">{formatCurrency(transaction.amount, resolveTransactionCurrency(transaction))}</p>
+                              <p className="font-medium">{formatAmount(transaction.amount, resolveTransactionCurrency(transaction))}</p>
                             </div>
                             <div>
                               <p className="text-muted-foreground">총 금액</p>
-                              <p className="font-semibold">{formatCurrency(transaction.totalAmount, resolveTransactionCurrency(transaction))}</p>
+                              <p className="font-semibold">{formatAmount(transaction.totalAmount, resolveTransactionCurrency(transaction))}</p>
                             </div>
                           </div>
 
@@ -455,16 +461,16 @@ export default function TransactionsPage() {
                               {transaction.shares.toFixed(4)}
                             </td>
                             <td className="py-3 px-4 text-right">
-                              {formatCurrency(transaction.price, resolveTransactionCurrency(transaction))}
+                              {formatAmount(transaction.price, resolveTransactionCurrency(transaction))}
                             </td>
                             <td className="py-3 px-4 text-right font-medium">
-                              {formatCurrency(transaction.amount, resolveTransactionCurrency(transaction))}
+                              {formatAmount(transaction.amount, resolveTransactionCurrency(transaction))}
                             </td>
                             <td className="py-3 px-4 text-right text-muted-foreground">
-                              {formatCurrency(transaction.fee, resolveTransactionCurrency(transaction))}
+                              {formatAmount(transaction.fee, resolveTransactionCurrency(transaction))}
                             </td>
                             <td className="py-3 px-4 text-right font-semibold">
-                              {formatCurrency(transaction.totalAmount, resolveTransactionCurrency(transaction))}
+                              {formatAmount(transaction.totalAmount, resolveTransactionCurrency(transaction))}
                             </td>
                             <td className="py-3 px-4 text-sm text-muted-foreground max-w-xs truncate">
                               {transaction.memo || '-'}
@@ -512,7 +518,7 @@ export default function TransactionsPage() {
                     <p><strong>종목:</strong> {transactionToDelete.symbol}</p>
                     <p><strong>유형:</strong> {transactionToDelete.type === 'buy' ? '매수' : '매도'}</p>
                     <p><strong>날짜:</strong> {formatDate(transactionToDelete.date)}</p>
-                    <p><strong>금액:</strong> {formatCurrency(transactionToDelete.totalAmount, resolveTransactionCurrency(transactionToDelete!))}</p>
+                    <p><strong>금액:</strong> {formatAmount(transactionToDelete.totalAmount, resolveTransactionCurrency(transactionToDelete!))}</p>
                   </div>
                 </div>
               )}
