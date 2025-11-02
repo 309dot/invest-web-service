@@ -251,15 +251,15 @@ export function SellStockModal({ open, onOpenChange, portfolioId, onSuccess }: S
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>매도 거래 기록</DialogTitle>
-          <DialogDescription>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader className="pb-4">
+          <DialogTitle className="text-2xl">매도 거래 기록</DialogTitle>
+          <DialogDescription className="text-base">
             기존 보유 포지션을 선택하고 매도 거래를 기록합니다.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-5 py-2">
+        <div className="space-y-6 py-2">
           {/* 포지션 선택 */}
           <div className="space-y-2">
             <Label>매도할 포지션</Label>
@@ -293,7 +293,7 @@ export function SellStockModal({ open, onOpenChange, portfolioId, onSuccess }: S
           </div>
 
           {/* 매도 입력 */}
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2 p-4 rounded-lg border bg-muted/30">
             <div className="space-y-2">
               <Label htmlFor="sellDate">매도 날짜</Label>
               <Input
@@ -389,10 +389,10 @@ export function SellStockModal({ open, onOpenChange, portfolioId, onSuccess }: S
           )}
 
           {selectedPosition && sharesValue > 0 && priceValue > 0 && (
-            <div className="p-4 border rounded-lg bg-red-50 dark:bg-red-950/30">
-              <div className="flex items-center gap-2 mb-3">
-                <Calculator className="h-4 w-4" />
-                <h4 className="font-semibold">거래 요약</h4>
+            <div className="p-5 border-2 border-red-200 dark:border-red-800 rounded-lg bg-red-50/50 dark:bg-red-950/30 shadow-sm">
+              <div className="flex items-center gap-2 mb-4">
+                <Calculator className="h-5 w-5 text-red-600 dark:text-red-400" />
+                <h4 className="font-bold text-lg">거래 요약</h4>
               </div>
               <div className="grid gap-2 text-sm">
                 <div className="flex justify-between">
@@ -416,18 +416,20 @@ export function SellStockModal({ open, onOpenChange, portfolioId, onSuccess }: S
           )}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="pt-4 border-t">
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}
             disabled={submitLoading}
+            className="min-w-24"
           >
             취소
           </Button>
           <Button
             disabled={submitLoading || loadingPositions || !selectedPosition}
             onClick={handleSubmit}
-            className="bg-red-600 hover:bg-red-700"
+            variant="sell"
+            className="min-w-32"
           >
             {submitLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             매도 기록

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { Header } from '@/components/Header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { StatCard, StatCardHeader, StatCardTitle, StatCardValue, StatCardContent, StatCardDescription } from '@/components/ui/stat-card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -207,7 +208,7 @@ export default function TransactionsPage() {
   return (
     <>
       <Header />
-      <div className="min-h-screen p-4 md:p-8">
+      <div className="min-h-screen bg-gradient-to-br from-background to-muted/5 p-4 md:p-8">
         <main className="max-w-7xl mx-auto space-y-6">
           {/* 헤더 */}
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -218,11 +219,11 @@ export default function TransactionsPage() {
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <FeatureCurrencyToggle size="sm" label="통화 표시" />
               <div className="flex gap-2">
-                <Button onClick={() => setSellModalOpen(true)} className="bg-red-600 hover:bg-red-700">
+                <Button onClick={() => setSellModalOpen(true)} variant="sell">
                   <TrendingDown className="mr-2 h-4 w-4" />
                   매도 기록
                 </Button>
-                <Button variant="outline">
+                <Button variant="export">
                   <Download className="mr-2 h-4 w-4" />
                   내보내기
                 </Button>
@@ -232,17 +233,15 @@ export default function TransactionsPage() {
 
           {/* 통계 카드 */}
           {stats && (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    총 거래 횟수
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{stats.transactionCount}</div>
-                </CardContent>
-              </Card>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 auto-rows-max">
+              <StatCard variant="neutral">
+                <StatCardHeader>
+                  <StatCardTitle>총 거래 횟수</StatCardTitle>
+                </StatCardHeader>
+                <StatCardContent>
+                  <StatCardValue>{stats.transactionCount}</StatCardValue>
+                </StatCardContent>
+              </StatCard>
 
               {(['USD', 'KRW'] as const).map((currency) => {
                 const currencyStats = stats.byCurrency?.[currency] ?? {
@@ -261,47 +260,47 @@ export default function TransactionsPage() {
                 )}`;
 
                 return (
-                  <Card key={currency}>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium text-muted-foreground">
+                  <StatCard key={currency} variant={currency === 'USD' ? 'buy' : 'buy'}>
+                    <StatCardHeader>
+                      <StatCardTitle>
                         {currency === 'USD' ? '달러 거래 내역' : '원화 거래 내역'}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-2 text-sm">
-                      <div>
-                        <p className="text-muted-foreground">총 매수 금액</p>
-                        <p className="text-xl font-semibold">
-                          {formatCurrency(currencyStats.totalBuyAmount, currency)}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {currencyStats.totalBuys.toFixed(2)} 주, 평균 {formatCurrency(currencyStats.averageBuyPrice, currency)}
-                        </p>
+                      </StatCardTitle>
+                    </StatCardHeader>
+                    <StatCardContent>
+                      <div className="space-y-3">
+                        <div>
+                          <StatCardDescription>총 매수 금액</StatCardDescription>
+                          <StatCardValue className="text-2xl">
+                            {formatCurrency(currencyStats.totalBuyAmount, currency)}
+                          </StatCardValue>
+                          <StatCardDescription>
+                            {currencyStats.totalBuys.toFixed(2)} 주, 평균 {formatCurrency(currencyStats.averageBuyPrice, currency)}
+                          </StatCardDescription>
+                        </div>
+                        <div>
+                          <StatCardDescription>총 매도 금액</StatCardDescription>
+                          <StatCardValue className="text-2xl text-red-600 dark:text-red-400">
+                            {formatCurrency(currencyStats.totalSellAmount, currency)}
+                          </StatCardValue>
+                          <StatCardDescription>
+                            {currencyStats.totalSells.toFixed(2)} 주, 평균 {formatCurrency(currencyStats.averageSellPrice, currency)}
+                          </StatCardDescription>
+                        </div>
+                        <div className={`text-xs font-medium pt-2 border-t ${netAmount >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                          순매수 대비 매도: {netLabel}
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-muted-foreground">총 매도 금액</p>
-                        <p className="text-xl font-semibold">
-                          {formatCurrency(currencyStats.totalSellAmount, currency)}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {currencyStats.totalSells.toFixed(2)} 주, 평균 {formatCurrency(currencyStats.averageSellPrice, currency)}
-                        </p>
-                      </div>
-                      <div className={`text-xs font-medium ${netAmount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        순매수 대비 매도: {netLabel}
-                      </div>
-                    </CardContent>
-                  </Card>
+                    </StatCardContent>
+                  </StatCard>
                 );
               })}
 
               {exchangeRate && displayCurrency !== 'original' && (
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                      표시 통화 기준 합산
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-2 text-sm">
+                <StatCard variant="summary">
+                  <StatCardHeader>
+                    <StatCardTitle>표시 통화 기준 합산</StatCardTitle>
+                  </StatCardHeader>
+                  <StatCardContent>
                     {(() => {
                       const usdBuyConverted = convertAmount(stats.byCurrency.USD.totalBuyAmount, 'USD');
                       const krwBuyConverted = convertAmount(stats.byCurrency.KRW.totalBuyAmount, 'KRW');
@@ -316,7 +315,7 @@ export default function TransactionsPage() {
                       ]);
 
                       if (currencies.size !== 1) {
-                        return <p className="text-muted-foreground">환율 정보를 불러오지 못했습니다.</p>;
+                        return <StatCardDescription>환율 정보를 불러오지 못했습니다.</StatCardDescription>;
                       }
 
                       const currency = usdBuyConverted.currency;
@@ -326,40 +325,40 @@ export default function TransactionsPage() {
                       const combinedReturn = buyTotal > 0 ? ((sellTotal - buyTotal) / buyTotal) * 100 : 0;
 
                       return (
-                        <>
+                        <div className="space-y-3">
                           <div>
-                            <p className="text-muted-foreground">총 매수 금액</p>
-                            <p className="text-xl font-semibold">
+                            <StatCardDescription>총 매수 금액</StatCardDescription>
+                            <StatCardValue className="text-2xl">
                               {formatCurrency(buyTotal, currency)}
-                            </p>
+                            </StatCardValue>
                           </div>
                           <div>
-                            <p className="text-muted-foreground">총 매도 금액</p>
-                            <p className="text-xl font-semibold">
+                            <StatCardDescription>총 매도 금액</StatCardDescription>
+                            <StatCardValue className="text-2xl">
                               {formatCurrency(sellTotal, currency)}
-                            </p>
+                            </StatCardValue>
                           </div>
-                          <div className={`text-xs font-medium ${netTotal >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          <div className={`text-xs font-medium pt-2 border-t ${netTotal >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                             합산 수익률: {formatPercent(combinedReturn)} ({
                               netTotal >= 0
                                 ? `+${formatCurrency(netTotal, currency)}`
                                 : `-${formatCurrency(Math.abs(netTotal), currency)}`
                             })
                           </div>
-                        </>
+                        </div>
                       );
                     })()}
-                  </CardContent>
-                </Card>
+                  </StatCardContent>
+                </StatCard>
               )}
             </div>
           )}
 
           {/* 필터 */}
-          <Card>
+          <Card variant="elevated">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Filter className="h-5 w-5" />
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Filter className="h-5 w-5 opacity-60" />
                 필터
               </CardTitle>
             </CardHeader>
@@ -433,7 +432,7 @@ export default function TransactionsPage() {
           </Card>
 
           {/* 거래 이력 */}
-          <Card>
+          <Card variant="elevated">
             <CardHeader>
               <CardTitle>거래 목록</CardTitle>
               <CardDescription>
@@ -455,7 +454,14 @@ export default function TransactionsPage() {
                   {/* 모바일: 카드 형태 */}
                   <div className="md:hidden space-y-3">
                     {transactions.map((transaction) => (
-                      <Card key={transaction.id}>
+                      <Card 
+                        key={transaction.id}
+                        className={`border-l-4 ${
+                          transaction.type === 'buy' 
+                            ? 'border-l-blue-500 bg-blue-50/30 dark:bg-blue-950/10'
+                            : 'border-l-red-500 bg-red-50/30 dark:bg-red-950/10'
+                        }`}
+                      >
                         <CardContent className="p-4">
                           <div className="flex items-start justify-between mb-3">
                             <div>
@@ -523,21 +529,21 @@ export default function TransactionsPage() {
                     <table className="w-full">
                       <thead>
                         <tr className="border-b">
-                          <th className="text-left py-3 px-4 font-medium">날짜</th>
-                          <th className="text-left py-3 px-4 font-medium">종목</th>
-                          <th className="text-center py-3 px-4 font-medium">유형</th>
-                          <th className="text-right py-3 px-4 font-medium">주식 수</th>
-                          <th className="text-right py-3 px-4 font-medium">가격</th>
-                          <th className="text-right py-3 px-4 font-medium">거래 금액</th>
-                          <th className="text-right py-3 px-4 font-medium">수수료</th>
-                          <th className="text-right py-3 px-4 font-medium">총 금액</th>
-                          <th className="text-left py-3 px-4 font-medium">메모</th>
+                          <th className="text-left py-3 px-4 font-semibold text-xs uppercase tracking-wider text-muted-foreground">날짜</th>
+                          <th className="text-left py-3 px-4 font-semibold text-xs uppercase tracking-wider text-muted-foreground">종목</th>
+                          <th className="text-center py-3 px-4 font-semibold text-xs uppercase tracking-wider text-muted-foreground">유형</th>
+                          <th className="text-right py-3 px-4 font-semibold text-xs uppercase tracking-wider text-muted-foreground">주식 수</th>
+                          <th className="text-right py-3 px-4 font-semibold text-xs uppercase tracking-wider text-muted-foreground">가격</th>
+                          <th className="text-right py-3 px-4 font-semibold text-xs uppercase tracking-wider text-muted-foreground">거래 금액</th>
+                          <th className="text-right py-3 px-4 font-semibold text-xs uppercase tracking-wider text-muted-foreground">수수료</th>
+                          <th className="text-right py-3 px-4 font-semibold text-xs uppercase tracking-wider text-muted-foreground">총 금액</th>
+                          <th className="text-left py-3 px-4 font-semibold text-xs uppercase tracking-wider text-muted-foreground">메모</th>
                           <th className="w-12"></th>
                         </tr>
                       </thead>
                       <tbody>
                         {transactions.map((transaction) => (
-                          <tr key={transaction.id} className="border-b hover:bg-muted/50">
+                          <tr key={transaction.id} className="border-b hover:bg-muted/70 transition-colors">
                             <td className="py-3 px-4">
                               {formatDate(transaction.date)}
                             </td>
