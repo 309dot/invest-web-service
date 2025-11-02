@@ -22,9 +22,7 @@ import {
   TrendingDown,
   Loader2,
   Filter,
-  Download,
   Calendar,
-  DollarSign,
   Trash2,
   MoreVertical,
 } from 'lucide-react';
@@ -48,7 +46,6 @@ import { formatCurrency, formatDate, formatPercent } from '@/lib/utils/formatter
 import { useCurrency } from '@/lib/contexts/CurrencyContext';
 import type { Transaction } from '@/types';
 import { deriveDefaultPortfolioId } from '@/lib/utils/portfolio';
-import { SellStockModal } from '@/components/SellStockModal';
 import { FeatureCurrencyToggle } from '@/components/FeatureCurrencyToggle';
 
 type TransactionCurrencyStats = {
@@ -149,8 +146,6 @@ export default function TransactionsPage() {
     }
   }, [user, fetchTransactions]);
 
-  const [sellModalOpen, setSellModalOpen] = useState(false);
-
   const handleDeleteClick = (transaction: Transaction) => {
     setTransactionToDelete(transaction);
     setDeleteDialogOpen(true);
@@ -216,19 +211,7 @@ export default function TransactionsPage() {
               <h1 className="text-3xl font-bold tracking-tight">거래 이력</h1>
               <p className="text-muted-foreground">모든 매수/매도 거래 기록</p>
             </div>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <FeatureCurrencyToggle size="sm" label="통화 표시" />
-              <div className="flex gap-2">
-                <Button onClick={() => setSellModalOpen(true)} variant="sell">
-                  <TrendingDown className="mr-2 h-4 w-4" />
-                  매도 기록
-                </Button>
-                <Button variant="export">
-                  <Download className="mr-2 h-4 w-4" />
-                  내보내기
-                </Button>
-              </div>
-            </div>
+            <FeatureCurrencyToggle size="sm" label="통화 표시" />
           </div>
 
           {/* 통계 카드 */}
@@ -641,13 +624,6 @@ export default function TransactionsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      <SellStockModal
-        open={sellModalOpen}
-        onOpenChange={setSellModalOpen}
-        portfolioId={defaultPortfolioId}
-        onSuccess={fetchTransactions}
-      />
     </>
   );
 }

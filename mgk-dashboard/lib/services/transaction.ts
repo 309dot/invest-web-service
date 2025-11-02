@@ -29,7 +29,7 @@ import {
 } from '@/lib/utils/tradingCalendar';
 import { getHistoricalExchangeRate } from '@/lib/apis/alphavantage';
 
-async function normalizeAutoTransactions(
+async function normalizeTransactions(
   userId: string,
   portfolioId: string,
   transactions: Transaction[],
@@ -39,13 +39,38 @@ async function normalizeAutoTransactions(
 
   for (const transaction of transactions) {
     const resolvedCurrency = resolveTransactionCurrency(transaction, positionMap);
-    transaction.currency = resolvedCurrency;
+    const updatePayload: Record<string, unknown> = {};
 
-    if (
-      transaction.purchaseMethod !== 'auto' ||
-      !transaction.date ||
-      !transaction.id
-    ) {
+    if (transaction.currency !== resolvedCurrency) {
+      updatePayload.currency = resolvedCurrency;
+      transaction.currency = resolvedCurrency;
+    }
+
+    if (!transaction.id || !transaction.date) {
+      if (
+        resolvedCurrency === 'USD' &&
+        transaction.date &&
+        transaction.exchangeRate === undefined
+      ) {
+        let fx = fxCache.get(transaction.date);
+        if (fx === undefined) {
+          fx = await getHistoricalExchangeRate(transaction.date, 'USD', 'KRW');
+          fxCache.set(transaction.date, fx ?? null);
+        }
+        if (fx !== null && Number.isFinite(fx)) {
+          updatePayload.exchangeRate = fx;
+          transaction.exchangeRate = fx as number;
+        }
+      }
+
+      if (Object.keys(updatePayload).length > 0 && transaction.id) {
+        const transactionRef = doc(
+          db,
+          `users/${userId}/portfolios/${portfolioId}/transactions`,
+          transaction.id
+        );
+        await updateDoc(transactionRef, updatePayload);
+      }
       continue;
     }
 
@@ -59,41 +84,35 @@ async function normalizeAutoTransactions(
       transaction.symbol
     );
 
-    if (isTradingDay(transaction.date, market)) {
-      continue;
-    }
-
-    const adjustedDate = formatMarketDate(adjustToNextTradingDay(transaction.date, market));
-
-    if (adjustedDate === transaction.date) {
-      continue;
-    }
-
-    const transactionRef = doc(
-      db,
-      `users/${userId}/portfolios/${portfolioId}/transactions`,
-      transaction.id
-    );
-
-    const updatePayload: Record<string, unknown> = {
-      date: adjustedDate,
-    };
-
-    if (resolvedCurrency === 'USD') {
-      let fx = fxCache.get(adjustedDate);
-      if (fx === undefined) {
-        fx = await getHistoricalExchangeRate(adjustedDate, 'USD', 'KRW');
-        fxCache.set(adjustedDate, fx ?? null);
+    if (transaction.purchaseMethod === 'auto' && !isTradingDay(transaction.date, market)) {
+      const adjustedDate = formatMarketDate(adjustToNextTradingDay(transaction.date, market));
+      if (adjustedDate !== transaction.date) {
+        updatePayload.date = adjustedDate;
+        transaction.date = adjustedDate;
       }
+    }
 
+    const fxDate = (updatePayload.date as string | undefined) || transaction.date;
+    if (resolvedCurrency === 'USD' && fxDate && transaction.exchangeRate === undefined) {
+      let fx = fxCache.get(fxDate);
+      if (fx === undefined) {
+        fx = await getHistoricalExchangeRate(fxDate, 'USD', 'KRW');
+        fxCache.set(fxDate, fx ?? null);
+      }
       if (fx !== null && Number.isFinite(fx)) {
         updatePayload.exchangeRate = fx;
         transaction.exchangeRate = fx as number;
       }
     }
 
-    await updateDoc(transactionRef, updatePayload);
-    transaction.date = adjustedDate;
+    if (Object.keys(updatePayload).length > 0) {
+      const transactionRef = doc(
+        db,
+        `users/${userId}/portfolios/${portfolioId}/transactions`,
+        transaction.id
+      );
+      await updateDoc(transactionRef, updatePayload);
+    }
   }
 
   transactions.sort((a, b) => {
@@ -303,7 +322,7 @@ export async function getPortfolioTransactions(
       positionMap.set(docSnapshot.id, docSnapshot.data() as Partial<Position>);
     });
 
-    await normalizeAutoTransactions(userId, portfolioId, transactions, positionMap);
+    await normalizeTransactions(userId, portfolioId, transactions, positionMap);
 
     return transactions;
   } catch (error) {
@@ -344,7 +363,7 @@ export async function getPositionTransactions(
       positionMap.set(positionId, positionSnapshot.data() as Partial<Position>);
     }
 
-    await normalizeAutoTransactions(userId, portfolioId, transactions, positionMap);
+    await normalizeTransactions(userId, portfolioId, transactions, positionMap);
 
     return transactions;
   } catch (error) {
