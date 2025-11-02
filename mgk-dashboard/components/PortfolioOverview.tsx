@@ -19,9 +19,6 @@ import {
 } from './ui/dropdown-menu';
 import { 
   Plus, 
-  TrendingUp, 
-  TrendingDown, 
-  DollarSign, 
   PieChart,
   MoreVertical,
   RefreshCw,

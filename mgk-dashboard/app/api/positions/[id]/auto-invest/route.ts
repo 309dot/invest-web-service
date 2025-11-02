@@ -88,7 +88,7 @@ export async function POST(
       note,
     });
 
-    let rewriteSummary: { removed: number; created: number } | null = null;
+    let rewriteSummary: { removed: number; created: number; error?: string } | null = null;
     if (regenerate) {
       rewriteSummary = await rewriteAutoInvestTransactions(userId, portfolioId, positionId, {
         effectiveFrom,
@@ -105,8 +105,14 @@ export async function POST(
 
     const schedules = await listAutoInvestSchedules(userId, portfolioId, positionId);
 
+    const success = !rewriteSummary?.error;
+    const message = success
+      ? '자동 투자 스케줄이 저장되었습니다.'
+      : rewriteSummary?.error || '자동 투자 거래 재생성에 실패했습니다.';
+
     return NextResponse.json({
-      success: true,
+      success,
+      message,
       scheduleId,
       schedules,
       rewriteSummary,

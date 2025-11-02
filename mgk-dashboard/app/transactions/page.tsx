@@ -43,19 +43,42 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { formatDate } from '@/lib/utils/formatters';
+import { formatCurrency, formatDate, formatPercent } from '@/lib/utils/formatters';
 import { useCurrency } from '@/lib/contexts/CurrencyContext';
 import type { Transaction } from '@/types';
 import { deriveDefaultPortfolioId } from '@/lib/utils/portfolio';
+import { FeatureCurrencyToggle } from '@/components/FeatureCurrencyToggle';
+
+type TransactionCurrencyStats = {
+  totalBuys: number;
+  totalSells: number;
+  totalBuyAmount: number;
+  totalSellAmount: number;
+  averageBuyPrice: number;
+  averageSellPrice: number;
+};
+
+type TransactionStats = {
+  transactionCount: number;
+  byCurrency: {
+    USD: TransactionCurrencyStats;
+    KRW: TransactionCurrencyStats;
+  };
+};
 
 export default function TransactionsPage() {
-  const { formatAmount } = useCurrency();
+  const {
+    formatAmount,
+    convertAmount,
+    displayCurrency,
+    exchangeRate,
+  } = useCurrency();
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
 
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState<any>(null);
+  const [stats, setStats] = useState<TransactionStats | null>(null);
 
   // 필터
   const [selectedSymbol, setSelectedSymbol] = useState<string>('all');
@@ -181,17 +204,18 @@ export default function TransactionsPage() {
       <div className="min-h-screen p-4 md:p-8">
         <main className="max-w-7xl mx-auto space-y-6">
           {/* 헤더 */}
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h1 className="text-3xl font-bold tracking-tight">거래 이력</h1>
-              <p className="text-muted-foreground">
-                모든 매수/매도 거래 기록
-              </p>
+              <p className="text-muted-foreground">모든 매수/매도 거래 기록</p>
             </div>
-            <Button variant="outline">
-              <Download className="mr-2 h-4 w-4" />
-              내보내기
-            </Button>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <FeatureCurrencyToggle size="sm" label="통화 표시" />
+              <Button variant="outline">
+                <Download className="mr-2 h-4 w-4" />
+                내보내기
+              </Button>
+            </div>
           </div>
 
           {/* 통계 카드 */}
@@ -208,50 +232,114 @@ export default function TransactionsPage() {
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    총 매수 금액
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-green-600">
-                    {formatAmount(stats.totalBuyAmount, 'USD')}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {stats.totalBuys.toFixed(2)} 주
-                  </p>
-                </CardContent>
-              </Card>
+              {(['USD', 'KRW'] as const).map((currency) => {
+                const currencyStats = stats.byCurrency?.[currency] ?? {
+                  totalBuys: 0,
+                  totalSells: 0,
+                  totalBuyAmount: 0,
+                  totalSellAmount: 0,
+                  averageBuyPrice: 0,
+                  averageSellPrice: 0,
+                };
 
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    총 매도 금액
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-red-600">
-                    {formatAmount(stats.totalSellAmount, 'USD')}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {stats.totalSells.toFixed(2)} 주
-                  </p>
-                </CardContent>
-              </Card>
+                const netAmount = currencyStats.totalSellAmount - currencyStats.totalBuyAmount;
+                const netLabel = `${netAmount >= 0 ? '+' : '-'}${formatCurrency(
+                  Math.abs(netAmount),
+                  currency
+                )}`;
 
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    평균 매수가
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">
-                    {formatAmount(stats.averageBuyPrice, 'USD')}
-                  </div>
-                </CardContent>
-              </Card>
+                return (
+                  <Card key={currency}>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">
+                        {currency === 'USD' ? '달러 거래 내역' : '원화 거래 내역'}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2 text-sm">
+                      <div>
+                        <p className="text-muted-foreground">총 매수 금액</p>
+                        <p className="text-xl font-semibold">
+                          {formatCurrency(currencyStats.totalBuyAmount, currency)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {currencyStats.totalBuys.toFixed(2)} 주, 평균 {formatCurrency(currencyStats.averageBuyPrice, currency)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">총 매도 금액</p>
+                        <p className="text-xl font-semibold">
+                          {formatCurrency(currencyStats.totalSellAmount, currency)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {currencyStats.totalSells.toFixed(2)} 주, 평균 {formatCurrency(currencyStats.averageSellPrice, currency)}
+                        </p>
+                      </div>
+                      <div className={`text-xs font-medium ${netAmount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        순매수 대비 매도: {netLabel}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+
+              {exchangeRate && displayCurrency !== 'original' && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">
+                      표시 통화 기준 합산
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2 text-sm">
+                    {(() => {
+                      const usdBuyConverted = convertAmount(stats.byCurrency.USD.totalBuyAmount, 'USD');
+                      const krwBuyConverted = convertAmount(stats.byCurrency.KRW.totalBuyAmount, 'KRW');
+                      const usdSellConverted = convertAmount(stats.byCurrency.USD.totalSellAmount, 'USD');
+                      const krwSellConverted = convertAmount(stats.byCurrency.KRW.totalSellAmount, 'KRW');
+
+                      const currencies = new Set([
+                        usdBuyConverted.currency,
+                        krwBuyConverted.currency,
+                        usdSellConverted.currency,
+                        krwSellConverted.currency,
+                      ]);
+
+                      if (currencies.size !== 1) {
+                        return <p className="text-muted-foreground">환율 정보를 불러오지 못했습니다.</p>;
+                      }
+
+                      const currency = usdBuyConverted.currency;
+                      const buyTotal = usdBuyConverted.value + krwBuyConverted.value;
+                      const sellTotal = usdSellConverted.value + krwSellConverted.value;
+                      const netTotal = sellTotal - buyTotal;
+                      const combinedReturn = buyTotal > 0 ? ((sellTotal - buyTotal) / buyTotal) * 100 : 0;
+
+                      return (
+                        <>
+                          <div>
+                            <p className="text-muted-foreground">총 매수 금액</p>
+                            <p className="text-xl font-semibold">
+                              {formatCurrency(buyTotal, currency)}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">총 매도 금액</p>
+                            <p className="text-xl font-semibold">
+                              {formatCurrency(sellTotal, currency)}
+                            </p>
+                          </div>
+                          <div className={`text-xs font-medium ${netTotal >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            합산 수익률: {formatPercent(combinedReturn)} ({
+                              netTotal >= 0
+                                ? `+${formatCurrency(netTotal, currency)}`
+                                : `-${formatCurrency(Math.abs(netTotal), currency)}`
+                            })
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </CardContent>
+                </Card>
+              )}
             </div>
           )}
 

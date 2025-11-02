@@ -292,8 +292,12 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
       }
 
       const data = await response.json();
+      if (!data.success) {
+        throw new Error(data.message || '자동 투자 스케줄 저장에 실패했습니다.');
+      }
+
       setAutoInvestSchedules(data.schedules || []);
-      setScheduleSuccess('자동 투자 스케줄이 업데이트되었습니다.');
+      setScheduleSuccess(data.message || '자동 투자 스케줄이 업데이트되었습니다.');
       setScheduleForm((prev) => ({
         ...prev,
         note: '',

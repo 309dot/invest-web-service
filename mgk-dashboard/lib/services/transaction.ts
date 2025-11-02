@@ -261,13 +261,25 @@ export async function calculateTransactionStats(
     endDate: string;
   }
 ): Promise<{
-  totalBuys: number;
-  totalSells: number;
-  totalBuyAmount: number;
-  totalSellAmount: number;
-  averageBuyPrice: number;
-  averageSellPrice: number;
   transactionCount: number;
+  byCurrency: {
+    USD: {
+      totalBuys: number;
+      totalSells: number;
+      totalBuyAmount: number;
+      totalSellAmount: number;
+      averageBuyPrice: number;
+      averageSellPrice: number;
+    };
+    KRW: {
+      totalBuys: number;
+      totalSells: number;
+      totalBuyAmount: number;
+      totalSellAmount: number;
+      averageBuyPrice: number;
+      averageSellPrice: number;
+    };
+  };
 }> {
   try {
     const options = period
@@ -276,36 +288,80 @@ export async function calculateTransactionStats(
 
     const transactions = await getPortfolioTransactions(userId, portfolioId, options);
 
-    const buys = transactions.filter((t) => t.type === 'buy');
-    const sells = transactions.filter((t) => t.type === 'sell');
+    const byCurrency = {
+      USD: {
+        totalBuys: 0,
+        totalSells: 0,
+        totalBuyAmount: 0,
+        totalSellAmount: 0,
+      },
+      KRW: {
+        totalBuys: 0,
+        totalSells: 0,
+        totalBuyAmount: 0,
+        totalSellAmount: 0,
+      },
+    } as const;
 
-    const totalBuyAmount = buys.reduce((sum, t) => sum + t.amount, 0);
-    const totalSellAmount = sells.reduce((sum, t) => sum + t.amount, 0);
-    const totalBuys = buys.reduce((sum, t) => sum + t.shares, 0);
-    const totalSells = sells.reduce((sum, t) => sum + t.shares, 0);
+    const mutableStats = {
+      USD: { ...byCurrency.USD },
+      KRW: { ...byCurrency.KRW },
+    } as Record<'USD' | 'KRW', { totalBuys: number; totalSells: number; totalBuyAmount: number; totalSellAmount: number }>;
 
-    const averageBuyPrice = totalBuys > 0 ? totalBuyAmount / totalBuys : 0;
-    const averageSellPrice = totalSells > 0 ? totalSellAmount / totalSells : 0;
+    transactions.forEach((transaction) => {
+      const currency = transaction.currency === 'KRW' ? 'KRW' : 'USD';
+      if (transaction.type === 'buy') {
+        mutableStats[currency].totalBuyAmount += transaction.amount;
+        mutableStats[currency].totalBuys += transaction.shares;
+      } else if (transaction.type === 'sell') {
+        mutableStats[currency].totalSellAmount += transaction.amount;
+        mutableStats[currency].totalSells += transaction.shares;
+      }
+    });
+
+    const finalize = (currency: 'USD' | 'KRW') => {
+      const totals = mutableStats[currency];
+      return {
+        totalBuys: totals.totalBuys,
+        totalSells: totals.totalSells,
+        totalBuyAmount: totals.totalBuyAmount,
+        totalSellAmount: totals.totalSellAmount,
+        averageBuyPrice:
+          totals.totalBuys > 0 ? totals.totalBuyAmount / totals.totalBuys : 0,
+        averageSellPrice:
+          totals.totalSells > 0 ? totals.totalSellAmount / totals.totalSells : 0,
+      };
+    };
 
     return {
-      totalBuys,
-      totalSells,
-      totalBuyAmount,
-      totalSellAmount,
-      averageBuyPrice,
-      averageSellPrice,
       transactionCount: transactions.length,
+      byCurrency: {
+        USD: finalize('USD'),
+        KRW: finalize('KRW'),
+      },
     };
   } catch (error) {
     console.error('Error calculating transaction stats:', error);
     return {
-      totalBuys: 0,
-      totalSells: 0,
-      totalBuyAmount: 0,
-      totalSellAmount: 0,
-      averageBuyPrice: 0,
-      averageSellPrice: 0,
       transactionCount: 0,
+      byCurrency: {
+        USD: {
+          totalBuys: 0,
+          totalSells: 0,
+          totalBuyAmount: 0,
+          totalSellAmount: 0,
+          averageBuyPrice: 0,
+          averageSellPrice: 0,
+        },
+        KRW: {
+          totalBuys: 0,
+          totalSells: 0,
+          totalBuyAmount: 0,
+          totalSellAmount: 0,
+          averageBuyPrice: 0,
+          averageSellPrice: 0,
+        },
+      },
     };
   }
 }

@@ -80,12 +80,20 @@ export async function generateAutoInvestTransactions(
     let createdCount = 0;
 
     for (const targetDate of purchaseDates) {
-      let unitPrice: number | null = await getHistoricalPrice(
-        config.symbol,
-        targetDate,
-        'auto',
-        config.market
-      );
+      let unitPrice: number | null = null;
+      try {
+        unitPrice = await getHistoricalPrice(
+          config.symbol,
+          targetDate,
+          'auto',
+          config.market
+        );
+      } catch (error) {
+        console.warn(
+          `⚠️ ${config.symbol} ${targetDate} 시세 조회 실패, 폴백 가격 사용 예정`,
+          error
+        );
+      }
 
       if (!unitPrice || !Number.isFinite(unitPrice) || unitPrice <= 0) {
         if (config.pricePerShare && Number.isFinite(config.pricePerShare) && config.pricePerShare > 0) {
@@ -94,7 +102,9 @@ export async function generateAutoInvestTransactions(
             `⚠️ ${targetDate} 가격 조회 실패 → fallback 가격 ${unitPrice.toFixed(2)} 적용 (${config.symbol})`
           );
         } else {
-          console.warn(`⚠️ ${targetDate} 가격을 찾을 수 없어 자동 투자 거래를 건너뜁니다. (${config.symbol})`);
+          console.warn(
+            `⚠️ ${targetDate} 가격과 fallback 가격이 없어 자동 투자 거래를 건너뜁니다. (${config.symbol})`
+          );
           continue;
         }
       }
@@ -274,7 +284,7 @@ export async function rewriteAutoInvestTransactions(
     stockId: string;
     market?: 'US' | 'KR' | 'GLOBAL';
   }
-): Promise<{ removed: number; created: number }> {
+): Promise<{ removed: number; created: number; error?: string }> {
   try {
     const transactionsRef = collection(
       db,
@@ -319,7 +329,11 @@ export async function rewriteAutoInvestTransactions(
     };
   } catch (error) {
     console.error('Error rewriting auto invest transactions:', error);
-    throw error;
+    return {
+      removed: 0,
+      created: 0,
+      error: error instanceof Error ? error.message : '자동 투자 거래 재생성 중 오류가 발생했습니다.',
+    };
   }
 }
 
