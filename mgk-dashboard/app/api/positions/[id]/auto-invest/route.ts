@@ -63,13 +63,6 @@ export async function POST(
       );
     }
 
-    if (regenerate && (typeof pricePerShare !== 'number' || pricePerShare <= 0)) {
-      return NextResponse.json(
-        { error: '거래 재생성을 위해서는 pricePerShare 값을 제공해야 합니다.' },
-        { status: 400 }
-      );
-    }
-
     const scheduleId = await createAutoInvestSchedule(userId, portfolioId, positionId, {
       frequency,
       amount,
@@ -80,15 +73,17 @@ export async function POST(
     });
 
     let rewriteSummary: { removed: number; created: number } | null = null;
-    if (regenerate && typeof pricePerShare === 'number' && pricePerShare > 0) {
+    if (regenerate) {
       rewriteSummary = await rewriteAutoInvestTransactions(userId, portfolioId, positionId, {
         effectiveFrom,
         frequency,
         amount,
         currency: position.currency,
-        pricePerShare,
+        pricePerShare:
+          typeof pricePerShare === 'number' && pricePerShare > 0 ? pricePerShare : undefined,
         symbol: position.symbol,
         stockId: position.stockId,
+        market: position.market === 'GLOBAL' ? undefined : position.market,
       });
     }
 

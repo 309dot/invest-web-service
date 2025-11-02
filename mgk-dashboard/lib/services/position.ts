@@ -261,20 +261,15 @@ export async function getPortfolioPositions(
         `users/${userId}/portfolios/${portfolioId}/transactions`
       );
       const transactionsSnapshot = await getDocs(
-        query(
-          transactionsRef,
-          where('positionId', '==', docSnapshot.id),
-          orderBy('date', 'asc')
-        )
+        query(transactionsRef, where('positionId', '==', docSnapshot.id))
       );
 
-      const transactions: Transaction[] = [];
-      transactionsSnapshot.forEach((txDoc) => {
-        transactions.push({
+      const transactions: Transaction[] = transactionsSnapshot.docs
+        .map((txDoc) => ({
           id: txDoc.id,
           ...txDoc.data(),
-        } as Transaction);
-      });
+        } as Transaction))
+        .sort((a, b) => a.date.localeCompare(b.date));
 
       const metrics = aggregatePositionMetrics(transactions, positionData);
 
@@ -431,16 +426,15 @@ export async function recalculatePositionFromTransactions(
       `users/${userId}/portfolios/${portfolioId}/transactions`
     );
     const transactionsSnapshot = await getDocs(
-      query(transactionsRef, where('positionId', '==', positionId), orderBy('date', 'asc'))
+      query(transactionsRef, where('positionId', '==', positionId))
     );
 
-    const transactions: Transaction[] = [];
-    transactionsSnapshot.forEach((docSnapshot) => {
-      transactions.push({
+    const transactions: Transaction[] = transactionsSnapshot.docs
+      .map((docSnapshot) => ({
         id: docSnapshot.id,
         ...docSnapshot.data(),
-      } as Transaction);
-    });
+      } as Transaction))
+      .sort((a, b) => a.date.localeCompare(b.date));
 
     const metrics = aggregatePositionMetrics(transactions, existingPosition);
 

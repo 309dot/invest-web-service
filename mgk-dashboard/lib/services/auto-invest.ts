@@ -18,6 +18,7 @@ import { db } from '@/lib/firebase';
 import { createTransaction } from './transaction';
 import { recalculatePositionFromTransactions } from './position';
 import type { AutoInvestFrequency, AutoInvestSchedule, Position, Transaction } from '@/types';
+import { getHistoricalPrice } from '@/lib/apis/alphavantage';
 
 /**
  * 자동 투자 거래 내역 생성
@@ -33,8 +34,9 @@ export async function generateAutoInvestTransactions(
     frequency: AutoInvestFrequency;
     amount: number;
     startDate: string; // YYYY-MM-DD
-    pricePerShare: number; // 평균 가격 또는 시작일 가격
+    pricePerShare?: number; // fallback price when historical lookup fails
     currency: 'USD' | 'KRW';
+    market?: 'US' | 'KR' | 'GLOBAL';
   }
 ): Promise<{ count: number; totalShares: number; totalAmount: number }> {
   try {
@@ -42,26 +44,13 @@ export async function generateAutoInvestTransactions(
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const transactions: Array<{
-      date: string;
-      shares: number;
-      price: number;
-      amount: number;
-    }> = [];
-
     const currentDate = new Date(startDate);
 
     // 빈도에 따라 거래 날짜 계산
+    const purchaseDates: string[] = [];
     while (currentDate <= today) {
       const dateString = currentDate.toISOString().split('T')[0];
-      const shares = config.amount / config.pricePerShare;
-
-      transactions.push({
-        date: dateString,
-        shares,
-        price: config.pricePerShare,
-        amount: config.amount,
-      });
+      purchaseDates.push(dateString);
 
       // 다음 거래 날짜 계산
       switch (config.frequency) {
@@ -83,28 +72,51 @@ export async function generateAutoInvestTransactions(
       }
     }
 
-    console.log(`📊 자동 투자 거래 내역 생성: ${transactions.length}건`);
+    console.log(`📊 자동 투자 거래 내역 생성: ${purchaseDates.length}건`);
 
     // 거래 내역 저장
     let totalShares = 0;
     let totalAmount = 0;
+    let createdCount = 0;
 
-    for (const tx of transactions) {
+    for (const targetDate of purchaseDates) {
+      let unitPrice: number | null = await getHistoricalPrice(
+        config.symbol,
+        targetDate,
+        'auto',
+        config.market
+      );
+
+      if (!unitPrice || !Number.isFinite(unitPrice) || unitPrice <= 0) {
+        if (config.pricePerShare && Number.isFinite(config.pricePerShare) && config.pricePerShare > 0) {
+          unitPrice = config.pricePerShare;
+          console.warn(
+            `⚠️ ${targetDate} 가격 조회 실패 → fallback 가격 ${unitPrice.toFixed(2)} 적용 (${config.symbol})`
+          );
+        } else {
+          console.warn(`⚠️ ${targetDate} 가격을 찾을 수 없어 자동 투자 거래를 건너뜁니다. (${config.symbol})`);
+          continue;
+        }
+      }
+
+      const shares = Number((config.amount / unitPrice).toFixed(6));
+
       await createTransaction(userId, portfolioId, positionId, {
         type: 'buy',
         symbol: config.symbol,
-        shares: tx.shares,
-        price: tx.price,
-        amount: tx.amount,
-        date: tx.date,
+        shares,
+        price: unitPrice,
+        amount: config.amount,
+        date: targetDate,
         note: `자동 투자 (${config.frequency})`,
         currency: config.currency,
         purchaseMethod: 'auto',
         purchaseUnit: 'amount',
       });
 
-      totalShares += tx.shares;
-      totalAmount += tx.amount;
+      totalShares += shares;
+      totalAmount += config.amount;
+      createdCount += 1;
     }
 
     const totalAmountDisplay =
@@ -113,11 +125,11 @@ export async function generateAutoInvestTransactions(
         : `$${totalAmount.toFixed(2)}`;
 
     console.log(
-      `✅ 자동 투자 거래 내역 생성 완료: ${transactions.length}건, 총 ${totalShares.toFixed(4)}주, 총 ${totalAmountDisplay}`
+      `✅ 자동 투자 거래 내역 생성 완료: ${createdCount}/${purchaseDates.length}건, 총 ${totalShares.toFixed(4)}주, 총 ${totalAmountDisplay}`
     );
 
     return {
-      count: transactions.length,
+      count: createdCount,
       totalShares,
       totalAmount,
     };
@@ -257,9 +269,10 @@ export async function rewriteAutoInvestTransactions(
     frequency: AutoInvestFrequency;
     amount: number;
     currency: 'USD' | 'KRW';
-    pricePerShare: number;
+    pricePerShare?: number;
     symbol: string;
     stockId: string;
+    market?: 'US' | 'KR' | 'GLOBAL';
   }
 ): Promise<{ removed: number; created: number }> {
   try {
@@ -295,6 +308,7 @@ export async function rewriteAutoInvestTransactions(
       startDate: options.effectiveFrom,
       pricePerShare: options.pricePerShare,
       currency: options.currency,
+      market: options.market,
     });
 
     await recalculatePositionFromTransactions(userId, portfolioId, positionId);

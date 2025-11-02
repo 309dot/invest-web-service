@@ -184,15 +184,16 @@ export async function POST(request: NextRequest) {
       }
     } else if (purchaseMethod === 'auto' && autoInvestConfig) {
       // 자동 투자: 시작일부터 오늘까지 정기 구매 거래 내역 생성
-      const pricePerShare = parseFloat(body.purchasePrice) || 100; // 시작일 가격
+      const parsedPrice = parseFloat(body.purchasePrice);
       await generateAutoInvestTransactions(userId, portfolioId, positionId, {
         symbol: stock.symbol,
         stockId: stock.symbol,
         frequency: autoInvestConfig.frequency,
         amount: autoInvestConfig.amount,
         startDate: autoInvestConfig.startDate,
-        pricePerShare,
+        pricePerShare: Number.isFinite(parsedPrice) && parsedPrice > 0 ? parsedPrice : undefined,
         currency: stock.currency,
+        market: stock.market,
       });
     }
 
