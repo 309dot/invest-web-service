@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { deletePosition, getPosition, updatePositionAfterTransaction } from '@/lib/services/position';
+import { deriveDefaultPortfolioId } from '@/lib/utils/portfolio';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -23,8 +24,10 @@ export async function GET(
       );
     }
 
-    // portfolioId는 positionId에서 추출 (예: main_AAPL -> main)
-    const portfolioId = positionId.split('_')[0];
+    const fallbackPortfolioId =
+      userId && userId !== 'default_user' ? deriveDefaultPortfolioId(userId) : 'main';
+    const portfolioIdParam = request.nextUrl.searchParams.get('portfolioId');
+    const portfolioId = portfolioIdParam || fallbackPortfolioId;
 
     const position = await getPosition(userId, portfolioId, positionId);
 
@@ -68,7 +71,10 @@ export async function PUT(
       );
     }
 
-    const portfolioId = positionId.split('_')[0];
+    const fallbackPortfolioId =
+      userId && userId !== 'default_user' ? deriveDefaultPortfolioId(userId) : 'main';
+    const portfolioIdParam = request.nextUrl.searchParams.get('portfolioId');
+    const portfolioId = portfolioIdParam || fallbackPortfolioId;
 
     // 포지션 업데이트 로직
     await updatePositionAfterTransaction(userId, portfolioId, positionId, {
@@ -112,8 +118,10 @@ export async function DELETE(
       );
     }
 
-    // portfolioId는 positionId에서 추출 (예: main_AAPL -> main)
-    const portfolioId = positionId.split('_')[0];
+    const fallbackPortfolioId =
+      userId && userId !== 'default_user' ? deriveDefaultPortfolioId(userId) : 'main';
+    const portfolioIdParam = request.nextUrl.searchParams.get('portfolioId');
+    const portfolioId = portfolioIdParam || fallbackPortfolioId;
 
     console.log('📊 Portfolio ID:', portfolioId);
 

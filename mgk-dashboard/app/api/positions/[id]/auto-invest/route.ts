@@ -22,9 +22,18 @@ export async function GET(
       return NextResponse.json({ error: 'Position ID가 필요합니다.' }, { status: 400 });
     }
 
-    const fallbackPortfolioId = userId && userId !== 'default_user' ? deriveDefaultPortfolioId(userId) : 'main';
-    const portfolioId = request.nextUrl.searchParams.get('portfolioId') || fallbackPortfolioId;
-    const schedules = await listAutoInvestSchedules(userId, portfolioId, positionId);
+    const fallbackPortfolioId =
+      userId && userId !== 'default_user' ? deriveDefaultPortfolioId(userId) : 'main';
+    const portfolioIdParam = request.nextUrl.searchParams.get('portfolioId');
+    const tentativePortfolioId = portfolioIdParam || fallbackPortfolioId;
+
+    const position = await getPosition(userId, tentativePortfolioId, positionId);
+    if (!position) {
+      return NextResponse.json({ error: '포지션을 찾을 수 없습니다.' }, { status: 404 });
+    }
+
+    const effectivePortfolioId = position.portfolioId || tentativePortfolioId;
+    const schedules = await listAutoInvestSchedules(userId, effectivePortfolioId, positionId);
 
     return NextResponse.json({ success: true, schedules });
   } catch (error) {
@@ -49,13 +58,17 @@ export async function POST(
       return NextResponse.json({ error: 'Position ID가 필요합니다.' }, { status: 400 });
     }
 
-    const fallbackPortfolioId = userId && userId !== 'default_user' ? deriveDefaultPortfolioId(userId) : 'main';
-    const portfolioId = request.nextUrl.searchParams.get('portfolioId') || fallbackPortfolioId;
+    const fallbackPortfolioId =
+      userId && userId !== 'default_user' ? deriveDefaultPortfolioId(userId) : 'main';
+    const portfolioIdParam = request.nextUrl.searchParams.get('portfolioId');
+    const tentativePortfolioId = portfolioIdParam || fallbackPortfolioId;
 
-    const position = await getPosition(userId, portfolioId, positionId);
+    const position = await getPosition(userId, tentativePortfolioId, positionId);
     if (!position) {
       return NextResponse.json({ error: '포지션을 찾을 수 없습니다.' }, { status: 404 });
     }
+
+    const portfolioId = position.portfolioId || tentativePortfolioId;
 
     const { frequency, amount, effectiveFrom, note, regenerate = true, pricePerShare } = body;
 

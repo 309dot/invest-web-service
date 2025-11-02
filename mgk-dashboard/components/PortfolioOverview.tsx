@@ -6,7 +6,7 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
@@ -27,9 +27,11 @@ import {
   RefreshCw,
   ArrowUpDown,
   Trash2,
+  Edit2,
 } from 'lucide-react';
 import { TransactionForm } from './TransactionForm';
-import { formatPercent } from '@/lib/utils/formatters';
+import { FeatureCurrencyToggle } from './FeatureCurrencyToggle';
+import { formatCurrency, formatPercent } from '@/lib/utils/formatters';
 import type { Position } from '@/types';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { useCurrency } from '@/lib/contexts/CurrencyContext';
@@ -41,7 +43,7 @@ interface PortfolioOverviewProps {
 export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
-  const { formatAmount } = useCurrency();
+  const { formatAmount, convertAmount, displayCurrency } = useCurrency();
   const [positions, setPositions] = useState<Position[]>([]);
   const [totals, setTotals] = useState({
     byCurrency: {
@@ -58,33 +60,35 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
   const [selectedPosition, setSelectedPosition] = useState<Position | null>(null);
   const [showTransactionForm, setShowTransactionForm] = useState(false);
 
-  const fetchPositions = async (uid: string) => {
+  const fetchPositions = useCallback(async (uid: string) => {
     try {
       setLoading(true);
       const response = await fetch(`/api/positions?portfolioId=${portfolioId}&userId=${uid}`);
       if (response.ok) {
         const data = await response.json();
         setPositions(data.positions || []);
-        setTotals(data.totals || {
-          byCurrency: {
-            USD: { totalInvested: 0, totalValue: 0, count: 0 },
-            KRW: { totalInvested: 0, totalValue: 0, count: 0 },
-          },
-          combined: { totalInvested: 0, totalValue: 0, returnRate: 0 },
-        });
+        setTotals(
+          data.totals || {
+            byCurrency: {
+              USD: { totalInvested: 0, totalValue: 0, count: 0 },
+              KRW: { totalInvested: 0, totalValue: 0, count: 0 },
+            },
+            combined: { totalInvested: 0, totalValue: 0, returnRate: 0 },
+          }
+        );
       }
     } catch (error) {
       console.error('Error fetching positions:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [portfolioId]);
 
   useEffect(() => {
     if (user) {
       fetchPositions(user.uid);
     }
-  }, [user, portfolioId]);
+  }, [user, fetchPositions]);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -108,18 +112,36 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
     router.push(`/portfolio/add-stock?portfolioId=${portfolioId}`);
   };
 
+  const navigateToPosition = (position: Position) => {
+    const targetPortfolioId = position.portfolioId || portfolioId;
+    router.push(`/portfolio/position/${position.id}?portfolioId=${targetPortfolioId}`);
+  };
+
   const handleTransactionClick = (position: Position) => {
     setSelectedPosition(position);
     setShowTransactionForm(true);
   };
 
+  const handleEditPosition = (
+    position: Position,
+    e?: { stopPropagation?: () => void }
+  ) => {
+    e?.stopPropagation?.();
+    navigateToPosition(position);
+  };
+
   const handleDeletePosition = async (
-    positionId: string,
+    position: Position,
     e?: { stopPropagation?: () => void }
   ) => {
     e?.stopPropagation?.(); // 상세 페이지로 이동 방지
-    
-    if (!confirm('정말로 이 포지션을 삭제하시겠습니까? 모든 거래 내역이 함께 삭제됩니다.')) {
+
+    if (!position.id) {
+      alert('포지션 정보가 올바르지 않습니다.');
+      return;
+    }
+
+    if (!confirm(`${position.symbol} 포지션을 삭제하시겠습니까? 모든 거래 내역이 함께 삭제됩니다.`)) {
       return;
     }
 
@@ -129,9 +151,12 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
     }
 
     try {
-      const response = await fetch(`/api/positions/${positionId}?userId=${user.uid}`, {
+      const response = await fetch(
+        `/api/positions/${position.id}?userId=${user.uid}&portfolioId=${position.portfolioId || portfolioId}`,
+        {
         method: 'DELETE',
-      });
+        }
+      );
 
       if (response.ok) {
         const result = await response.json().catch(() => null);
@@ -158,8 +183,33 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
     setSelectedPosition(null);
   };
 
-  const profitLoss = totals.combined.totalValue - totals.combined.totalInvested;
-  const isPositive = profitLoss >= 0;
+  const usdTotals = totals.byCurrency.USD;
+  const krwTotals = totals.byCurrency.KRW;
+
+  const usdProfit = usdTotals.totalValue - usdTotals.totalInvested;
+  const krwProfit = krwTotals.totalValue - krwTotals.totalInvested;
+
+  const usdReturnRate = usdTotals.totalInvested > 0
+    ? ((usdTotals.totalValue - usdTotals.totalInvested) / usdTotals.totalInvested) * 100
+    : 0;
+  const krwReturnRate = krwTotals.totalInvested > 0
+    ? ((krwTotals.totalValue - krwTotals.totalInvested) / krwTotals.totalInvested) * 100
+    : 0;
+
+  const showCombined = displayCurrency !== 'original';
+  const combinedCurrency = displayCurrency === 'KRW' ? 'KRW' : 'USD';
+  const combinedInvested = showCombined
+    ? convertAmount(usdTotals.totalInvested, 'USD').value +
+      convertAmount(krwTotals.totalInvested, 'KRW').value
+    : 0;
+  const combinedValue = showCombined
+    ? convertAmount(usdTotals.totalValue, 'USD').value +
+      convertAmount(krwTotals.totalValue, 'KRW').value
+    : 0;
+  const combinedProfit = combinedValue - combinedInvested;
+  const combinedReturnRate = combinedInvested > 0
+    ? ((combinedValue - combinedInvested) / combinedInvested) * 100
+    : 0;
 
   const resolveCurrency = (position: Position): 'USD' | 'KRW' => {
     if (position.currency === 'KRW' || position.currency === 'USD') {
@@ -189,13 +239,94 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
       <div className="space-y-6">
         {/* 포트폴리오 요약 */}
         <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>포트폴리오 현황</CardTitle>
-                <CardDescription>전체 포지션 요약</CardDescription>
+          <CardHeader className="space-y-3">
+            <div>
+              <CardTitle>포트폴리오 현황</CardTitle>
+              <CardDescription>통화별 투자 현황을 확인하세요.</CardDescription>
+            </div>
+            <FeatureCurrencyToggle label="통화 표시" />
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              {[{ label: 'USD 자산', totals: usdTotals, profit: usdProfit, returnRate: usdReturnRate, currency: 'USD' as const },
+                { label: 'KRW 자산', totals: krwTotals, profit: krwProfit, returnRate: krwReturnRate, currency: 'KRW' as const }]
+                .map(({ label, totals: currencyTotals, profit, returnRate, currency }) => {
+                  const isPositive = profit >= 0;
+                  const formattedProfit = isPositive
+                    ? `+${formatCurrency(profit, currency)}`
+                    : `-${formatCurrency(Math.abs(profit), currency)}`;
+
+                  return (
+                    <div key={currency} className="rounded-lg border p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-muted-foreground">{label}</span>
+                        <Badge variant="outline">{currencyTotals.count} 종목</Badge>
+                      </div>
+                      <div className="grid gap-3 text-sm">
+                        <div>
+                          <p className="text-muted-foreground">총 투자금</p>
+                          <p className="text-xl font-semibold">{formatCurrency(currencyTotals.totalInvested, currency)}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">평가 금액</p>
+                          <p className="text-xl font-semibold">{formatCurrency(currencyTotals.totalValue, currency)}</p>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">수익률</span>
+                          <span className={`text-sm font-semibold ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
+                            {formatPercent(returnRate)} ({formattedProfit})
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+
+            {showCombined && (
+              <div className="rounded-lg border p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-medium text-muted-foreground">표시 통화 기준 합산</h3>
+                  <Badge variant="secondary">{combinedCurrency}</Badge>
+                </div>
+                <div className="grid gap-3 text-sm md:grid-cols-3">
+                  <div>
+                    <p className="text-muted-foreground">총 투자금</p>
+                    <p className="text-lg font-semibold">
+                      {formatCurrency(combinedInvested, combinedCurrency)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">평가 금액</p>
+                    <p className="text-lg font-semibold">
+                      {formatCurrency(combinedValue, combinedCurrency)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">수익률</p>
+                    <p className={`text-lg font-semibold ${combinedProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {formatPercent(combinedReturnRate)} (
+                      {combinedProfit >= 0
+                        ? `+${formatCurrency(combinedProfit, combinedCurrency)}`
+                        : `-${formatCurrency(Math.abs(combinedProfit), combinedCurrency)}`}
+                      )
+                    </p>
+                  </div>
+                </div>
               </div>
-              <div className="flex gap-2">
+            )}
+          </CardContent>
+        </Card>
+
+        {/* 포지션 목록 */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <CardTitle>보유 종목</CardTitle>
+                <CardDescription>{positions.length}개 종목</CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
                   size="icon"
@@ -203,6 +334,7 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                   disabled={loading}
                 >
                   <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                  <span className="sr-only">새로고침</span>
                 </Button>
                 <Button onClick={handleAddStock}>
                   <Plus className="mr-2 h-4 w-4" />
@@ -210,82 +342,6 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                 </Button>
               </div>
             </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 md:grid-cols-3">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <DollarSign className="h-4 w-4" />
-                  <span>총 투자금</span>
-                </div>
-                <p className="text-2xl font-bold">
-                  {formatAmount(totals.combined.totalInvested, 'USD')}
-                </p>
-              </div>
-
-              <div className="space-y-1">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <PieChart className="h-4 w-4" />
-                  <span>평가 금액</span>
-                </div>
-                <p className="text-2xl font-bold">
-                  {formatAmount(totals.combined.totalValue, 'USD')}
-                </p>
-              </div>
-
-              <div className="space-y-1">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  {isPositive ? (
-                    <TrendingUp className="h-4 w-4 text-green-500" />
-                  ) : (
-                    <TrendingDown className="h-4 w-4 text-red-500" />
-                  )}
-                  <span>총 수익률</span>
-                </div>
-                <div className="flex items-baseline gap-2">
-                  <p className={`text-2xl font-bold ${
-                    isPositive ? 'text-green-600' : 'text-red-600'
-                  }`}>
-                    {formatPercent(totals.combined.returnRate)}
-                  </p>
-                  <span className={`text-sm ${
-                    isPositive ? 'text-green-600' : 'text-red-600'
-                  }`}>
-                    ({isPositive ? '+' : ''}{formatAmount(profitLoss, 'USD')})
-                  </span>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* 포지션 목록 */}
-        <Card>
-        {/* 통화별 상세 정보 */}
-        {(totals.byCurrency.USD.count > 0 || totals.byCurrency.KRW.count > 0) && (
-          <div className="space-y-3 text-xs text-muted-foreground mb-4">
-            <div className="flex gap-3">
-              {totals.byCurrency.USD.count > 0 && (
-                <div className="flex-1 p-2 bg-muted rounded">
-                  <div className="font-semibold mb-1">USD ({totals.byCurrency.USD.count})</div>
-                  <div>${totals.byCurrency.USD.totalInvested.toFixed(2)} → ${totals.byCurrency.USD.totalValue.toFixed(2)}</div>
-                </div>
-              )}
-              {totals.byCurrency.KRW.count > 0 && (
-                <div className="flex-1 p-2 bg-muted rounded">
-                  <div className="font-semibold mb-1">KRW ({totals.byCurrency.KRW.count})</div>
-                  <div>₩{Math.round(totals.byCurrency.KRW.totalInvested).toLocaleString('ko-KR')} → ₩{Math.round(totals.byCurrency.KRW.totalValue).toLocaleString('ko-KR')}</div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-          <CardHeader>
-            <CardTitle>보유 종목</CardTitle>
-            <CardDescription>
-              {positions.length}개 종목
-            </CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -314,7 +370,7 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                         <div className="flex items-start justify-between mb-3">
                           <div 
                             className="cursor-pointer hover:opacity-75"
-                            onClick={() => router.push(`/portfolio/position/${position.id}?portfolioId=${portfolioId}`)}
+                            onClick={() => navigateToPosition(position)}
                           >
                             <h4 className="font-semibold text-lg">{position.symbol}</h4>
                             <Badge variant="outline" className="text-xs">
@@ -344,11 +400,21 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                                 거래 추가
                               </DropdownMenuItem>
                               <DropdownMenuItem
+                                onSelect={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  handleEditPosition(position, event);
+                                }}
+                              >
+                                <Edit2 className="mr-2 h-4 w-4" />
+                                거래 수정
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
                                 className="text-destructive"
                                 onSelect={(event) => {
                                   event.preventDefault();
                                   event.stopPropagation();
-                                  handleDeletePosition(position.id!);
+                                  handleDeletePosition(position, event);
                                 }}
                               >
                                 <Trash2 className="mr-2 h-4 w-4" />
@@ -420,7 +486,7 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                         <tr 
                           key={position.id} 
                           className="border-b hover:bg-muted/50 cursor-pointer"
-                          onClick={() => router.push(`/portfolio/position/${position.id}?portfolioId=${portfolioId}`)}
+                          onClick={() => navigateToPosition(position)}
                         >
                           <td className="py-3 px-4">
                             <div className="font-semibold">{position.symbol}</div>
@@ -477,11 +543,21 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                                   거래 추가
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
+                                  onSelect={(event) => {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    handleEditPosition(position, event);
+                                  }}
+                                >
+                                  <Edit2 className="mr-2 h-4 w-4" />
+                                  거래 수정
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
                                   className="text-destructive"
                                   onSelect={(event) => {
                                     event.preventDefault();
                                     event.stopPropagation();
-                                    handleDeletePosition(position.id!);
+                                    handleDeletePosition(position, event);
                                   }}
                                 >
                                   <Trash2 className="mr-2 h-4 w-4" />

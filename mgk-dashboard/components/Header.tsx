@@ -60,7 +60,6 @@ export function Header() {
     { name: '뉴스', href: '/news', icon: Newspaper },
     { name: '분석', href: '/portfolio/analysis', icon: BarChart3 },
     { name: '주간 리포트', href: '/weekly-reports', icon: FileText },
-    { name: '설정', href: '/settings', icon: Settings },
   ];
 
   const handleSignOut = async () => {

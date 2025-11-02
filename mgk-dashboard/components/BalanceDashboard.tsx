@@ -7,10 +7,11 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
+import { FeatureCurrencyToggle } from './FeatureCurrencyToggle';
 import {
   Dialog,
   DialogContent,
@@ -201,7 +202,7 @@ export function BalanceDashboard({ portfolioId }: BalanceDashboardProps) {
   return (
     <>
       <Card>
-        <CardHeader>
+        <CardHeader className="space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Wallet className="h-5 w-5" />
@@ -215,6 +216,7 @@ export function BalanceDashboard({ portfolioId }: BalanceDashboardProps) {
                 disabled={loading}
               >
                 <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                <span className="sr-only">잔액 새로고침</span>
               </Button>
               <Button onClick={() => setShowChargeModal(true)}>
                 <Plus className="mr-2 h-4 w-4" />
@@ -222,6 +224,7 @@ export function BalanceDashboard({ portfolioId }: BalanceDashboardProps) {
               </Button>
             </div>
           </div>
+          <FeatureCurrencyToggle size="sm" />
         </CardHeader>
         <CardContent>
           {loading ? (

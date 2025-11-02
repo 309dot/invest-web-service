@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { Header } from '@/components/Header';
@@ -90,87 +90,87 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
 
   const { formatAmount } = useCurrency();
 
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push('/login');
-    }
-  }, [user, authLoading, router]);
+  const fetchAutoInvestSchedules = useCallback(
+    async (uid: string, activePortfolioId: string, posId: string) => {
+      try {
+        setScheduleLoading(true);
+        setScheduleError(null);
+        const response = await fetch(
+          `/api/positions/${posId}/auto-invest?userId=${uid}&portfolioId=${activePortfolioId}`
+        );
+        if (response.ok) {
+          const data = await response.json();
+          setAutoInvestSchedules(data.schedules || []);
+        } else {
+          const errorData = await response.json().catch(() => null);
+          setScheduleError(errorData?.error || '자동 투자 스케줄을 불러오지 못했습니다.');
+        }
+      } catch (err) {
+        console.error('Failed to fetch auto invest schedules:', err);
+        setScheduleError('자동 투자 스케줄 조회 중 오류가 발생했습니다.');
+      } finally {
+        setScheduleLoading(false);
+      }
+    },
+    []
+  );
+
+  const fetchPosition = useCallback(
+    async (uid: string, initialPortfolioId: string) => {
+      try {
+        setLoading(true);
+        const response = await fetch(
+          `/api/positions/${positionId}?userId=${uid}&portfolioId=${initialPortfolioId}`
+        );
+
+        if (!response.ok) {
+          const errorBody = await response.json().catch(() => null);
+          setError(errorBody?.error || '포지션을 찾을 수 없습니다.');
+          setPosition(null);
+          setAutoInvestSchedules([]);
+          return;
+        }
+
+        const data = await response.json();
+        const found = data.position as Position;
+        const resolvedPortfolioId = found?.portfolioId || initialPortfolioId;
+
+        if (!found) {
+          setError('포지션을 찾을 수 없습니다.');
+          setPosition(null);
+          setAutoInvestSchedules([]);
+          return;
+        }
+
+        setError(null);
+        setPosition(found);
+        setEditedData({
+          shares: found.shares.toString(),
+          averagePrice: found.averagePrice.toString(),
+        });
+        setPortfolioIdState(resolvedPortfolioId);
+
+        if (found.purchaseMethod === 'auto') {
+          await fetchAutoInvestSchedules(uid, resolvedPortfolioId, found.id!);
+        } else {
+          setAutoInvestSchedules([]);
+        }
+      } catch (err) {
+        console.error('Failed to fetch position:', err);
+        setError('포지션 조회에 실패했습니다.');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [positionId, fetchAutoInvestSchedules]
+  );
 
   useEffect(() => {
     if (user && positionId) {
       const activePortfolioId = portfolioIdParam || deriveDefaultPortfolioId(user.uid);
       fetchPosition(user.uid, activePortfolioId);
     }
-  }, [user, positionId, portfolioIdParam]);
-
-  useEffect(() => {
-    if (position?.purchaseMethod === 'auto') {
-      setScheduleForm((prev) => ({
-        ...prev,
-        frequency: position.autoInvestConfig?.frequency || prev.frequency,
-        amount:
-          position.autoInvestConfig?.amount !== undefined
-            ? position.autoInvestConfig.amount.toString()
-            : prev.amount,
-        pricePerShare:
-          position.currentPrice !== undefined && position.currentPrice !== null
-            ? position.currentPrice.toString()
-            : prev.pricePerShare,
-        effectiveFrom: formatInputDate(),
-      }));
-    }
-  }, [position]);
-
-  const fetchPosition = async (uid: string, activePortfolioId: string) => {
-    try {
-      setLoading(true);
-      const response = await fetch(`/api/positions?portfolioId=${activePortfolioId}&userId=${uid}`);
-      const data = await response.json();
-      
-      const found = data.positions?.find((p: Position) => p.id === positionId);
-      if (found) {
-        setPosition(found);
-        setEditedData({
-          shares: found.shares.toString(),
-          averagePrice: found.averagePrice.toString(),
-        });
-        setPortfolioIdState(activePortfolioId);
-
-        if (found.purchaseMethod === 'auto') {
-          await fetchAutoInvestSchedules(uid, activePortfolioId, found.id!);
-        } else {
-          setAutoInvestSchedules([]);
-        }
-      } else {
-        setError('포지션을 찾을 수 없습니다.');
-      }
-    } catch (err) {
-      console.error('Failed to fetch position:', err);
-      setError('포지션 조회에 실패했습니다.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchAutoInvestSchedules = async (uid: string, activePortfolioId: string, posId: string) => {
-    try {
-      setScheduleLoading(true);
-      setScheduleError(null);
-      const response = await fetch(`/api/positions/${posId}/auto-invest?userId=${uid}&portfolioId=${activePortfolioId}`);
-      if (response.ok) {
-        const data = await response.json();
-        setAutoInvestSchedules(data.schedules || []);
-      } else {
-        const errorData = await response.json().catch(() => null);
-        setScheduleError(errorData?.error || '자동 투자 스케줄을 불러오지 못했습니다.');
-      }
-    } catch (err) {
-      console.error('Failed to fetch auto invest schedules:', err);
-      setScheduleError('자동 투자 스케줄 조회 중 오류가 발생했습니다.');
-    } finally {
-      setScheduleLoading(false);
-    }
-  };
+  }, [user, positionId, portfolioIdParam, fetchPosition]);
 
   const handleEdit = () => {
     setEditMode(true);
@@ -269,7 +269,8 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
       setScheduleError(null);
       setScheduleSuccess(null);
 
-      const activePortfolioId = portfolioIdState || deriveDefaultPortfolioId(user.uid);
+      const activePortfolioId =
+        portfolioIdState || position.portfolioId || deriveDefaultPortfolioId(user.uid);
       const response = await fetch(
         `/api/positions/${position.id}/auto-invest?userId=${user.uid}&portfolioId=${activePortfolioId}`,
         {
