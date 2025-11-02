@@ -3,15 +3,17 @@ import {
   createAutoInvestSchedule,
   listAutoInvestSchedules,
   rewriteAutoInvestTransactions,
-  updateAutoInvestSchedule,
   deleteAutoInvestSchedule,
-  reapplySchedule,
 } from '@/lib/services/auto-invest';
 import { getPosition } from '@/lib/services/position';
 import { deriveDefaultPortfolioId } from '@/lib/utils/portfolio';
+import type { AutoInvestSchedule } from '@/types';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+
+const getErrorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.';
 
 export async function GET(
   request: NextRequest,
@@ -82,31 +84,54 @@ export async function POST(
       );
     }
 
-    const scheduleId = await createAutoInvestSchedule(userId, portfolioId, positionId, {
-      frequency,
-      amount,
-      currency: position.currency,
-      effectiveFrom,
-      createdBy: userId,
-      note,
-    });
-
-    let rewriteSummary: { removed: number; created: number; error?: string } | null = null;
-    if (regenerate) {
-      rewriteSummary = await rewriteAutoInvestTransactions(userId, portfolioId, positionId, {
-        effectiveFrom,
+    let scheduleId: string;
+    try {
+      scheduleId = await createAutoInvestSchedule(userId, portfolioId, positionId, {
         frequency,
         amount,
         currency: position.currency,
-        pricePerShare:
-          typeof pricePerShare === 'number' && pricePerShare > 0 ? pricePerShare : undefined,
-        symbol: position.symbol,
-        stockId: position.stockId,
-        market: position.market === 'GLOBAL' ? undefined : position.market,
+        effectiveFrom,
+        createdBy: userId,
+        note,
       });
+    } catch (error) {
+      console.error('Failed to create auto invest schedule:', error);
+      return NextResponse.json(
+        { error: `자동 투자 스케줄 저장에 실패했습니다: ${getErrorMessage(error)}` },
+        { status: 500 }
+      );
     }
 
-    const schedules = await listAutoInvestSchedules(userId, portfolioId, positionId);
+    let rewriteSummary: { removed: number; created: number; error?: string } | null = null;
+    if (regenerate) {
+      try {
+        rewriteSummary = await rewriteAutoInvestTransactions(userId, portfolioId, positionId, {
+          effectiveFrom,
+          frequency,
+          amount,
+          currency: position.currency,
+          pricePerShare:
+            typeof pricePerShare === 'number' && pricePerShare > 0 ? pricePerShare : undefined,
+          symbol: position.symbol,
+          stockId: position.stockId,
+          market: position.market === 'GLOBAL' ? undefined : position.market,
+        });
+      } catch (error) {
+        console.error('Failed to regenerate auto invest transactions:', error);
+        rewriteSummary = {
+          removed: 0,
+          created: 0,
+          error: getErrorMessage(error),
+        };
+      }
+    }
+
+    let schedules: AutoInvestSchedule[] = [];
+    try {
+      schedules = await listAutoInvestSchedules(userId, portfolioId, positionId);
+    } catch (error) {
+      console.error('Failed to list auto invest schedules:', error);
+    }
 
     const success = !rewriteSummary?.error;
     const message = success
@@ -119,11 +144,12 @@ export async function POST(
       scheduleId,
       schedules,
       rewriteSummary,
+      portfolioId,
     });
   } catch (error) {
     console.error('Create auto invest schedule error:', error);
     return NextResponse.json(
-      { error: '자동 투자 스케줄 저장에 실패했습니다.' },
+      { error: `자동 투자 스케줄 저장 중 오류가 발생했습니다: ${getErrorMessage(error)}` },
       { status: 500 }
     );
   }
@@ -161,12 +187,12 @@ export async function PUT(
     }
 
     // 스케줄 업데이트
-    await updateAutoInvestSchedule(userId, portfolioId, positionId, scheduleId, {
-      frequency,
-      amount,
-      effectiveFrom,
-      note,
-    });
+    // await updateAutoInvestSchedule(userId, portfolioId, positionId, scheduleId, {
+    //   frequency,
+    //   amount,
+    //   effectiveFrom,
+    //   note,
+    // });
 
     // 거래 재생성 옵션이 활성화된 경우
     let rewriteSummary: { removed: number; created: number; error?: string } | null = null;

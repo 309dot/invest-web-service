@@ -57,6 +57,8 @@ export function TransactionForm({
   const [transactionType, setTransactionType] = useState<'buy' | 'sell'>('buy');
   const [date, setDate] = useState(formatInputDate());
   const [price, setPrice] = useState('');
+  const [priceTouched, setPriceTouched] = useState(false);
+  const [priceLoading, setPriceLoading] = useState(false);
   const [shares, setShares] = useState('');
   const [fee, setFee] = useState('0');
   const [tax, setTax] = useState('0');
@@ -86,6 +88,8 @@ export function TransactionForm({
     setTransactionType('buy');
     setDate(formatInputDate());
     setPrice('');
+    setPriceTouched(false);
+    setPriceLoading(false);
     setShares('');
     setFee('0');
     setTax('0');
@@ -193,6 +197,57 @@ export function TransactionForm({
     }
   };
 
+  const currency: 'USD' | 'KRW' = position.currency === 'KRW'
+    ? 'KRW'
+    : position.currency === 'USD'
+    ? 'USD'
+    : position.symbol.match(/^[0-9]/)
+    ? 'KRW'
+    : 'USD';
+
+  useEffect(() => {
+    if (transactionType === 'sell') {
+      setPriceTouched(false);
+    }
+  }, [transactionType]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (transactionType !== 'sell') return;
+    if (!position.symbol || !date) return;
+    if (priceTouched && price) return;
+
+    let cancelled = false;
+
+    const fetchSellPrice = async () => {
+      try {
+        setPriceLoading(true);
+        const marketParam = position.market ?? 'US';
+        const response = await fetch(
+          `/api/stocks/historical-price?symbol=${position.symbol}&date=${date}&method=sell&market=${marketParam}`
+        );
+        const data = await response.json();
+        if (!cancelled && data.success && data.price) {
+          const decimals = currency === 'KRW' ? 0 : 2;
+          setPrice(data.price.toFixed(decimals));
+          setPriceTouched(false);
+        }
+      } catch (error) {
+        console.error('Failed to fetch sell price:', error);
+      } finally {
+        if (!cancelled) {
+          setPriceLoading(false);
+        }
+      }
+    };
+
+    fetchSellPrice();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, transactionType, position.symbol, position.market, date, priceTouched, price, currency]);
+
   // 계산된 값
   const sharesValue = shares ? parseFloat(shares) : 0;
   const priceValue = price ? parseFloat(price) : 0;
@@ -209,14 +264,6 @@ export function TransactionForm({
   const predictedAveragePrice = transactionType === 'buy'
     ? (position.shares * position.averagePrice + amount) / predictedShares
     : position.averagePrice; // 매도 시 평균가는 유지
-
-  const currency: 'USD' | 'KRW' = position.currency === 'KRW'
-    ? 'KRW'
-    : position.currency === 'USD'
-    ? 'USD'
-    : position.symbol.match(/^[0-9]/)
-    ? 'KRW'
-    : 'USD';
 
   return (
     <Dialog open={open} onOpenChange={(open) => {
@@ -310,8 +357,14 @@ export function TransactionForm({
                 step="0.01"
                 placeholder="0.00"
                 value={price}
-                onChange={(e) => setPrice(e.target.value)}
+                onChange={(e) => {
+                  setPrice(e.target.value);
+                  setPriceTouched(true);
+                }}
               />
+              {transactionType === 'sell' && priceLoading && (
+                <p className="text-xs text-muted-foreground">가격 불러오는 중...</p>
+              )}
             </div>
 
             {/* 주식 수 */}
