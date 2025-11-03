@@ -125,6 +125,7 @@ export interface Transaction {
   fee: number; // 수수료 (현지 통화)
   totalAmount: number; // 총 금액 (수수료 포함)
   currency?: 'USD' | 'KRW';
+  displayDate?: string; // 사용자 표시용 일자 (KST 기준)
   // 환율 정보 (한국 주식의 경우)
   exchangeRate?: number; // USD/KRW 환율
   krwAmount?: number; // 원화 환산 금액

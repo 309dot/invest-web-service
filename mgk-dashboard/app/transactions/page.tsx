@@ -46,7 +46,6 @@ import { formatCurrency, formatDate, formatPercent } from '@/lib/utils/formatter
 import { useCurrency } from '@/lib/contexts/CurrencyContext';
 import type { Transaction, AutoInvestFrequency } from '@/types';
 import { deriveDefaultPortfolioId } from '@/lib/utils/portfolio';
-import { FeatureCurrencyToggle } from '@/components/FeatureCurrencyToggle';
 
 type TransactionCurrencyStats = {
   totalBuys: number;
@@ -175,7 +174,7 @@ export default function TransactionsPage() {
       const response = await fetch(`/api/transactions?${params.toString()}`);
       if (response.ok) {
         const data = await response.json();
-        setTransactions(data.transactions || []);
+        setTransactions((data.transactions || []) as TransactionWithDisplay[]);
         setStats(data.stats || null);
         setUpcomingAutoInvests(data.upcomingAutoInvests || []);
       }
@@ -192,7 +191,7 @@ export default function TransactionsPage() {
     }
   }, [user, fetchTransactions]);
 
-  const handleDeleteClick = (transaction: Transaction) => {
+  const handleDeleteClick = (transaction: TransactionWithDisplay) => {
     setTransactionToDelete(transaction);
     setDeleteDialogOpen(true);
   };
@@ -239,7 +238,7 @@ export default function TransactionsPage() {
   // 종목 목록 추출
   const symbols = Array.from(new Set(transactions.map((t) => t.symbol))).sort();
 
-  const resolveTransactionCurrency = (transaction: Transaction): 'USD' | 'KRW' => {
+  const resolveTransactionCurrency = (transaction: TransactionWithDisplay): 'USD' | 'KRW' => {
     const symbol = transaction.symbol?.trim() ?? '';
     if (/^[0-9]{4,6}$/.test(symbol)) {
       return 'KRW';
@@ -266,7 +265,6 @@ export default function TransactionsPage() {
               <h1 className="text-3xl font-bold tracking-tight">거래 이력</h1>
               <p className="text-muted-foreground">모든 매수/매도 거래 기록</p>
             </div>
-            <FeatureCurrencyToggle size="sm" label="통화 표시" />
           </div>
 
           {upcomingAutoInvests.length > 0 && (

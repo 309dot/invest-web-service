@@ -25,20 +25,6 @@ export function formatDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-export function formatDateInTimeZone(date: Date, market?: SupportedMarket): string {
-  const resolved = resolveMarket(market);
-  const timeZone = MARKET_TIMEZONES[resolved];
-  const formatter = new Intl.DateTimeFormat('en-CA', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
-
-  const formatted = formatter.format(date);
-  return formatted.replaceAll('/', '-');
-}
-
 export function parseISODate(dateString: string): Date {
   return new Date(`${dateString}T00:00:00Z`);
 }
@@ -59,14 +45,6 @@ export function getMarketToday(market?: SupportedMarket): Date {
 
 export function getDisplayDateForMarket(dateInput: string | Date, market?: SupportedMarket): string {
   const date = typeof dateInput === 'string' ? parseISODate(dateInput) : new Date(dateInput.getTime());
-  const resolved = resolveMarket(market);
-
-  if (resolved === 'US') {
-    const shifted = new Date(date.getTime());
-    shifted.setUTCDate(shifted.getUTCDate() + 1);
-    return formatDate(shifted);
-  }
-
   return formatDate(date);
 }
 

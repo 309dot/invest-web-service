@@ -54,10 +54,12 @@ export interface TopContributor {
 
 export interface RebalancingSuggestion {
   symbol: string;
+  currency: SupportedCurrency;
   currentWeight: number;
   targetWeight: number;
   action: 'buy' | 'sell' | 'hold';
   amount: number;
+  baseAmount: number;
   reason: string;
 }
 
@@ -94,7 +96,8 @@ export interface PortfolioAnalysis {
  * 섹터별 분산도 계산
  */
 export function calculateSectorAllocation(
-  positions: Position[]
+  positions: Position[],
+  fxRate: number | null
 ): SectorAllocation[] {
   const sectorMap = new Map<Sector | 'unknown', {
     value: number;
@@ -104,16 +107,27 @@ export function calculateSectorAllocation(
 
   positions.forEach((position) => {
     const sector = (position as any).sector || 'unknown';
+    const currency = assertCurrency(position.currency, position.market === 'KR' ? 'KRW' : 'USD');
+    const baseValue = currency === 'USD'
+      ? position.totalValue
+      : fxRate
+        ? convertWithRate(position.totalValue, 'KRW', 'USD', fxRate)
+        : position.totalValue;
+    const baseInvested = currency === 'USD'
+      ? position.totalInvested
+      : fxRate
+        ? convertWithRate(position.totalInvested, 'KRW', 'USD', fxRate)
+        : position.totalInvested;
     const existing = sectorMap.get(sector) || { value: 0, invested: 0, count: 0 };
     
     sectorMap.set(sector, {
-      value: existing.value + position.totalValue,
-      invested: existing.invested + position.totalInvested,
+      value: existing.value + baseValue,
+      invested: existing.invested + baseInvested,
       count: existing.count + 1,
     });
   });
 
-  const totalValue = positions.reduce((sum, p) => sum + p.totalValue, 0);
+  const totalValue = Array.from(sectorMap.values()).reduce((sum, data) => sum + data.value, 0);
 
   const allocations: SectorAllocation[] = [];
   sectorMap.forEach((data, sector) => {
@@ -138,7 +152,8 @@ export function calculateSectorAllocation(
  * 지역별 분산도 계산
  */
 export function calculateRegionAllocation(
-  positions: Position[]
+  positions: Position[],
+  fxRate: number | null
 ): RegionAllocation[] {
   const regionMap = new Map<Market, {
     value: number;
@@ -149,16 +164,27 @@ export function calculateRegionAllocation(
   positions.forEach((position) => {
     // 심볼 기반 지역 판단 (간단한 로직)
     const market: Market = position.symbol.match(/^[0-9]/) ? 'KR' : 'US';
+    const currency = assertCurrency(position.currency, market === 'KR' ? 'KRW' : 'USD');
+    const baseValue = currency === 'USD'
+      ? position.totalValue
+      : fxRate
+        ? convertWithRate(position.totalValue, 'KRW', 'USD', fxRate)
+        : position.totalValue;
+    const baseInvested = currency === 'USD'
+      ? position.totalInvested
+      : fxRate
+        ? convertWithRate(position.totalInvested, 'KRW', 'USD', fxRate)
+        : position.totalInvested;
     const existing = regionMap.get(market) || { value: 0, invested: 0, count: 0 };
     
     regionMap.set(market, {
-      value: existing.value + position.totalValue,
-      invested: existing.invested + position.totalInvested,
+      value: existing.value + baseValue,
+      invested: existing.invested + baseInvested,
       count: existing.count + 1,
     });
   });
 
-  const totalValue = positions.reduce((sum, p) => sum + p.totalValue, 0);
+  const totalValue = Array.from(regionMap.values()).reduce((sum, data) => sum + data.value, 0);
 
   const allocations: RegionAllocation[] = [];
   regionMap.forEach((data, region) => {
@@ -183,7 +209,8 @@ export function calculateRegionAllocation(
  * 자산 유형별 분산도 계산
  */
 export function calculateAssetAllocation(
-  positions: Position[]
+  positions: Position[],
+  fxRate: number | null
 ): AssetAllocation[] {
   const assetMap = new Map<AssetType, {
     value: number;
@@ -194,16 +221,27 @@ export function calculateAssetAllocation(
   positions.forEach((position) => {
     // 기본값: stock (향후 종목 마스터에서 가져와야 함)
     const assetType: AssetType = (position as any).assetType || 'stock';
+    const currency = assertCurrency(position.currency, position.market === 'KR' ? 'KRW' : 'USD');
+    const baseValue = currency === 'USD'
+      ? position.totalValue
+      : fxRate
+        ? convertWithRate(position.totalValue, 'KRW', 'USD', fxRate)
+        : position.totalValue;
+    const baseInvested = currency === 'USD'
+      ? position.totalInvested
+      : fxRate
+        ? convertWithRate(position.totalInvested, 'KRW', 'USD', fxRate)
+        : position.totalInvested;
     const existing = assetMap.get(assetType) || { value: 0, invested: 0, count: 0 };
     
     assetMap.set(assetType, {
-      value: existing.value + position.totalValue,
-      invested: existing.invested + position.totalInvested,
+      value: existing.value + baseValue,
+      invested: existing.invested + baseInvested,
       count: existing.count + 1,
     });
   });
 
-  const totalValue = positions.reduce((sum, p) => sum + p.totalValue, 0);
+  const totalValue = Array.from(assetMap.values()).reduce((sum, data) => sum + data.value, 0);
 
   const allocations: AssetAllocation[] = [];
   assetMap.forEach((data, assetType) => {
@@ -272,15 +310,33 @@ export function calculateRiskMetrics(
  */
 export function calculateTopContributors(
   positions: Position[],
+  fxRate: number | null,
   limit: number = 5
 ): TopContributor[] {
-  const totalValue = positions.reduce((sum, p) => sum + p.totalValue, 0);
-  
-  const contributors: TopContributor[] = positions.map((position) => ({
-    symbol: position.symbol,
-    contribution: position.profitLoss,
-    weight: totalValue > 0 ? (position.totalValue / totalValue) * 100 : 0,
-    returnRate: position.returnRate,
+  const toBase = (value: number, currency: SupportedCurrency) => {
+    if (currency === 'USD') return value;
+    if (!fxRate) return value;
+    return convertWithRate(value, 'KRW', 'USD', fxRate);
+  };
+
+  const augmented = positions.map((position) => {
+    const currency = assertCurrency(position.currency, position.market === 'KR' ? 'KRW' : 'USD');
+    return {
+      symbol: position.symbol,
+      currency,
+      baseValue: toBase(position.totalValue, currency),
+      profitLossBase: toBase(position.profitLoss, currency),
+      returnRate: position.returnRate,
+    };
+  });
+
+  const totalBaseValue = augmented.reduce((sum, entry) => sum + entry.baseValue, 0);
+
+  const contributors: TopContributor[] = augmented.map((entry) => ({
+    symbol: entry.symbol,
+    contribution: entry.profitLossBase,
+    weight: totalBaseValue > 0 ? (entry.baseValue / totalBaseValue) * 100 : 0,
+    returnRate: entry.returnRate,
   }));
 
   return contributors
@@ -345,48 +401,67 @@ export function calculateDiversificationScore(
  */
 export function generateRebalancingSuggestions(
   positions: Position[],
-  targetAllocation?: Record<string, number> // 목표 비중
+  options: {
+    targetAllocation?: Record<string, number>;
+    baseTotalValue: number;
+    exchangeRate: number | null;
+  }
 ): RebalancingSuggestion[] {
   if (positions.length === 0) return [];
 
-  const totalValue = positions.reduce((sum, p) => sum + p.totalValue, 0);
-  const suggestions: RebalancingSuggestion[] = [];
+  const { targetAllocation, baseTotalValue, exchangeRate } = options;
 
-  // 목표 비중이 없으면 균등 분배
+  const toBase = (value: number, currency: SupportedCurrency) => {
+    if (currency === 'USD') return value;
+    if (!exchangeRate) return value;
+    return convertWithRate(value, 'KRW', 'USD', exchangeRate);
+  };
+
+  const fromBase = (value: number, currency: SupportedCurrency) => {
+    if (currency === 'USD') return value;
+    if (!exchangeRate) return value;
+    return convertWithRate(value, 'USD', 'KRW', exchangeRate);
+  };
+
   const defaultTarget = 100 / positions.length;
 
-  positions.forEach((position) => {
-    const currentWeight = totalValue > 0 ? (position.totalValue / totalValue) * 100 : 0;
-    const targetWeight = targetAllocation?.[position.symbol] || defaultTarget;
-    const difference = currentWeight - targetWeight;
+  const suggestions: RebalancingSuggestion[] = positions.map((position) => {
+    const currency = assertCurrency(position.currency, position.market === 'KR' ? 'KRW' : 'USD');
+    const baseValue = toBase(position.totalValue, currency);
+    const currentWeight = baseTotalValue > 0 ? (baseValue / baseTotalValue) * 100 : 0;
+    const targetWeight = targetAllocation?.[position.symbol] ?? defaultTarget;
+    const difference = targetWeight - currentWeight;
 
     let action: 'buy' | 'sell' | 'hold' = 'hold';
-    let reason = '';
+    let reason = '목표 비중과 근접';
 
-    if (Math.abs(difference) < 2) {
-      reason = '목표 비중과 근접';
-    } else if (difference > 0) {
-      action = 'sell';
-      reason = `목표 비중 초과 (${Math.abs(difference).toFixed(1)}%)`;
-    } else {
-      action = 'buy';
-      reason = `목표 비중 미달 (${Math.abs(difference).toFixed(1)}%)`;
+    if (Math.abs(difference) >= 2) {
+      if (difference > 0) {
+        action = 'buy';
+        reason = `목표 비중 미달 (${Math.abs(difference).toFixed(1)}%)`;
+      } else {
+        action = 'sell';
+        reason = `목표 비중 초과 (${Math.abs(difference).toFixed(1)}%)`;
+      }
     }
 
-    const amount = Math.abs((totalValue * difference) / 100);
+    const baseAmount = (baseTotalValue * Math.abs(difference)) / 100;
+    const localAmount = fromBase(baseAmount, currency);
 
-    suggestions.push({
+    return {
       symbol: position.symbol,
+      currency,
       currentWeight,
       targetWeight,
       action,
-      amount,
+      amount: localAmount,
+      baseAmount,
       reason,
-    });
+    };
   });
 
   return suggestions
-    .filter(s => s.action !== 'hold')
+    .filter((suggestion) => suggestion.action !== 'hold' && suggestion.amount > 0)
     .sort((a, b) => Math.abs(b.currentWeight - b.targetWeight) - Math.abs(a.currentWeight - a.targetWeight));
 }
 
@@ -403,6 +478,12 @@ export async function analyzePortfolio(
     const { rate, source } = await getUsdKrwRate();
     const baseCurrency: SupportedCurrency = 'USD';
 
+    const toBase = (value: number, currency: SupportedCurrency) => {
+      if (currency === 'USD') return value;
+      if (!rate) return value;
+      return convertWithRate(value, 'KRW', 'USD', rate);
+    };
+
     const currencyTotals: Record<SupportedCurrency, {
       originalValue: number;
       originalInvested: number;
@@ -414,51 +495,42 @@ export async function analyzePortfolio(
       KRW: { originalValue: 0, originalInvested: 0, convertedValue: 0, convertedInvested: 0, count: 0 },
     };
 
-    const analysisPositions: Position[] = positions.map((position) => {
-      const currency = assertCurrency(position.currency, position.market === 'KR' ? 'KRW' : 'USD');
+    let totalValue = 0;
+    let totalInvested = 0;
 
-      const convertedValue =
-        currency === 'USD' ? position.totalValue : convertWithRate(position.totalValue, 'KRW', 'USD', rate);
-      const convertedInvested =
-        currency === 'USD'
-          ? position.totalInvested
-          : convertWithRate(position.totalInvested, 'KRW', 'USD', rate);
-      const convertedProfitLoss = convertedValue - convertedInvested;
-      const convertedReturnRate = calculateReturnRate(convertedValue, convertedInvested);
+    positions.forEach((position) => {
+      const currency = assertCurrency(position.currency, position.market === 'KR' ? 'KRW' : 'USD');
+      const baseValue = toBase(position.totalValue, currency);
+      const baseInvested = toBase(position.totalInvested, currency);
+
+      totalValue += baseValue;
+      totalInvested += baseInvested;
 
       const bucket = currencyTotals[currency];
       bucket.originalValue += position.totalValue;
       bucket.originalInvested += position.totalInvested;
-      bucket.convertedValue += convertedValue;
-      bucket.convertedInvested += convertedInvested;
+      bucket.convertedValue += baseValue;
+      bucket.convertedInvested += baseInvested;
       bucket.count += 1;
-
-      return {
-        ...position,
-        totalValue: convertedValue,
-        totalInvested: convertedInvested,
-        profitLoss: convertedProfitLoss,
-        returnRate: convertedReturnRate,
-      };
     });
 
-    const totalValue = analysisPositions.reduce((sum, p) => sum + p.totalValue, 0);
-    const totalInvested = analysisPositions.reduce((sum, p) => sum + p.totalInvested, 0);
-    const overallReturnRate = totalInvested > 0 
-      ? ((totalValue - totalInvested) / totalInvested) * 100 
-      : 0;
+    const overallReturnRate = calculateReturnRate(totalValue, totalInvested);
 
-    const sectorAllocation = calculateSectorAllocation(analysisPositions);
-    const regionAllocation = calculateRegionAllocation(analysisPositions);
-    const assetAllocation = calculateAssetAllocation(analysisPositions);
-    const riskMetrics = calculateRiskMetrics(analysisPositions);
-    const topContributors = calculateTopContributors(analysisPositions);
-    const rebalancingSuggestions = generateRebalancingSuggestions(analysisPositions);
+    const sectorAllocation = calculateSectorAllocation(positions, rate ?? null);
+    const regionAllocation = calculateRegionAllocation(positions, rate ?? null);
+    const assetAllocation = calculateAssetAllocation(positions, rate ?? null);
+    const riskMetrics = calculateRiskMetrics(positions);
+    const topContributors = calculateTopContributors(positions, rate ?? null);
+    const rebalancingSuggestions = generateRebalancingSuggestions(positions, {
+      targetAllocation: undefined,
+      baseTotalValue: totalValue,
+      exchangeRate: rate ?? null,
+    });
     const diversificationScore = calculateDiversificationScore(
       sectorAllocation,
       regionAllocation,
       assetAllocation,
-      analysisPositions.length
+      positions.length
     );
 
     return {

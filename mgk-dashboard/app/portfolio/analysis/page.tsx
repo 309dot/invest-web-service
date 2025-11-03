@@ -101,7 +101,10 @@ export default function PortfolioAnalysisPage() {
     }
   }, [user, fetchDiagnosis]);
 
-  const formatUsd = useCallback((value: number) => formatAmount(value, 'USD'), [formatAmount]);
+  const formatBaseAmount = useCallback(
+    (value: number) => formatAmount(value, analysis?.baseCurrency ?? 'USD'),
+    [analysis?.baseCurrency, formatAmount]
+  );
 
   const sectorData: AllocationDatum[] = useMemo(() => {
     if (!analysis) return [];
@@ -324,29 +327,33 @@ export default function PortfolioAnalysisPage() {
               title="섹터별 분산도"
               description={`${sectorData.length}개 섹터`}
               data={sectorData}
-              valueFormatter={formatUsd}
+              valueFormatter={formatBaseAmount}
               colors={DEFAULT_ALLOCATION_COLORS}
             />
             <AllocationPieChart
               title="지역별 분산도"
               description={`${regionData.length}개 지역`}
               data={regionData}
-              valueFormatter={formatUsd}
+              valueFormatter={formatBaseAmount}
               colors={DEFAULT_ALLOCATION_COLORS}
             />
           </div>
 
-          <TopContributorsChart data={analysis.topContributors} valueFormatter={formatUsd} />
+          <TopContributorsChart data={analysis.topContributors} valueFormatter={formatBaseAmount} />
 
           {positions.length > 0 && <MultiStockChart positions={positions} />}
 
           {positions.length > 0 && (
-            <RebalancingSimulator positions={positions} totalValue={analysis.totalValue} />
+            <RebalancingSimulator
+              positions={positions}
+              totalValue={analysis.totalValue}
+              baseCurrency={analysis.baseCurrency}
+              exchangeRate={analysis.exchangeRate?.rate ?? null}
+            />
           )}
 
           <RecommendationList
             suggestions={analysis.rebalancingSuggestions}
-            valueFormatter={(value) => formatUsd(value)}
           />
         </main>
       </div>

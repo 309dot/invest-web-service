@@ -54,6 +54,10 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
   >(
     () =>
       (amount: number, sourceCurrency: 'USD' | 'KRW') => {
+        if (sourceCurrency === 'KRW') {
+          return { value: amount, currency: 'KRW' };
+        }
+
         if (displayCurrency === 'original' || !exchangeRate) {
           return { value: amount, currency: sourceCurrency };
         }
@@ -66,9 +70,6 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
         }
 
         // displayCurrency === 'KRW'
-        if (sourceCurrency === 'KRW') {
-          return { value: amount, currency: 'KRW' };
-        }
         return { value: amount * exchangeRate, currency: 'KRW' };
       },
     [displayCurrency, exchangeRate]

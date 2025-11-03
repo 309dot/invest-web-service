@@ -6,7 +6,7 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -24,38 +24,74 @@ import {
 import { formatPercent } from '@/lib/utils/formatters';
 import type { Position } from '@/types';
 import { useCurrency } from '@/lib/contexts/CurrencyContext';
+import { assertCurrency, convertWithRate } from '@/lib/currency';
 
 interface RebalancingSimulatorProps {
   positions: Position[];
   totalValue: number;
+  baseCurrency: 'USD' | 'KRW';
+  exchangeRate?: number | null;
 }
 
 interface TargetWeight {
   symbol: string;
+  currency: 'USD' | 'KRW';
   currentWeight: number;
   targetWeight: number;
-  currentValue: number;
-  targetValue: number;
-  difference: number;
+  currentValueLocal: number;
+  targetValueLocal: number;
+  differenceLocal: number;
   action: 'buy' | 'sell' | 'hold';
 }
 
-export function RebalancingSimulator({ positions, totalValue }: RebalancingSimulatorProps) {
+export function RebalancingSimulator({ positions, totalValue, baseCurrency, exchangeRate }: RebalancingSimulatorProps) {
   const [targetWeights, setTargetWeights] = useState<Record<string, string>>({});
   const [simulationResult, setSimulationResult] = useState<TargetWeight[]>([]);
   const [rebalanceMode, setRebalanceMode] = useState<'equal' | 'custom'>('equal');
   const [showResult, setShowResult] = useState(false);
   const { formatAmount } = useCurrency();
 
+  const toBase = useCallback(
+    (value: number, currency: 'USD' | 'KRW') => {
+      if (baseCurrency === 'KRW') {
+        if (currency === 'KRW') return value;
+        if (!exchangeRate) return value;
+        return convertWithRate(value, 'USD', 'KRW', exchangeRate);
+      }
+
+      if (currency === 'USD') return value;
+      if (!exchangeRate) return value;
+      return convertWithRate(value, 'KRW', 'USD', exchangeRate);
+    },
+    [baseCurrency, exchangeRate]
+  );
+
+  const fromBase = useCallback(
+    (value: number, currency: 'USD' | 'KRW') => {
+      if (baseCurrency === 'KRW') {
+        if (currency === 'KRW') return value;
+        if (!exchangeRate) return value;
+        return convertWithRate(value, 'KRW', 'USD', exchangeRate);
+      }
+
+      if (currency === 'USD') return value;
+      if (!exchangeRate) return value;
+      return convertWithRate(value, 'USD', 'KRW', exchangeRate);
+    },
+    [baseCurrency, exchangeRate]
+  );
+
   // 초기 가중치 설정
   useEffect(() => {
     const weights: Record<string, string> = {};
     positions.forEach((position) => {
-      const currentWeight = totalValue > 0 ? (position.totalValue / totalValue) * 100 : 0;
+      const currency = assertCurrency(position.currency, position.market === 'KR' ? 'KRW' : 'USD');
+      const baseValue = toBase(position.totalValue, currency);
+      const currentWeight = totalValue > 0 ? (baseValue / totalValue) * 100 : 0;
       weights[position.symbol] = currentWeight.toFixed(1);
     });
     setTargetWeights(weights);
-  }, [positions, totalValue]);
+  }, [positions, totalValue, toBase]);
 
   // 균등 분배 설정
   const handleEqualDistribution = () => {
@@ -72,7 +108,9 @@ export function RebalancingSimulator({ positions, totalValue }: RebalancingSimul
   const handleKeepCurrent = () => {
     const weights: Record<string, string> = {};
     positions.forEach((position) => {
-      const currentWeight = totalValue > 0 ? (position.totalValue / totalValue) * 100 : 0;
+      const currency = assertCurrency(position.currency, position.market === 'KR' ? 'KRW' : 'USD');
+      const baseValue = toBase(position.totalValue, currency);
+      const currentWeight = totalValue > 0 ? (baseValue / totalValue) * 100 : 0;
       weights[position.symbol] = currentWeight.toFixed(1);
     });
     setTargetWeights(weights);
@@ -94,29 +132,28 @@ export function RebalancingSimulator({ positions, totalValue }: RebalancingSimul
     let totalTarget = 0;
 
     positions.forEach((position) => {
-      const currentWeight = totalValue > 0 ? (position.totalValue / totalValue) * 100 : 0;
+      const currency = assertCurrency(position.currency, position.market === 'KR' ? 'KRW' : 'USD');
+      const baseValue = toBase(position.totalValue, currency);
+      const currentWeight = totalValue > 0 ? (baseValue / totalValue) * 100 : 0;
       const targetWeight = parseFloat(targetWeights[position.symbol] || '0');
-      const targetValue = (totalValue * targetWeight) / 100;
-      const difference = targetValue - position.totalValue;
+      const targetValueBase = (totalValue * targetWeight) / 100;
+      const differenceBase = targetValueBase - baseValue;
 
       totalTarget += targetWeight;
 
       let action: 'buy' | 'sell' | 'hold' = 'hold';
-      if (Math.abs(difference) < totalValue * 0.01) { // 1% 이내면 유지
-        action = 'hold';
-      } else if (difference > 0) {
-        action = 'buy';
-      } else {
-        action = 'sell';
+      if (Math.abs(differenceBase) >= totalValue * 0.01) {
+        action = differenceBase > 0 ? 'buy' : 'sell';
       }
 
       results.push({
         symbol: position.symbol,
+        currency,
         currentWeight,
         targetWeight,
-        currentValue: position.totalValue,
-        targetValue,
-        difference,
+        currentValueLocal: position.totalValue,
+        targetValueLocal: fromBase(targetValueBase, currency),
+        differenceLocal: fromBase(differenceBase, currency),
         action,
       });
     });
@@ -195,13 +232,15 @@ export function RebalancingSimulator({ positions, totalValue }: RebalancingSimul
 
           <div className="grid gap-3">
             {positions.map((position) => {
-              const currentWeight = totalValue > 0 ? (position.totalValue / totalValue) * 100 : 0;
+              const currency = assertCurrency(position.currency, position.market === 'KR' ? 'KRW' : 'USD');
+              const baseValue = toBase(position.totalValue, currency);
+              const currentWeight = totalValue > 0 ? (baseValue / totalValue) * 100 : 0;
               return (
                 <div key={position.symbol} className="flex items-center gap-3 p-3 border rounded-lg">
                   <div className="flex-1">
                     <div className="font-semibold">{position.symbol}</div>
                     <div className="text-sm text-muted-foreground">
-                      현재: {currentWeight.toFixed(1)}% ({formatAmount(position.totalValue, 'USD')})
+                      현재: {currentWeight.toFixed(1)}% ({formatAmount(position.totalValue, currency)})
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -271,8 +310,8 @@ export function RebalancingSimulator({ positions, totalValue }: RebalancingSimul
                       <td className="py-2 px-2 font-semibold">{result.symbol}</td>
                       <td className="py-2 px-2 text-right">{result.currentWeight.toFixed(1)}%</td>
                       <td className="py-2 px-2 text-right font-medium">{result.targetWeight.toFixed(1)}%</td>
-                      <td className="py-2 px-2 text-right">{formatAmount(result.currentValue, 'USD')}</td>
-                      <td className="py-2 px-2 text-right font-medium">{formatAmount(result.targetValue, 'USD')}</td>
+                      <td className="py-2 px-2 text-right">{formatAmount(result.currentValueLocal, result.currency)}</td>
+                      <td className="py-2 px-2 text-right font-medium">{formatAmount(result.targetValueLocal, result.currency)}</td>
                       <td className="py-2 px-2 text-center">
                         <Badge
                           variant={
@@ -288,11 +327,11 @@ export function RebalancingSimulator({ positions, totalValue }: RebalancingSimul
                         </Badge>
                       </td>
                       <td className={`py-2 px-2 text-right font-semibold ${
-                        result.difference > 0 ? 'text-green-600' : 
-                        result.difference < 0 ? 'text-red-600' : 
+                        result.differenceLocal > 0 ? 'text-green-600' : 
+                        result.differenceLocal < 0 ? 'text-red-600' : 
                         'text-muted-foreground'
                       }`}>
-                        {result.difference >= 0 ? '+' : ''}{formatAmount(result.difference, 'USD')}
+                        {result.differenceLocal >= 0 ? '+' : ''}{formatAmount(result.differenceLocal, result.currency)}
                       </td>
                     </tr>
                   ))}
@@ -329,20 +368,20 @@ export function RebalancingSimulator({ positions, totalValue }: RebalancingSimul
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">현재 금액</span>
-                        <span className="font-medium">{formatAmount(result.currentValue, 'USD')}</span>
+                        <span className="font-medium">{formatAmount(result.currentValueLocal, result.currency)}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">목표 금액</span>
-                        <span className="font-medium">{formatAmount(result.targetValue, 'USD')}</span>
+                        <span className="font-medium">{formatAmount(result.targetValueLocal, result.currency)}</span>
                       </div>
                       <div className="flex justify-between pt-2 border-t">
                         <span className="font-semibold">차이</span>
                         <span className={`font-semibold ${
-                          result.difference > 0 ? 'text-green-600' : 
-                          result.difference < 0 ? 'text-red-600' : 
+                          result.differenceLocal > 0 ? 'text-green-600' : 
+                          result.differenceLocal < 0 ? 'text-red-600' : 
                           'text-muted-foreground'
                         }`}>
-                          {result.difference >= 0 ? '+' : ''}{formatAmount(result.difference, 'USD')}
+                          {result.differenceLocal >= 0 ? '+' : ''}{formatAmount(result.differenceLocal, result.currency)}
                         </span>
                       </div>
                     </div>

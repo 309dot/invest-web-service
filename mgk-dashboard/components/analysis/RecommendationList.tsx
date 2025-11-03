@@ -3,13 +3,15 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import type { PortfolioAnalysis } from '@/lib/services/portfolio-analysis';
+import { useCurrency } from '@/lib/contexts/CurrencyContext';
 
 interface RecommendationListProps {
   suggestions: PortfolioAnalysis['rebalancingSuggestions'];
-  valueFormatter: (value: number) => string;
 }
 
-export function RecommendationList({ suggestions, valueFormatter }: RecommendationListProps) {
+export function RecommendationList({ suggestions }: RecommendationListProps) {
+  const { formatAmount } = useCurrency();
+
   if (!suggestions || suggestions.length === 0) {
     return null;
   }
@@ -38,7 +40,9 @@ export function RecommendationList({ suggestions, valueFormatter }: Recommendati
                   현재 {suggestion.currentWeight.toFixed(1)}% → 목표 {suggestion.targetWeight.toFixed(1)}%
                 </div>
                 {typeof suggestion.amount === 'number' ? (
-                  <div className="font-semibold">{valueFormatter(suggestion.amount)}</div>
+                  <div className="font-semibold">
+                    {formatAmount(suggestion.amount, suggestion.currency)}
+                  </div>
                 ) : null}
               </div>
             </div>

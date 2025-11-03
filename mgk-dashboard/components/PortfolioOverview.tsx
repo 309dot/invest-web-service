@@ -27,7 +27,6 @@ import {
   Edit2,
 } from 'lucide-react';
 import { TransactionForm } from './TransactionForm';
-import { FeatureCurrencyToggle } from './FeatureCurrencyToggle';
 import { formatCurrency, formatPercent } from '@/lib/utils/formatters';
 import type { Position } from '@/types';
 import { useAuth } from '@/lib/contexts/AuthContext';
@@ -286,7 +285,6 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
               <CardTitle>포트폴리오 현황</CardTitle>
               <CardDescription>통화별 투자 현황을 확인하세요.</CardDescription>
             </div>
-            <FeatureCurrencyToggle label="통화 표시" />
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
