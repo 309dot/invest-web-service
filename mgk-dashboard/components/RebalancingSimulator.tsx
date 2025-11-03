@@ -99,7 +99,6 @@ export function RebalancingSimulator({ positions, totalValue, baseCurrency, exch
       weights[position.symbol] = equalWeight;
     });
     setTargetWeights(weights);
-    setRebalanceMode('equal');
   };
 
   // 현재 비중 유지
@@ -112,7 +111,6 @@ export function RebalancingSimulator({ positions, totalValue, baseCurrency, exch
       weights[position.symbol] = currentWeight.toFixed(1);
     });
     setTargetWeights(weights);
-    setRebalanceMode('custom');
   };
 
   // 가중치 변경
