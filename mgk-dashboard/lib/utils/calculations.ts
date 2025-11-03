@@ -3,9 +3,11 @@ import { DailyPurchase } from '@/types';
 /**
  * Calculate return rate percentage
  */
-export function calculateReturnRate(currentPrice: number, averagePrice: number): number {
-  if (averagePrice === 0) return 0;
-  return ((currentPrice - averagePrice) / averagePrice) * 100;
+export function calculateReturnRate(currentValue: number, investedAmount: number): number {
+  if (!Number.isFinite(currentValue) || !Number.isFinite(investedAmount) || investedAmount <= 0) {
+    return 0;
+  }
+  return ((currentValue - investedAmount) / investedAmount) * 100;
 }
 
 /**

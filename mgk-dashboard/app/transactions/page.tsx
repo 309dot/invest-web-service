@@ -44,7 +44,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { formatCurrency, formatDate, formatPercent } from '@/lib/utils/formatters';
 import { useCurrency } from '@/lib/contexts/CurrencyContext';
-import type { Transaction } from '@/types';
+import type { Transaction, AutoInvestFrequency } from '@/types';
 import { deriveDefaultPortfolioId } from '@/lib/utils/portfolio';
 import { FeatureCurrencyToggle } from '@/components/FeatureCurrencyToggle';
 
@@ -87,6 +87,24 @@ type TransactionStats = {
   };
 };
 
+type UpcomingAutoInvest = {
+  positionId: string;
+  symbol: string;
+  amount: number;
+  currency: 'USD' | 'KRW';
+  scheduledDate: string;
+  frequency: AutoInvestFrequency;
+  executed: boolean;
+};
+
+const frequencyLabel: Record<AutoInvestFrequency, string> = {
+  daily: '매일',
+  weekly: '매주',
+  biweekly: '격주',
+  monthly: '매월',
+  quarterly: '분기',
+};
+
 export default function TransactionsPage() {
   const {
     formatAmount,
@@ -98,6 +116,7 @@ export default function TransactionsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<TransactionStats | null>(null);
+  const [upcomingAutoInvests, setUpcomingAutoInvests] = useState<UpcomingAutoInvest[]>([]);
 
   // 필터
   const [selectedSymbol, setSelectedSymbol] = useState<string>('all');
@@ -152,6 +171,7 @@ export default function TransactionsPage() {
         const data = await response.json();
         setTransactions(data.transactions || []);
         setStats(data.stats || null);
+        setUpcomingAutoInvests(data.upcomingAutoInvests || []);
       }
     } catch (error) {
       console.error('Failed to fetch transactions:', error);
@@ -214,10 +234,19 @@ export default function TransactionsPage() {
   const symbols = Array.from(new Set(transactions.map((t) => t.symbol))).sort();
 
   const resolveTransactionCurrency = (transaction: Transaction): 'USD' | 'KRW' => {
-    if (transaction.currency === 'KRW' || transaction.currency === 'USD') {
-      return transaction.currency;
+    const symbol = transaction.symbol?.trim() ?? '';
+    if (/^[0-9]{4,6}$/.test(symbol)) {
+      return 'KRW';
     }
-    return /^[0-9]/.test(transaction.symbol) ? 'KRW' : 'USD';
+
+    if (typeof transaction.currency === 'string') {
+      const upper = transaction.currency.toUpperCase();
+      if (upper === 'KRW' || upper === 'USD') {
+        return upper;
+      }
+    }
+
+    return 'USD';
   };
 
   return (
@@ -233,6 +262,47 @@ export default function TransactionsPage() {
             </div>
             <FeatureCurrencyToggle size="sm" label="통화 표시" />
           </div>
+
+          {upcomingAutoInvests.length > 0 && (
+            <Card className="border-primary/20 bg-primary/5">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">오늘 자동 투자 일정</CardTitle>
+                <CardDescription>예정된 자동 투자 실행 상태를 확인하세요.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {upcomingAutoInvests.map((plan) => {
+                  const statusBadge = plan.executed ? (
+                    <Badge className="bg-emerald-600 hover:bg-emerald-600">구매 완료</Badge>
+                  ) : (
+                    <Badge variant="outline" className="border-dashed">대기 중</Badge>
+                  );
+
+                  return (
+                    <div
+                      key={`${plan.positionId}-${plan.scheduledDate}`}
+                      className="flex flex-col gap-1 rounded-md border border-primary/10 bg-background/60 p-3 md:flex-row md:items-center md:justify-between"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 text-sm font-semibold">
+                          <span>{plan.symbol}</span>
+                          <Badge variant="secondary" className="uppercase">
+                            {frequencyLabel[plan.frequency]}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          예정일: {formatDate(plan.scheduledDate)} · 금액 {formatAmount(plan.amount, plan.currency)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm">
+                        {statusBadge}
+                        {!plan.executed && <span className="text-muted-foreground">구매 시 자동으로 기록됩니다.</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          )}
 
           {/* 통계 카드 */}
           {stats && (

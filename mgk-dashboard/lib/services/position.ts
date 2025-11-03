@@ -86,12 +86,17 @@ function aggregatePositionMetrics(
   let totalInvested = 0;
   let averagePrice = existingPosition?.averagePrice ?? 0;
   let currentPrice = existingPosition?.currentPrice ?? 0;
+  let lastTradePrice = 0;
   let firstPurchaseDate: string | null = null;
   let lastTransactionDate: string | null = null;
 
   transactions.forEach((tx) => {
     const price = tx.price || 0;
     const quantity = tx.shares || 0;
+
+    if (price > 0) {
+      lastTradePrice = price;
+    }
 
     if (tx.type === 'buy') {
       const cost = quantity * price;
@@ -119,8 +124,12 @@ function aggregatePositionMetrics(
     lastTransactionDate = tx.date;
   });
 
+  if ((!Number.isFinite(currentPrice) || currentPrice <= 0) && lastTradePrice > 0) {
+    currentPrice = lastTradePrice;
+  }
+
   const totalValue = shares * currentPrice;
-  const returnRate = totalInvested > 0 ? ((totalValue - totalInvested) / totalInvested) * 100 : 0;
+  const returnRate = calculateReturnRate(totalValue, totalInvested);
   const profitLoss = totalValue - totalInvested;
 
   return {
@@ -170,8 +179,7 @@ export async function createPosition(
     const shares = initialData.shares || 0;
     const totalInvested = initialData.totalInvested || shares * currentPrice;
     const totalValue = shares * currentPrice;
-    const returnRate =
-      totalInvested > 0 ? ((totalValue - totalInvested) / totalInvested) * 100 : 0;
+    const returnRate = calculateReturnRate(totalValue, totalInvested);
     const profitLoss = totalValue - totalInvested;
 
     // Position 데이터 생성 (undefined 필드 제외)
@@ -387,11 +395,13 @@ export function calculateAveragePrice(
  * 수익률 계산
  */
 export function calculateReturnRate(
-  currentPrice: number,
-  averagePrice: number
+  totalValue: number,
+  totalInvested: number
 ): number {
-  if (averagePrice === 0) return 0;
-  return ((currentPrice - averagePrice) / averagePrice) * 100;
+  if (!Number.isFinite(totalValue) || !Number.isFinite(totalInvested) || totalInvested <= 0) {
+    return 0;
+  }
+  return ((totalValue - totalInvested) / totalInvested) * 100;
 }
 
 /**
@@ -540,7 +550,7 @@ export async function updatePositionPrices(
       if (!currentPrice) continue;
 
       const newTotalValue = position.shares * currentPrice;
-      const newReturnRate = calculateReturnRate(currentPrice, position.averagePrice);
+      const newReturnRate = calculateReturnRate(newTotalValue, position.totalInvested);
       const newProfitLoss = newTotalValue - position.totalInvested;
 
       const positionRef = doc(

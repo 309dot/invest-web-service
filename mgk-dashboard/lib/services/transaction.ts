@@ -132,12 +132,10 @@ function resolveTransactionCurrency(
   transaction: Transaction,
   positionMap: Map<string, Partial<Position>>
 ): 'USD' | 'KRW' {
-  const raw = transaction.currency;
-  if (typeof raw === 'string') {
-    const upper = raw.toUpperCase();
-    if (upper === 'USD' || upper === 'KRW') {
-      return upper;
-    }
+  const symbol = (transaction.symbol || '').trim();
+
+  if (/^[0-9]{4,6}$/.test(symbol)) {
+    return 'KRW';
   }
 
   const position = transaction.positionId
@@ -145,16 +143,23 @@ function resolveTransactionCurrency(
     : undefined;
 
   if (position) {
-    if (position.currency === 'KRW' || position.currency === 'USD') {
-      return position.currency;
-    }
     if (position.market === 'KR') {
       return 'KRW';
     }
+    if (position.currency === 'KRW' || position.currency === 'USD') {
+      return position.currency;
+    }
   }
 
-  if (/^[0-9]/.test(transaction.symbol || '')) {
-    return 'KRW';
+  const raw = transaction.currency;
+  if (typeof raw === 'string') {
+    const upper = raw.toUpperCase();
+    if (upper === 'KRW') {
+      return 'KRW';
+    }
+    if (upper === 'USD') {
+      return 'USD';
+    }
   }
 
   return 'USD';

@@ -13,6 +13,14 @@ import {
   getPortfolioTransactions,
   calculateTransactionStats,
 } from '@/lib/services/transaction';
+import { getPortfolioPositions } from '@/lib/services/position';
+import { getAutoInvestDates } from '@/lib/services/auto-invest';
+import {
+  determineMarketFromContext,
+  getMarketToday,
+  isFutureTradingDate,
+  formatDate,
+} from '@/lib/utils/tradingCalendar';
 
 /**
  * POST /api/transactions
@@ -56,6 +64,14 @@ export async function POST(request: NextRequest) {
     if (type !== 'buy' && type !== 'sell') {
       return NextResponse.json(
         { error: '거래 타입은 buy 또는 sell이어야 합니다.' },
+        { status: 400 }
+      );
+    }
+
+    const market = determineMarketFromContext(undefined, currency, symbol);
+    if (isFutureTradingDate(date, market)) {
+      return NextResponse.json(
+        { error: '미래 일자는 거래로 기록할 수 없습니다.' },
         { status: 400 }
       );
     }
@@ -125,7 +141,44 @@ export async function GET(request: NextRequest) {
       endDate,
     });
 
-    const result: any = { transactions };
+    const positions = await getPortfolioPositions(userId, portfolioId);
+
+    const autoTransactionIndex = new Set<string>();
+    transactions.forEach((tx) => {
+      if (tx.purchaseMethod === 'auto' && tx.positionId) {
+        autoTransactionIndex.add(`${tx.positionId}:${tx.date}`);
+      }
+    });
+
+    const upcomingAutoInvests = positions
+      .filter((position) => position.autoInvestConfig && position.autoInvestConfig.isActive !== false)
+      .map((position) => {
+        const config = position.autoInvestConfig!;
+        const market = determineMarketFromContext(position.market, position.currency, position.symbol);
+        const today = formatDate(getMarketToday(market));
+        const scheduledDates = getAutoInvestDates(config.startDate, config.frequency, today, market);
+
+        if (!scheduledDates.includes(today)) {
+          return null;
+        }
+
+        const executed = position.id
+          ? autoTransactionIndex.has(`${position.id}:${today}`)
+          : false;
+
+        return {
+          positionId: position.id ?? position.symbol,
+          symbol: position.symbol,
+          amount: config.amount,
+          currency: position.currency === 'KRW' ? 'KRW' : 'USD',
+          scheduledDate: today,
+          frequency: config.frequency,
+          executed,
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null);
+
+    const result: any = { transactions, upcomingAutoInvests };
 
     // 통계 포함
     if (includeStats) {

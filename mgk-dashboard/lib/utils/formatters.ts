@@ -29,8 +29,22 @@ export function formatCurrency(
  * Format percentage
  */
 export function formatPercent(value: number, decimals: number = 2): string {
+  if (!Number.isFinite(value)) {
+    return '0.00%';
+  }
+
+  const absolute = Math.abs(value);
+  const multiplier = 10 ** decimals;
+  let rounded = Math.round(absolute * multiplier) / multiplier;
+
+  if (rounded === 0 && absolute > 0) {
+    rounded = 1 / multiplier;
+  }
+
+  const signedValue = value >= 0 ? rounded : -rounded;
+  const formatted = signedValue.toFixed(decimals);
   const sign = value >= 0 ? '+' : '';
-  return `${sign}${value.toFixed(decimals)}%`;
+  return `${sign}${formatted}%`;
 }
 
 /**
