@@ -15,7 +15,9 @@ import { analyzePortfolio } from './portfolio-analysis';
 import type {
   AIAdvisorContext,
   AIAdvisorPromptPayload,
+  AIAdvisorRecommendation,
   AIAdvisorResult,
+  AIAdvisorSignal,
   AIInsight,
   AppSettings,
   DailyPurchase,
@@ -60,6 +62,94 @@ const toISOString = (value: unknown) => {
   return String(value);
 };
 
+function normalizeRecommendations(value: unknown): AIAdvisorRecommendation[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const validActions = new Set(['buy', 'sell', 'hold']);
+
+  return value
+    .map((item): AIAdvisorRecommendation | null => {
+      if (typeof item === 'string') {
+        return {
+          ticker: 'PORTFOLIO',
+          action: 'hold',
+          reason: item,
+        };
+      }
+
+      if (item && typeof item === 'object') {
+        const ticker = typeof (item as any).ticker === 'string' && (item as any).ticker.trim()
+          ? (item as any).ticker.trim()
+          : 'PORTFOLIO';
+        const actionRaw = typeof (item as any).action === 'string' ? (item as any).action.toLowerCase() : 'hold';
+        const action = validActions.has(actionRaw) ? (actionRaw as 'buy' | 'sell' | 'hold') : 'hold';
+        const reason = typeof (item as any).reason === 'string' && (item as any).reason.trim()
+          ? (item as any).reason.trim()
+          : '';
+        const confidence = typeof (item as any).confidence === 'number' ? (item as any).confidence : undefined;
+
+        return {
+          ticker,
+          action,
+          reason: reason || '근거가 제공되지 않았습니다.',
+          confidence,
+        };
+      }
+
+      return null;
+    })
+    .filter((rec): rec is AIAdvisorRecommendation => rec !== null);
+}
+
+function normalizeSignals(value: unknown): AIAdvisorSignal {
+  if (value && typeof value === 'object') {
+    const sellSignal = typeof (value as any).sellSignal === 'boolean' ? (value as any).sellSignal : false;
+    const reason = typeof (value as any).reason === 'string' ? (value as any).reason : '';
+    const notes = Array.isArray((value as any).notes)
+      ? (value as any).notes.filter((note: unknown): note is string => typeof note === 'string')
+      : undefined;
+
+    return {
+      sellSignal,
+      reason,
+      ...(notes && notes.length > 0 ? { notes } : {}),
+    };
+  }
+
+  return {
+    sellSignal: false,
+    reason: '',
+  };
+}
+
+function normalizeAdvisorResult(raw: any, rawText: string): AIAdvisorResult {
+  const weeklySummaryCandidate = typeof raw?.weeklySummary === 'string' ? raw.weeklySummary : undefined;
+  const summaryCandidate = typeof raw?.summary === 'string' ? raw.summary : undefined;
+
+  const weeklySummary = weeklySummaryCandidate && weeklySummaryCandidate.trim()
+    ? weeklySummaryCandidate
+    : summaryCandidate ?? '';
+
+  const newsHighlights = Array.isArray(raw?.newsHighlights)
+    ? raw.newsHighlights
+        .filter((item: unknown): item is string => typeof item === 'string')
+        .map((item: string) => item.trim())
+    : [];
+
+  return {
+    summary: summaryCandidate,
+    weeklySummary,
+    newsHighlights,
+    recommendations: normalizeRecommendations(raw?.recommendations),
+    signals: normalizeSignals(raw?.signals),
+    confidenceScore: typeof raw?.confidenceScore === 'number' ? raw.confidenceScore : undefined,
+    riskScore: typeof raw?.riskScore === 'number' ? raw.riskScore : undefined,
+    rawText,
+  };
+}
+
 function generateFallbackAdvisorResult(payload: AIAdvisorPromptPayload, reason: string): AIAdvisorResult {
   const { context } = payload;
   const { summary, news } = context;
@@ -69,31 +159,49 @@ function generateFallbackAdvisorResult(payload: AIAdvisorPromptPayload, reason: 
     .slice(0, 3)
     .map((item) => `${item.title}${item.source ? ` (${item.source})` : ''}`);
 
-  const recommendations: string[] = [];
+  const ticker = context.tickers?.[0] ?? 'PORTFOLIO';
 
-  if (sellSignal) {
-    recommendations.push('손실 구간이 길어지고 있습니다. 비중 조정을 검토하세요.');
-  } else {
-    recommendations.push('장기 관점에서 핵심 보유 종목을 유지하며 추가 기회를 탐색하세요.');
-  }
+  const recommendations: AIAdvisorRecommendation[] = [
+    {
+      ticker,
+      action: sellSignal ? 'sell' : 'hold',
+      reason: sellSignal
+        ? '손실 구간이 길어지고 있습니다. 비중을 축소하거나 방어적 자산으로 리밸런싱을 검토하세요.'
+        : '현재 수익률이 안정권에 있어 핵심 보유 종목의 비중을 유지하는 것이 권장됩니다.',
+    },
+    {
+      ticker: 'MARKET',
+      action: 'hold',
+      reason: '주요 뉴스와 섹터 동향을 주기적으로 점검하고 변동성 확대 구간에 대비하세요.',
+    },
+    {
+      ticker: 'PORTFOLIO',
+      action: 'buy',
+      reason: '추가 투자 시 자산 배분 비중을 재검토하여 장기 목표 비중을 맞추세요.',
+    },
+  ];
 
-  recommendations.push('주요 뉴스와 섹터 동향을 주기적으로 점검하세요.');
-  recommendations.push('추가 투자를 진행할 경우 자산 배분 비중을 재검토하세요.');
+  const weeklySummary =
+    summary.totalValue && summary.totalInvested
+      ? `최근 ${context.periodDays}일 기준으로 총 투자금은 ${summary.totalInvested.toLocaleString()}원, 평가 금액은 ${summary.totalValue.toLocaleString()}원 수준입니다. 수익률은 ${returnRate.toFixed(2)}% 입니다.`
+      : '최근 데이터를 기반으로 기본 요약을 제공합니다. 수익률 정보를 확인해주세요.';
 
   return {
-    weeklySummary:
-      summary.totalValue && summary.totalInvested
-        ? `최근 ${context.periodDays}일 기준으로 총 투자금은 ${summary.totalInvested.toLocaleString()}원, 평가 금액은 ${summary.totalValue.toLocaleString()}원 수준입니다. 수익률은 ${returnRate.toFixed(2)}% 입니다.`
-        : '최근 데이터를 기반으로 기본 요약을 제공합니다. 수익률 정보를 확인해주세요.',
+    summary: weeklySummary,
+    weeklySummary,
     newsHighlights: highlights.length > 0 ? highlights : ['주요 뉴스를 수집하지 못했습니다.'],
+    recommendations,
     signals: {
       sellSignal,
       reason: sellSignal
         ? '최근 수익률이 하락세이므로 방어적인 비중 조정이 필요합니다.'
         : '현재 수익률과 지표가 안정적인 범위 내에 있습니다.',
+      notes: sellSignal
+        ? ['현금 비중을 확대하고 리스크 요소를 점검하세요.']
+        : ['시장 변동성에 대비해 손익 관리 지표를 모니터링하세요.'],
     },
-    recommendations,
     confidenceScore: 0.2,
+    riskScore: Math.min(Math.max(Math.abs(returnRate) / 100, 0.1), 0.9),
     rawText: `Fallback generated locally. Reason: ${reason}`,
   };
 }
@@ -236,7 +344,7 @@ export async function callAIAdvisor(
     const rawContent =
       resultJson?.choices?.[0]?.message?.content ?? resultJson?.data ?? JSON.stringify(resultJson);
 
-    let parsed: AIAdvisorResult | null = null;
+    let parsed: any = null;
     try {
       parsed = JSON.parse(rawContent);
     } catch (error) {
@@ -245,14 +353,7 @@ export async function callAIAdvisor(
     }
 
     if (parsed) {
-      return {
-        weeklySummary: parsed.weeklySummary ?? '',
-        newsHighlights: parsed.newsHighlights ?? [],
-        signals: parsed.signals ?? { sellSignal: false, reason: '' },
-        recommendations: parsed.recommendations ?? [],
-        confidenceScore: parsed.confidenceScore,
-        rawText: rawContent,
-      };
+      return normalizeAdvisorResult(parsed, rawContent);
     }
 
     return generateFallbackAdvisorResult(payload, 'parsed JSON empty');

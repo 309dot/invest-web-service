@@ -131,7 +131,24 @@ export default function WeeklyReportsPage() {
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">{item.period}</p>
                     {item.aiAdvice ? (
-                      <p className="mt-2 text-xs text-primary/80">AI 권장: {item.aiAdvice.recommendations?.[0] ?? '요약 없음'}</p>
+                      (() => {
+                        const topRecommendation = item.aiAdvice.recommendations?.[0];
+                        if (!topRecommendation) {
+                          return <p className="mt-2 text-xs text-muted-foreground">AI 권장 없음</p>;
+                        }
+
+                        const actionLabel = topRecommendation.action === 'buy'
+                          ? '매수'
+                          : topRecommendation.action === 'sell'
+                          ? '매도'
+                          : '유지';
+
+                        return (
+                          <p className="mt-2 text-xs text-primary/80">
+                            AI 권장: {topRecommendation.ticker} {actionLabel} - {topRecommendation.reason}
+                          </p>
+                        );
+                      })()
                     ) : (
                       <p className="mt-2 text-xs text-muted-foreground">AI 권장 없음</p>
                     )}
@@ -205,15 +222,20 @@ export default function WeeklyReportsPage() {
                       <div className="space-y-4 rounded-md border border-primary/30 bg-primary/5 p-4">
                         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
                           <span>생성일: {selectedReport.aiAdvice.generatedAt ? formatDate(selectedReport.aiAdvice.generatedAt.toDate?.() ?? selectedReport.aiAdvice.generatedAt, 'yyyy-MM-dd HH:mm') : '정보 없음'}</span>
-                          {selectedReport.aiAdvice.confidenceScore ? (
-                            <Badge variant="outline">신뢰도 {selectedReport.aiAdvice.confidenceScore}</Badge>
-                          ) : null}
+                          <div className="flex items-center gap-2">
+                            {typeof selectedReport.aiAdvice.confidenceScore === 'number' ? (
+                              <Badge variant="outline">신뢰도 {(selectedReport.aiAdvice.confidenceScore * 100).toFixed(0)}%</Badge>
+                            ) : null}
+                            {typeof selectedReport.aiAdvice.riskScore === 'number' ? (
+                              <Badge variant="secondary">위험 지수 {(selectedReport.aiAdvice.riskScore * 100).toFixed(0)}%</Badge>
+                            ) : null}
+                          </div>
                         </div>
                         <div className="space-y-3">
                           <section>
                             <h3 className="text-sm font-semibold text-primary">주간 요약</h3>
                             <p className="text-sm text-muted-foreground whitespace-pre-line">
-                              {selectedReport.aiAdvice.weeklySummary}
+                              {selectedReport.aiAdvice.summary || selectedReport.aiAdvice.weeklySummary}
                             </p>
                           </section>
 
@@ -231,10 +253,25 @@ export default function WeeklyReportsPage() {
                           {selectedReport.aiAdvice.recommendations?.length ? (
                             <section className="space-y-1">
                               <h3 className="text-sm font-semibold text-primary">권장 전략</h3>
-                              <ul className="space-y-1 text-sm text-muted-foreground">
+                              <ul className="space-y-2 text-sm text-muted-foreground">
                                 {selectedReport.aiAdvice.recommendations.map((item, index) => (
-                                  <li key={index}>
-                                    <span className="font-medium text-primary">#{index + 1}</span> {item}
+                                  <li key={`${item.ticker}-${index}`} className="rounded-md border border-primary/20 bg-white/60 p-3">
+                                    <div className="flex items-center gap-2 text-xs font-semibold">
+                                      <Badge variant="secondary" className="uppercase">
+                                        {item.ticker}
+                                      </Badge>
+                                      <Badge
+                                        variant={item.action === 'buy' ? 'default' : item.action === 'sell' ? 'destructive' : 'outline'}
+                                        className="px-2"
+                                      >
+                                        {item.action === 'buy' ? '매수' : item.action === 'sell' ? '매도' : '유지'}
+                                      </Badge>
+                                      <span className="text-muted-foreground">#{index + 1}</span>
+                                    </div>
+                                    <p className="mt-1 leading-relaxed">{item.reason}</p>
+                                    {typeof item.confidence === 'number' ? (
+                                      <p className="text-xs text-muted-foreground">신뢰도 {(item.confidence * 100).toFixed(0)}%</p>
+                                    ) : null}
                                   </li>
                                 ))}
                               </ul>
@@ -242,9 +279,16 @@ export default function WeeklyReportsPage() {
                           ) : null}
 
                           {selectedReport.aiAdvice.signals?.reason ? (
-                            <section className="rounded-md border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-900">
+                            <section className="rounded-md border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-900 space-y-1">
                               <p className="font-semibold">위험 신호</p>
-                              <p className="mt-1 leading-relaxed">{selectedReport.aiAdvice.signals.reason}</p>
+                              <p className="leading-relaxed">{selectedReport.aiAdvice.signals.reason}</p>
+                              {selectedReport.aiAdvice.signals.notes?.length ? (
+                                <ul className="space-y-1 text-xs">
+                                  {selectedReport.aiAdvice.signals.notes.map((note, idx) => (
+                                    <li key={idx}>- {note}</li>
+                                  ))}
+                                </ul>
+                              ) : null}
                             </section>
                           ) : null}
                         </div>

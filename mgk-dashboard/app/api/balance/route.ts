@@ -14,6 +14,7 @@ import {
   getChargeHistory,
   calculateChargeStats,
 } from '@/lib/services/balance';
+import { convertWithRate, getUsdKrwRate } from '@/lib/currency';
 
 /**
  * GET /api/balance?portfolioId=xxx
@@ -35,8 +36,31 @@ export async function GET(request: NextRequest) {
     }
 
     const balances = await getAllBalances(userId, portfolioId);
+    const { rate, source } = await getUsdKrwRate();
 
-    const result: any = { balances };
+    const result: any = {
+      balances,
+      totals: {
+        USD: balances.USD + convertWithRate(balances.KRW, 'KRW', 'USD', rate),
+        KRW: balances.KRW + convertWithRate(balances.USD, 'USD', 'KRW', rate),
+      },
+      converted: {
+        USD: {
+          balance: balances.USD,
+          toKRW: convertWithRate(balances.USD, 'USD', 'KRW', rate),
+        },
+        KRW: {
+          balance: balances.KRW,
+          toUSD: convertWithRate(balances.KRW, 'KRW', 'USD', rate),
+        },
+      },
+      exchangeRate: {
+        base: 'USD',
+        quote: 'KRW',
+        rate,
+        source,
+      },
+    };
 
     // 이력 포함
     if (includeHistory) {
@@ -119,11 +143,32 @@ export async function POST(request: NextRequest) {
 
     // 업데이트된 잔액 조회
     const balances = await getAllBalances(userId, portfolioId);
+    const { rate, source } = await getUsdKrwRate();
 
     return NextResponse.json({
       success: true,
       chargeId,
       balances,
+      totals: {
+        USD: balances.USD + convertWithRate(balances.KRW, 'KRW', 'USD', rate),
+        KRW: balances.KRW + convertWithRate(balances.USD, 'USD', 'KRW', rate),
+      },
+      converted: {
+        USD: {
+          balance: balances.USD,
+          toKRW: convertWithRate(balances.USD, 'USD', 'KRW', rate),
+        },
+        KRW: {
+          balance: balances.KRW,
+          toUSD: convertWithRate(balances.KRW, 'KRW', 'USD', rate),
+        },
+      },
+      exchangeRate: {
+        base: 'USD',
+        quote: 'KRW',
+        rate,
+        source,
+      },
     });
   } catch (error) {
     console.error('Create charge error:', error);

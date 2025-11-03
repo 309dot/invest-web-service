@@ -28,6 +28,11 @@ import {
   isTradingDay,
 } from '@/lib/utils/tradingCalendar';
 import { getHistoricalExchangeRate } from '@/lib/apis/alphavantage';
+import {
+  convertWithRate,
+  getUsdKrwRate,
+  type SupportedCurrency,
+} from '@/lib/currency';
 
 async function normalizeTransactions(
   userId: string,
@@ -438,6 +443,23 @@ export async function calculateTransactionStats(
       averageSellPrice: number;
     };
   };
+  combined: {
+    baseCurrency: SupportedCurrency;
+    totalBuyAmount: number;
+    totalSellAmount: number;
+    netAmount: number;
+  };
+  converted: Record<SupportedCurrency, {
+    totalBuyAmount: number;
+    totalSellAmount: number;
+    netAmount: number;
+  }>;
+  exchangeRate: {
+    base: 'USD';
+    quote: 'KRW';
+    rate: number;
+    source: 'cache' | 'live' | 'fallback';
+  };
 }> {
   try {
     const options = period
@@ -454,25 +476,22 @@ export async function calculateTransactionStats(
       positionMap.set(docSnapshot.id, docSnapshot.data() as Partial<Position>);
     });
 
-    const byCurrency = {
-      USD: {
-        totalBuys: 0,
-        totalSells: 0,
-        totalBuyAmount: 0,
-        totalSellAmount: 0,
-      },
-      KRW: {
-        totalBuys: 0,
-        totalSells: 0,
-        totalBuyAmount: 0,
-        totalSellAmount: 0,
-      },
-    } as const;
+    const byCurrencyTemplate = {
+      totalBuys: 0,
+      totalSells: 0,
+      totalBuyAmount: 0,
+      totalSellAmount: 0,
+    };
 
-    const mutableStats = {
-      USD: { ...byCurrency.USD },
-      KRW: { ...byCurrency.KRW },
-    } as Record<'USD' | 'KRW', { totalBuys: number; totalSells: number; totalBuyAmount: number; totalSellAmount: number }>;
+    const mutableStats: Record<SupportedCurrency, {
+      totalBuys: number;
+      totalSells: number;
+      totalBuyAmount: number;
+      totalSellAmount: number;
+    }> = {
+      USD: { ...byCurrencyTemplate },
+      KRW: { ...byCurrencyTemplate },
+    };
 
     transactions.forEach((transaction) => {
       const currency = resolveTransactionCurrency(transaction, positionMap);
@@ -499,11 +518,47 @@ export async function calculateTransactionStats(
       };
     };
 
+    const { rate, source } = await getUsdKrwRate();
+
+    const totalBuyUsd =
+      mutableStats.USD.totalBuyAmount + convertWithRate(mutableStats.KRW.totalBuyAmount, 'KRW', 'USD', rate);
+    const totalSellUsd =
+      mutableStats.USD.totalSellAmount + convertWithRate(mutableStats.KRW.totalSellAmount, 'KRW', 'USD', rate);
+
+    const totalBuyKrw =
+      mutableStats.KRW.totalBuyAmount + convertWithRate(mutableStats.USD.totalBuyAmount, 'USD', 'KRW', rate);
+    const totalSellKrw =
+      mutableStats.KRW.totalSellAmount + convertWithRate(mutableStats.USD.totalSellAmount, 'USD', 'KRW', rate);
+
     return {
       transactionCount: transactions.length,
       byCurrency: {
         USD: finalize('USD'),
         KRW: finalize('KRW'),
+      },
+      combined: {
+        baseCurrency: 'USD' as SupportedCurrency,
+        totalBuyAmount: totalBuyUsd,
+        totalSellAmount: totalSellUsd,
+        netAmount: totalSellUsd - totalBuyUsd,
+      },
+      converted: {
+        USD: {
+          totalBuyAmount: totalBuyUsd,
+          totalSellAmount: totalSellUsd,
+          netAmount: totalSellUsd - totalBuyUsd,
+        },
+        KRW: {
+          totalBuyAmount: totalBuyKrw,
+          totalSellAmount: totalSellKrw,
+          netAmount: totalSellKrw - totalBuyKrw,
+        },
+      },
+      exchangeRate: {
+        base: 'USD' as const,
+        quote: 'KRW' as const,
+        rate,
+        source,
       },
     };
   } catch (error) {
@@ -527,6 +582,22 @@ export async function calculateTransactionStats(
           averageBuyPrice: 0,
           averageSellPrice: 0,
         },
+      },
+      combined: {
+        baseCurrency: 'USD',
+        totalBuyAmount: 0,
+        totalSellAmount: 0,
+        netAmount: 0,
+      },
+      converted: {
+        USD: { totalBuyAmount: 0, totalSellAmount: 0, netAmount: 0 },
+        KRW: { totalBuyAmount: 0, totalSellAmount: 0, netAmount: 0 },
+      },
+      exchangeRate: {
+        base: 'USD',
+        quote: 'KRW',
+        rate: 0,
+        source: 'fallback',
       },
     };
   }

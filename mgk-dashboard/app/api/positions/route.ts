@@ -232,7 +232,7 @@ export async function GET(request: NextRequest) {
     }
 
     const positions = await getPortfolioPositions(userId, portfolioId);
-    const totals = await calculatePortfolioTotals(userId, portfolioId);
+    const totals = await calculatePortfolioTotals(userId, portfolioId, { positions });
 
     return NextResponse.json({
       positions,

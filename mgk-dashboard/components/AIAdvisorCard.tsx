@@ -8,26 +8,132 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 
+type AdvisorAction = 'buy' | 'sell' | 'hold';
+
+interface AIAdvisorSignal {
+  sellSignal?: boolean;
+  reason?: string;
+  notes?: string[];
+}
+
+interface AIAdvisorRecommendation {
+  ticker: string;
+  action: AdvisorAction;
+  reason: string;
+  confidence?: number;
+}
+
 interface AIAdvisorData {
+  summary?: string;
   weeklySummary: string;
   newsHighlights: string[];
-  recommendations: string[];
-  signals: {
-    sellSignal?: boolean;
-    reason?: string;
-    [key: string]: unknown;
-  };
+  recommendations: AIAdvisorRecommendation[];
+  signals: AIAdvisorSignal;
   generatedAt?: string;
   rawText?: string;
   confidenceScore?: number;
+  riskScore?: number;
 }
 
 interface AIAdvisorCardProps {
-  initialData?: AIAdvisorData | null;
+  initialData?: unknown;
 }
 
+const ACTION_LABELS: Record<AdvisorAction, string> = {
+  buy: '매수',
+  sell: '매도',
+  hold: '유지',
+};
+
+function normalizeAdvisorData(value: unknown): AIAdvisorData | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const source = value as Record<string, unknown>;
+
+  const weeklySummary = typeof source.weeklySummary === 'string' ? source.weeklySummary : '';
+  const summary = typeof source.summary === 'string' ? source.summary : undefined;
+
+  const newsHighlights = Array.isArray(source.newsHighlights)
+    ? source.newsHighlights.filter((item): item is string => typeof item === 'string')
+    : [];
+
+  const recommendations: AIAdvisorRecommendation[] = Array.isArray(source.recommendations)
+    ? source.recommendations
+        .map((item): AIAdvisorRecommendation | null => {
+          if (typeof item === 'string') {
+            return {
+              ticker: 'PORTFOLIO',
+              action: 'hold',
+              reason: item,
+            };
+          }
+
+          if (item && typeof item === 'object') {
+            const raw = item as Record<string, unknown>;
+            const ticker = typeof raw.ticker === 'string' && raw.ticker.trim() ? raw.ticker.trim() : 'PORTFOLIO';
+            const actionRaw = typeof raw.action === 'string' ? raw.action.toLowerCase() : 'hold';
+            const action: AdvisorAction = actionRaw === 'buy' || actionRaw === 'sell' || actionRaw === 'hold'
+              ? (actionRaw as AdvisorAction)
+              : 'hold';
+            const reason = typeof raw.reason === 'string' && raw.reason.trim()
+              ? raw.reason.trim()
+              : '근거가 제공되지 않았습니다.';
+            const confidence = typeof raw.confidence === 'number' ? raw.confidence : undefined;
+
+            return {
+              ticker,
+              action,
+              reason,
+              confidence,
+            };
+          }
+
+          return null;
+        })
+        .filter((item): item is AIAdvisorRecommendation => item !== null)
+    : [];
+
+  const signalsRaw = source.signals as Record<string, unknown> | undefined;
+  const signals: AIAdvisorSignal = {
+    sellSignal: typeof signalsRaw?.sellSignal === 'boolean' ? signalsRaw.sellSignal : undefined,
+    reason: typeof signalsRaw?.reason === 'string' ? signalsRaw.reason : undefined,
+    notes: Array.isArray(signalsRaw?.notes)
+      ? signalsRaw!.notes.filter((note): note is string => typeof note === 'string')
+      : undefined,
+  };
+
+  return {
+    summary,
+    weeklySummary,
+    newsHighlights,
+    recommendations,
+    signals,
+    generatedAt: typeof source.generatedAt === 'string' ? source.generatedAt : undefined,
+    rawText: typeof source.rawText === 'string' ? source.rawText : undefined,
+    confidenceScore: typeof source.confidenceScore === 'number' ? source.confidenceScore : undefined,
+    riskScore: typeof source.riskScore === 'number' ? source.riskScore : undefined,
+  };
+}
+
+function summarizeRecommendations(recommendations: AIAdvisorRecommendation[]): string {
+  if (!recommendations.length) {
+    return '';
+  }
+
+  const summary = recommendations
+    .slice(0, 2)
+    .map((rec) => `${rec.ticker}:${ACTION_LABELS[rec.action]}`)
+    .join(', ');
+
+  return recommendations.length > 2 ? `${summary} 외` : summary;
+}
+
+const DEFAULT_ERROR_MESSAGE = 'AI 어드바이저 호출에 실패했습니다.';
+
 export function AIAdvisorCard({ initialData = null }: AIAdvisorCardProps) {
-  const [data, setData] = useState<AIAdvisorData | null>(initialData);
+  const [data, setData] = useState<AIAdvisorData | null>(() => normalizeAdvisorData(initialData) ?? null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<AIAdvisorData[]>([]);
@@ -49,22 +155,33 @@ export function AIAdvisorCard({ initialData = null }: AIAdvisorCardProps) {
         }),
       });
 
-      if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({}));
-        throw new Error(errorBody?.message ?? 'AI 어드바이저 호출에 실패했습니다.');
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || payload?.success === false) {
+        const message = payload?.error || payload?.message || DEFAULT_ERROR_MESSAGE;
+        throw new Error(message);
       }
 
-      const json = await response.json();
-      setData(json.data);
-      if (json.data?.rawText?.startsWith('Fallback')) {
+      const advisorData = normalizeAdvisorData(payload?.data);
+      if (!advisorData) {
+        throw new Error('AI 어드바이저 응답을 파싱할 수 없습니다.');
+      }
+
+      setData(advisorData);
+
+      if (advisorData.rawText?.startsWith('Fallback')) {
         setError('외부 AI 서비스에 연결할 수 없어 기본 요약을 제공했습니다. 환경 설정을 확인해주세요.');
       }
-      if (json.stored) {
-        setHistory(prev => [json.stored, ...prev].slice(0, 5));
+
+      if (payload?.stored) {
+        const stored = normalizeAdvisorData(payload.stored);
+        if (stored) {
+          setHistory((prev) => [stored, ...prev].slice(0, 5));
+        }
       }
     } catch (err) {
       console.error('AI 어드바이저 새로고침 실패:', err);
-      setError(err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.');
+      setError(err instanceof Error ? err.message : DEFAULT_ERROR_MESSAGE);
     } finally {
       setIsLoading(false);
     }
@@ -77,10 +194,17 @@ export function AIAdvisorCard({ initialData = null }: AIAdvisorCardProps) {
         throw new Error('AI 인사이트 목록을 불러오지 못했습니다.');
       }
 
-      const json = await response.json();
-      setHistory(json.data ?? []);
-      if (!data && json.data?.length) {
-        setData(json.data[0]);
+      const json = await response.json().catch(() => null);
+      const normalized = Array.isArray(json?.data)
+        ? json!.data
+            .map((item: unknown) => normalizeAdvisorData(item))
+            .filter((item: AIAdvisorData | null): item is AIAdvisorData => item !== null)
+        : [];
+
+      setHistory(normalized);
+
+      if (!data && normalized.length) {
+        setData(normalized[0]);
       }
     } catch (err) {
       console.error('AI 인사이트 히스토리 로딩 실패:', err);
@@ -92,7 +216,7 @@ export function AIAdvisorCard({ initialData = null }: AIAdvisorCardProps) {
   }, [fetchHistory]);
 
   const toggleHistory = () => {
-    setIsHistoryOpen(prev => !prev);
+    setIsHistoryOpen((prev) => !prev);
   };
 
   return (
@@ -141,10 +265,27 @@ export function AIAdvisorCard({ initialData = null }: AIAdvisorCardProps) {
           </div>
         ) : data ? (
           <div className="space-y-6">
+            {(data.confidenceScore !== undefined || data.riskScore !== undefined) && (
+              <section className="grid gap-2 rounded-md border border-primary/10 bg-primary/5 p-3 text-xs">
+                {data.confidenceScore !== undefined ? (
+                  <p className="flex items-center justify-between">
+                    <span className="font-medium text-primary">신뢰도</span>
+                    <span>{(data.confidenceScore * 100).toFixed(0)}%</span>
+                  </p>
+                ) : null}
+                {data.riskScore !== undefined ? (
+                  <p className="flex items-center justify-between">
+                    <span className="font-medium text-primary">위험 지수</span>
+                    <span>{(data.riskScore * 100).toFixed(0)}%</span>
+                  </p>
+                ) : null}
+              </section>
+            )}
+
             <section className="space-y-2">
               <h3 className="text-sm font-semibold text-primary">주간 요약</h3>
               <p className="text-sm leading-relaxed text-muted-foreground whitespace-pre-line">
-                {data.weeklySummary}
+                {data.summary || data.weeklySummary}
               </p>
             </section>
 
@@ -164,11 +305,25 @@ export function AIAdvisorCard({ initialData = null }: AIAdvisorCardProps) {
             {data.recommendations?.length ? (
               <section className="space-y-2">
                 <h3 className="text-sm font-semibold text-primary">권장 전략</h3>
-                <ul className="space-y-2">
+                <ul className="space-y-3">
                   {data.recommendations.map((item, index) => (
-                    <li key={index} className="text-sm">
-                      <span className="font-medium text-primary">#{index + 1}</span>{' '}
-                      <span className="text-muted-foreground">{item}</span>
+                    <li key={`${item.ticker}-${index}`} className="space-y-1 rounded-md border border-primary/10 bg-primary/5 p-3">
+                      <div className="flex items-center gap-2 text-xs font-semibold">
+                        <Badge variant="secondary" className="uppercase">
+                          {item.ticker}
+                        </Badge>
+                        <Badge
+                          variant={item.action === 'buy' ? 'default' : item.action === 'sell' ? 'destructive' : 'outline'}
+                          className="px-2"
+                        >
+                          {ACTION_LABELS[item.action]}
+                        </Badge>
+                        <span className="text-muted-foreground">#{index + 1}</span>
+                      </div>
+                      <p className="text-sm leading-relaxed text-muted-foreground">{item.reason}</p>
+                      {typeof item.confidence === 'number' ? (
+                        <p className="text-xs text-muted-foreground">신뢰도: {(item.confidence * 100).toFixed(0)}%</p>
+                      ) : null}
                     </li>
                   ))}
                 </ul>
@@ -176,11 +331,18 @@ export function AIAdvisorCard({ initialData = null }: AIAdvisorCardProps) {
             ) : null}
 
             {data.signals?.reason ? (
-              <section className="rounded-md border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-900">
+              <section className="rounded-md border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-900 space-y-2">
                 <p className="font-semibold flex items-center gap-2">
                   <AlertTriangle className="h-4 w-4" /> 위험 신호
                 </p>
-                <p className="mt-1 leading-relaxed">{data.signals.reason}</p>
+                <p className="leading-relaxed">{data.signals.reason}</p>
+                {data.signals.notes?.length ? (
+                  <ul className="space-y-1 text-xs">
+                    {data.signals.notes.map((note, idx) => (
+                      <li key={idx}>- {note}</li>
+                    ))}
+                  </ul>
+                ) : null}
               </section>
             ) : null}
           </div>
@@ -192,9 +354,7 @@ export function AIAdvisorCard({ initialData = null }: AIAdvisorCardProps) {
       </CardContent>
       <CardFooter className="text-xs text-muted-foreground flex flex-col items-start gap-2">
         <p>AI가 제공하는 인사이트는 참고용이며, 투자 결정은 사용자 책임입니다.</p>
-        <p>
-          GPT-oss API 키가 환경 변수에 설정되어 있어야 인사이트가 생성됩니다. 키가 없으면 생성이 실패합니다.
-        </p>
+        <p>GPT-oss API 키가 환경 변수에 설정되어 있어야 인사이트가 생성됩니다. 키가 없으면 생성이 실패합니다.</p>
       </CardFooter>
       {isHistoryOpen && history.length > 0 ? (
         <div className="border-t bg-muted/40">
@@ -217,7 +377,7 @@ export function AIAdvisorCard({ initialData = null }: AIAdvisorCardProps) {
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium">{item.weeklySummary.slice(0, 40)}...</p>
+                    <p className="text-sm font-medium">{(item.summary || item.weeklySummary).slice(0, 40)}...</p>
                     {item.generatedAt ? (
                       <Badge variant="secondary" className="text-xs">
                         {new Date(item.generatedAt).toLocaleString()}
@@ -226,8 +386,7 @@ export function AIAdvisorCard({ initialData = null }: AIAdvisorCardProps) {
                   </div>
                   {item.recommendations?.length ? (
                     <p className="mt-2 text-xs text-muted-foreground">
-                      추천: {item.recommendations.slice(0, 2).join(', ')}
-                      {item.recommendations.length > 2 ? ' 외' : ''}
+                      추천: {summarizeRecommendations(item.recommendations)}
                     </p>
                   ) : null}
                 </button>

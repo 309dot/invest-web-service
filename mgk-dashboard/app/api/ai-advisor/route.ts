@@ -20,6 +20,17 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json().catch(() => ({}))) as AdvisorRequestBody;
 
+    if (!process.env.GPT_OSS_API_KEY) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'API 연결 실패: 인증 토큰 없음',
+          code: 'MISSING_GPT_OSS_API_KEY',
+        },
+        { status: 500 }
+      );
+    }
+
     const context = await fetchAIAdvisorContext({
       periodDays: body.periodDays,
       tickers: body.tickers,
@@ -51,8 +62,8 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         success: false,
-        error: 'AI 어드바이저 실행에 실패했습니다.',
-        message: error instanceof Error ? error.message : '알 수 없는 오류',
+        error: error instanceof Error ? error.message : 'AI 어드바이저 실행에 실패했습니다.',
+        code: 'AI_ADVISOR_ERROR',
       },
       { status: 500 }
     );

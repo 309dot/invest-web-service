@@ -416,16 +416,27 @@ export interface AIAdvisorPromptPayload {
   latestStats?: Partial<DashboardStats>;
 }
 
+export interface AIAdvisorRecommendation {
+  ticker: string;
+  action: 'buy' | 'sell' | 'hold';
+  reason: string;
+  confidence?: number;
+}
+
+export interface AIAdvisorSignal {
+  sellSignal: boolean;
+  reason: string;
+  notes?: string[];
+}
+
 export interface AIAdvisorResult {
+  summary?: string;
   weeklySummary: string;
   newsHighlights: string[];
-  signals: {
-    sellSignal: boolean;
-    reason: string;
-    [key: string]: any;
-  };
-  recommendations: string[];
+  recommendations: AIAdvisorRecommendation[];
+  signals: AIAdvisorSignal;
   confidenceScore?: number;
+  riskScore?: number;
   rawText?: string;
 }
 

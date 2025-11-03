@@ -19,6 +19,12 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Position, Stock, Transaction } from '@/types';
+import {
+  assertCurrency,
+  convertWithRate,
+  getUsdKrwRate,
+  type SupportedCurrency,
+} from '@/lib/currency';
 
 const formatDateString = (date: Date): string => {
   const year = date.getFullYear();
@@ -273,9 +279,19 @@ export async function getPortfolioPositions(
         } as Transaction))
         .sort((a, b) => a.date.localeCompare(b.date));
 
-      const metrics = aggregatePositionMetrics(transactions, positionData);
+      const resolvedCurrency = assertCurrency(
+        (positionData as Position).currency,
+        positionData.market === 'KR' ? 'KRW' : 'USD'
+      );
 
-      if (positionData && metricsNeedUpdate(positionData, metrics)) {
+      const normalizedPosition = {
+        ...positionData,
+        currency: resolvedCurrency,
+      } as Position;
+
+      const metrics = aggregatePositionMetrics(transactions, normalizedPosition);
+
+      if (normalizedPosition && metricsNeedUpdate(normalizedPosition, metrics)) {
         const positionRef = doc(
           db,
           `users/${userId}/portfolios/${portfolioId}/positions`,
@@ -301,12 +317,12 @@ export async function getPortfolioPositions(
         );
 
         positions.push({
-          ...positionData,
+          ...normalizedPosition,
           ...metrics,
         });
       } else {
         positions.push({
-          ...positionData,
+          ...normalizedPosition,
           ...metrics,
         });
       }
@@ -555,44 +571,90 @@ export async function updatePositionPrices(
  */
 export async function calculatePortfolioTotals(
   userId: string,
-  portfolioId: string
+  portfolioId: string,
+  options: {
+    positions?: Position[];
+  } = {}
 ): Promise<{
-  byCurrency: {
-    USD: { totalInvested: number; totalValue: number; count: number };
-    KRW: { totalInvested: number; totalValue: number; count: number };
-  };
+  byCurrency: Record<SupportedCurrency, {
+    totalInvested: number;
+    totalValue: number;
+    count: number;
+  }>;
+  converted: Record<SupportedCurrency, {
+    totalInvested: number;
+    totalValue: number;
+  }>;
   combined: {
+    baseCurrency: SupportedCurrency;
     totalInvested: number;
     totalValue: number;
     returnRate: number;
   };
+  exchangeRate: {
+    base: 'USD';
+    quote: 'KRW';
+    rate: number;
+    source: 'cache' | 'live' | 'fallback';
+  };
 }> {
   try {
-    const positions = await getPortfolioPositions(userId, portfolioId);
+    const positions = options.positions ?? (await getPortfolioPositions(userId, portfolioId));
 
-    const byCurrency = {
+    const byCurrency: Record<SupportedCurrency, {
+      totalInvested: number;
+      totalValue: number;
+      count: number;
+    }> = {
       USD: { totalInvested: 0, totalValue: 0, count: 0 },
       KRW: { totalInvested: 0, totalValue: 0, count: 0 },
     };
 
     positions.forEach((p) => {
-      const currency = (p.currency === 'USD' || p.currency === 'KRW') ? p.currency : (p.market === 'KR' ? 'KRW' : 'USD');
-      byCurrency[currency].totalInvested += p.totalInvested;
-      byCurrency[currency].totalValue += p.totalValue;
-      byCurrency[currency].count += 1;
+      const resolvedCurrency = assertCurrency(p.currency, p.market === 'KR' ? 'KRW' : 'USD');
+      byCurrency[resolvedCurrency].totalInvested += p.totalInvested;
+      byCurrency[resolvedCurrency].totalValue += p.totalValue;
+      byCurrency[resolvedCurrency].count += 1;
     });
 
-    const totalInvested = byCurrency.USD.totalInvested + byCurrency.KRW.totalInvested;
-    const totalValue = byCurrency.USD.totalValue + byCurrency.KRW.totalValue;
-    const returnRate =
-      totalInvested > 0 ? ((totalValue - totalInvested) / totalInvested) * 100 : 0;
+    const { rate, source } = await getUsdKrwRate();
+
+    const totalInvestedUsd =
+      byCurrency.USD.totalInvested + convertWithRate(byCurrency.KRW.totalInvested, 'KRW', 'USD', rate);
+    const totalValueUsd =
+      byCurrency.USD.totalValue + convertWithRate(byCurrency.KRW.totalValue, 'KRW', 'USD', rate);
+
+    const totalInvestedKrw =
+      byCurrency.KRW.totalInvested + convertWithRate(byCurrency.USD.totalInvested, 'USD', 'KRW', rate);
+    const totalValueKrw =
+      byCurrency.KRW.totalValue + convertWithRate(byCurrency.USD.totalValue, 'USD', 'KRW', rate);
+
+    const combinedReturnRate =
+      totalInvestedUsd > 0 ? ((totalValueUsd - totalInvestedUsd) / totalInvestedUsd) * 100 : 0;
 
     return {
       byCurrency,
       combined: {
-        totalInvested,
-        totalValue,
-        returnRate,
+        baseCurrency: 'USD',
+        totalInvested: totalInvestedUsd,
+        totalValue: totalValueUsd,
+        returnRate: combinedReturnRate,
+      },
+      converted: {
+        USD: {
+          totalInvested: totalInvestedUsd,
+          totalValue: totalValueUsd,
+        },
+        KRW: {
+          totalInvested: totalInvestedKrw,
+          totalValue: totalValueKrw,
+        },
+      },
+      exchangeRate: {
+        base: 'USD',
+        quote: 'KRW',
+        rate,
+        source,
       },
     };
   } catch (error) {
@@ -603,9 +665,20 @@ export async function calculatePortfolioTotals(
         KRW: { totalInvested: 0, totalValue: 0, count: 0 },
       },
       combined: {
+        baseCurrency: 'USD',
         totalInvested: 0,
         totalValue: 0,
         returnRate: 0,
+      },
+      converted: {
+        USD: { totalInvested: 0, totalValue: 0 },
+        KRW: { totalInvested: 0, totalValue: 0 },
+      },
+      exchangeRate: {
+        base: 'USD',
+        quote: 'KRW',
+        rate: 0,
+        source: 'fallback',
       },
     };
   }

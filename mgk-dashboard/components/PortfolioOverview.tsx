@@ -37,22 +37,53 @@ interface PortfolioOverviewProps {
   portfolioId: string;
 }
 
+type PortfolioTotals = {
+  byCurrency: {
+    USD: { totalInvested: number; totalValue: number; count: number };
+    KRW: { totalInvested: number; totalValue: number; count: number };
+  };
+  combined: {
+    baseCurrency: 'USD' | 'KRW';
+    totalInvested: number;
+    totalValue: number;
+    returnRate: number;
+  };
+  converted: {
+    USD: { totalInvested: number; totalValue: number };
+    KRW: { totalInvested: number; totalValue: number };
+  };
+  exchangeRate?: {
+    base: 'USD';
+    quote: 'KRW';
+    rate: number;
+    source: 'live' | 'cache' | 'fallback';
+  };
+};
+
+const createInitialTotals = (): PortfolioTotals => ({
+  byCurrency: {
+    USD: { totalInvested: 0, totalValue: 0, count: 0 },
+    KRW: { totalInvested: 0, totalValue: 0, count: 0 },
+  },
+  combined: {
+    baseCurrency: 'USD',
+    totalInvested: 0,
+    totalValue: 0,
+    returnRate: 0,
+  },
+  converted: {
+    USD: { totalInvested: 0, totalValue: 0 },
+    KRW: { totalInvested: 0, totalValue: 0 },
+  },
+  exchangeRate: undefined,
+});
+
 export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
-  const { formatAmount, convertAmount, displayCurrency } = useCurrency();
+  const { formatAmount, displayCurrency } = useCurrency();
   const [positions, setPositions] = useState<Position[]>([]);
-  const [totals, setTotals] = useState({
-    byCurrency: {
-      USD: { totalInvested: 0, totalValue: 0, count: 0 },
-      KRW: { totalInvested: 0, totalValue: 0, count: 0 },
-    },
-    combined: {
-      totalInvested: 0,
-      totalValue: 0,
-      returnRate: 0,
-    },
-  });
+  const [totals, setTotals] = useState<PortfolioTotals>(() => createInitialTotals());
   const [loading, setLoading] = useState(true);
   const [selectedPosition, setSelectedPosition] = useState<Position | null>(null);
   const [showTransactionForm, setShowTransactionForm] = useState(false);
@@ -64,15 +95,40 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
       if (response.ok) {
         const data = await response.json();
         setPositions(data.positions || []);
-        setTotals(
-          data.totals || {
-            byCurrency: {
-              USD: { totalInvested: 0, totalValue: 0, count: 0 },
-              KRW: { totalInvested: 0, totalValue: 0, count: 0 },
+
+        const responseTotals: PortfolioTotals = {
+          byCurrency: {
+            USD: {
+              totalInvested: data?.totals?.byCurrency?.USD?.totalInvested ?? 0,
+              totalValue: data?.totals?.byCurrency?.USD?.totalValue ?? 0,
+              count: data?.totals?.byCurrency?.USD?.count ?? 0,
             },
-            combined: { totalInvested: 0, totalValue: 0, returnRate: 0 },
-          }
-        );
+            KRW: {
+              totalInvested: data?.totals?.byCurrency?.KRW?.totalInvested ?? 0,
+              totalValue: data?.totals?.byCurrency?.KRW?.totalValue ?? 0,
+              count: data?.totals?.byCurrency?.KRW?.count ?? 0,
+            },
+          },
+          combined: {
+            baseCurrency: data?.totals?.combined?.baseCurrency ?? 'USD',
+            totalInvested: data?.totals?.combined?.totalInvested ?? 0,
+            totalValue: data?.totals?.combined?.totalValue ?? 0,
+            returnRate: data?.totals?.combined?.returnRate ?? 0,
+          },
+          converted: {
+            USD: {
+              totalInvested: data?.totals?.converted?.USD?.totalInvested ?? 0,
+              totalValue: data?.totals?.converted?.USD?.totalValue ?? 0,
+            },
+            KRW: {
+              totalInvested: data?.totals?.converted?.KRW?.totalInvested ?? 0,
+              totalValue: data?.totals?.converted?.KRW?.totalValue ?? 0,
+            },
+          },
+          exchangeRate: data?.totals?.exchangeRate,
+        };
+
+        setTotals(responseTotals);
       }
     } catch (error) {
       console.error('Error fetching positions:', error);
@@ -90,13 +146,7 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
   useEffect(() => {
     if (!authLoading && !user) {
       setPositions([]);
-      setTotals({
-        byCurrency: {
-          USD: { totalInvested: 0, totalValue: 0, count: 0 },
-          KRW: { totalInvested: 0, totalValue: 0, count: 0 },
-        },
-        combined: { totalInvested: 0, totalValue: 0, returnRate: 0 },
-      });
+      setTotals(createInitialTotals());
       setLoading(false);
     }
   }, [authLoading, user]);
@@ -194,17 +244,12 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
     : 0;
 
   const showCombined = displayCurrency !== 'original';
-  const combinedCurrency = displayCurrency === 'KRW' ? 'KRW' : 'USD';
-  const combinedInvested = showCombined
-    ? convertAmount(usdTotals.totalInvested, 'USD').value +
-      convertAmount(krwTotals.totalInvested, 'KRW').value
-    : 0;
-  const combinedValue = showCombined
-    ? convertAmount(usdTotals.totalValue, 'USD').value +
-      convertAmount(krwTotals.totalValue, 'KRW').value
-    : 0;
+  const combinedCurrency: 'USD' | 'KRW' = displayCurrency === 'KRW' ? 'KRW' : 'USD';
+  const combinedStats = totals.converted?.[combinedCurrency] ?? { totalInvested: 0, totalValue: 0 };
+  const combinedInvested = showCombined ? combinedStats.totalInvested : 0;
+  const combinedValue = showCombined ? combinedStats.totalValue : 0;
   const combinedProfit = combinedValue - combinedInvested;
-  const combinedReturnRate = combinedInvested > 0
+  const combinedReturnRate = showCombined && combinedInvested > 0
     ? ((combinedValue - combinedInvested) / combinedInvested) * 100
     : 0;
 

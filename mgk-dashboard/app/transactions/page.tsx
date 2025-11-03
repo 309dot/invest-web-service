@@ -57,20 +57,40 @@ type TransactionCurrencyStats = {
   averageSellPrice: number;
 };
 
+type TransactionCombinedStats = {
+  totalBuyAmount: number;
+  totalSellAmount: number;
+  netAmount: number;
+};
+
 type TransactionStats = {
   transactionCount: number;
   byCurrency: {
     USD: TransactionCurrencyStats;
     KRW: TransactionCurrencyStats;
   };
+  combined: {
+    baseCurrency: 'USD' | 'KRW';
+    totalBuyAmount: number;
+    totalSellAmount: number;
+    netAmount: number;
+  };
+  converted: {
+    USD: TransactionCombinedStats;
+    KRW: TransactionCombinedStats;
+  };
+  exchangeRate?: {
+    base: 'USD';
+    quote: 'KRW';
+    rate: number;
+    source: 'cache' | 'live' | 'fallback';
+  };
 };
 
 export default function TransactionsPage() {
   const {
     formatAmount,
-    convertAmount,
     displayCurrency,
-    exchangeRate,
   } = useCurrency();
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
@@ -278,54 +298,44 @@ export default function TransactionsPage() {
                 );
               })}
 
-              {exchangeRate && displayCurrency !== 'original' && (
+              {stats.converted && displayCurrency !== 'original' && (
                 <StatCard variant="summary">
                   <StatCardHeader>
                     <StatCardTitle>표시 통화 기준 합산</StatCardTitle>
                   </StatCardHeader>
                   <StatCardContent>
                     {(() => {
-                      const usdBuyConverted = convertAmount(stats.byCurrency.USD.totalBuyAmount, 'USD');
-                      const krwBuyConverted = convertAmount(stats.byCurrency.KRW.totalBuyAmount, 'KRW');
-                      const usdSellConverted = convertAmount(stats.byCurrency.USD.totalSellAmount, 'USD');
-                      const krwSellConverted = convertAmount(stats.byCurrency.KRW.totalSellAmount, 'KRW');
+                      const targetCurrency: 'USD' | 'KRW' = displayCurrency === 'KRW' ? 'KRW' : 'USD';
+                      const combinedStats = stats.converted?.[targetCurrency];
 
-                      const currencies = new Set([
-                        usdBuyConverted.currency,
-                        krwBuyConverted.currency,
-                        usdSellConverted.currency,
-                        krwSellConverted.currency,
-                      ]);
-
-                      if (currencies.size !== 1) {
+                      if (!combinedStats) {
                         return <StatCardDescription>환율 정보를 불러오지 못했습니다.</StatCardDescription>;
                       }
 
-                      const currency = usdBuyConverted.currency;
-                      const buyTotal = usdBuyConverted.value + krwBuyConverted.value;
-                      const sellTotal = usdSellConverted.value + krwSellConverted.value;
-                      const netTotal = sellTotal - buyTotal;
-                      const combinedReturn = buyTotal > 0 ? ((sellTotal - buyTotal) / buyTotal) * 100 : 0;
+                      const buyTotal = combinedStats.totalBuyAmount;
+                      const sellTotal = combinedStats.totalSellAmount;
+                      const netTotal = combinedStats.netAmount;
+                      const combinedReturn = buyTotal > 0 ? (netTotal / buyTotal) * 100 : 0;
 
                       return (
                         <div className="space-y-3">
                           <div>
                             <StatCardDescription>총 매수 금액</StatCardDescription>
                             <StatCardValue className="text-2xl">
-                              {formatCurrency(buyTotal, currency)}
+                              {formatCurrency(buyTotal, targetCurrency)}
                             </StatCardValue>
                           </div>
                           <div>
                             <StatCardDescription>총 매도 금액</StatCardDescription>
                             <StatCardValue className="text-2xl">
-                              {formatCurrency(sellTotal, currency)}
+                              {formatCurrency(sellTotal, targetCurrency)}
                             </StatCardValue>
                           </div>
                           <div className={`text-xs font-medium pt-2 border-t ${netTotal >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                             합산 수익률: {formatPercent(combinedReturn)} ({
                               netTotal >= 0
-                                ? `+${formatCurrency(netTotal, currency)}`
-                                : `-${formatCurrency(Math.abs(netTotal), currency)}`
+                                ? `+${formatCurrency(netTotal, targetCurrency)}`
+                                : `-${formatCurrency(Math.abs(netTotal), targetCurrency)}`
                             })
                           </div>
                         </div>
