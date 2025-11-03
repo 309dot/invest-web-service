@@ -21,7 +21,6 @@ import {
   TrendingUp,
   TrendingDown,
 } from 'lucide-react';
-import { formatPercent } from '@/lib/utils/formatters';
 import type { Position } from '@/types';
 import { useCurrency } from '@/lib/contexts/CurrencyContext';
 import { assertCurrency, convertWithRate } from '@/lib/currency';
@@ -47,7 +46,6 @@ interface TargetWeight {
 export function RebalancingSimulator({ positions, totalValue, baseCurrency, exchangeRate }: RebalancingSimulatorProps) {
   const [targetWeights, setTargetWeights] = useState<Record<string, string>>({});
   const [simulationResult, setSimulationResult] = useState<TargetWeight[]>([]);
-  const [rebalanceMode, setRebalanceMode] = useState<'equal' | 'custom'>('equal');
   const [showResult, setShowResult] = useState(false);
   const { formatAmount } = useCurrency();
 
@@ -123,7 +121,6 @@ export function RebalancingSimulator({ positions, totalValue, baseCurrency, exch
       ...targetWeights,
       [symbol]: value,
     });
-    setRebalanceMode('custom');
   };
 
   // 시뮬레이션 실행

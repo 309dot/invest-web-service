@@ -2,9 +2,16 @@
   "private": true,
   "scripts": {
     "vercel-build": "cd mgk-dashboard && npm run build",
-    "vercel-install": "cd mgk-dashboard && npm install"
+    "vercel-install": "cd mgk-dashboard && npm install",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "test:e2e": "playwright test",
+    "test:all": "npm run test:unit && npm run test:integration && npm run test:e2e",
+    "test:watch": "vitest watch",
+    "qa:log": "node scripts/generate-qa-log.js"
   },
   "dependencies": {
     "next": "14.2.33"
   }
 }
+

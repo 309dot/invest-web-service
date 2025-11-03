@@ -76,7 +76,7 @@ export async function PUT(
       );
     }
 
-    const { shares, price, amount, date, memo, fee } = body;
+    const { shares, price, amount, date, memo, fee, tax, executedAt } = body;
 
     const transactionRef = doc(
       db,
@@ -94,10 +94,17 @@ export async function PUT(
     if (date !== undefined) updateData.date = date;
     if (memo !== undefined) updateData.memo = memo;
     if (fee !== undefined) updateData.fee = fee;
+    if (tax !== undefined) updateData.tax = tax;
+    if (executedAt !== undefined) updateData.executedAt = executedAt;
 
     // totalAmount 재계산
-    if (amount !== undefined || fee !== undefined) {
-      updateData.totalAmount = (amount || transaction.amount) + (fee || transaction.fee);
+    if (amount !== undefined || fee !== undefined || tax !== undefined) {
+      const amountValue = amount !== undefined ? amount : transaction.amount;
+      const feeValue = fee !== undefined ? fee : transaction.fee || 0;
+      const taxValue = tax !== undefined ? tax : transaction.tax || 0;
+      updateData.totalAmount = transaction.type === 'buy'
+        ? amountValue + feeValue + taxValue
+        : Math.max(amountValue - feeValue - taxValue, 0);
     }
 
     await updateDoc(transactionRef, updateData);

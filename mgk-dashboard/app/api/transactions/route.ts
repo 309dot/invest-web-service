@@ -46,6 +46,7 @@ export async function POST(request: NextRequest) {
       note,
       exchangeRate,
       currency,
+      executedAt,
     } = body;
 
     if (!userId || userId === 'default_user') {
@@ -94,6 +95,7 @@ export async function POST(request: NextRequest) {
         note,
         exchangeRate,
         currency,
+        executedAt,
       }
     );
 
@@ -103,9 +105,11 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Create transaction error:', error);
+    const message = error instanceof Error ? error.message : '거래 생성에 실패했습니다.';
+    const status = message.includes('잔액이 부족') ? 400 : 500;
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : '거래 생성에 실패했습니다.' },
-      { status: 500 }
+      { error: message },
+      { status }
     );
   }
 }

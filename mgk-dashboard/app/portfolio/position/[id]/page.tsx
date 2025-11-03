@@ -26,7 +26,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Loader2, ArrowLeft, Edit2, Save, X, TrendingUp, TrendingDown, DollarSign, Calendar, Trash2, RefreshCw } from 'lucide-react';
+import { Loader2, ArrowLeft, Edit2, Save, X, TrendingUp, TrendingDown, Calendar, Trash2, RefreshCw } from 'lucide-react';
 import { formatPercent, formatDate, formatInputDate } from '@/lib/utils/formatters';
 import type { AutoInvestFrequency, AutoInvestSchedule, Position, Transaction } from '@/types';
 import { useCurrency } from '@/lib/contexts/CurrencyContext';
@@ -76,6 +76,16 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
     pricePerShare: '',
     note: '',
   });
+  const [sellAlertForm, setSellAlertForm] = useState({
+    enabled: false,
+    targetReturnRate: '',
+    sellRatio: '100',
+    notifyEmail: '',
+    triggerOnce: true,
+  });
+  const [sellAlertSaving, setSellAlertSaving] = useState(false);
+  const [sellAlertError, setSellAlertError] = useState<string | null>(null);
+  const [sellAlertSuccess, setSellAlertSuccess] = useState<string | null>(null);
   
   // 거래 내역 관련 상태
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -186,6 +196,21 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
           shares: found.shares.toString(),
           averagePrice: found.averagePrice.toString(),
         });
+        setSellAlertForm({
+          enabled: found.sellAlert?.enabled ?? false,
+          targetReturnRate:
+            found.sellAlert?.targetReturnRate !== undefined
+              ? found.sellAlert.targetReturnRate.toString()
+              : '',
+          sellRatio:
+            found.sellAlert?.sellRatio !== undefined
+              ? found.sellAlert.sellRatio.toString()
+              : '100',
+          notifyEmail: found.sellAlert?.notifyEmail ?? '',
+          triggerOnce: found.sellAlert?.triggerOnce ?? true,
+        });
+        setSellAlertError(null);
+        setSellAlertSuccess(null);
         setPortfolioIdState(resolvedPortfolioId);
 
         if (found.purchaseMethod === 'auto') {
@@ -273,6 +298,80 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
     } catch (err) {
       console.error('Failed to delete position:', err);
       setError('포지션 삭제에 실패했습니다.');
+    }
+  };
+
+  const handleSellAlertSave = async () => {
+    if (!position) {
+      setSellAlertError('포지션 정보를 불러오지 못했습니다.');
+      return;
+    }
+
+    if (!user) {
+      setSellAlertError('로그인이 필요합니다.');
+      return;
+    }
+
+    const targetReturnRate = parseFloat(sellAlertForm.targetReturnRate);
+    const sellRatio = parseFloat(sellAlertForm.sellRatio);
+
+    if (sellAlertForm.enabled) {
+      if (Number.isNaN(targetReturnRate) || targetReturnRate <= 0) {
+        setSellAlertError('목표 수익률(%)을 0보다 크게 입력해주세요.');
+        return;
+      }
+    }
+
+    if (!Number.isNaN(sellRatio) && (sellRatio < 0 || sellRatio > 100)) {
+      setSellAlertError('매도 비율은 0~100 범위여야 합니다.');
+      return;
+    }
+
+    try {
+      setSellAlertSaving(true);
+      setSellAlertError(null);
+      setSellAlertSuccess(null);
+
+      const activePortfolioId =
+        portfolioIdState || position.portfolioId || deriveDefaultPortfolioId(user.uid);
+
+      const response = await fetch(
+        `/api/positions/${position.id}/sell-alert?userId=${user.uid}&portfolioId=${activePortfolioId}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            enabled: sellAlertForm.enabled,
+            targetReturnRate: Number.isNaN(targetReturnRate) ? undefined : targetReturnRate,
+            sellRatio: Number.isNaN(sellRatio) ? undefined : sellRatio,
+            notifyEmail: sellAlertForm.notifyEmail?.trim() || null,
+            triggerOnce: sellAlertForm.triggerOnce,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.error || '매도 알림 설정 저장에 실패했습니다.');
+      }
+
+      const data = await response.json();
+
+      setPosition((prev) => (prev ? { ...prev, sellAlert: data.sellAlert } : prev));
+      setSellAlertForm((prev) => ({
+        ...prev,
+        enabled: data.sellAlert.enabled,
+        targetReturnRate: data.sellAlert.targetReturnRate?.toString() ?? '',
+        sellRatio: data.sellAlert.sellRatio?.toString() ?? '100',
+        notifyEmail: data.sellAlert.notifyEmail ?? '',
+        triggerOnce: data.sellAlert.triggerOnce ?? true,
+      }));
+      setSellAlertSuccess('매도 알림 설정을 저장했습니다.');
+    } catch (err) {
+      console.error('Sell alert save failed:', err);
+      setSellAlertError(err instanceof Error ? err.message : '매도 알림 설정 저장 중 오류가 발생했습니다.');
+    } finally {
+      setSellAlertSaving(false);
     }
   };
 
@@ -703,6 +802,146 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
                       <span className="text-muted-foreground">거래 횟수</span>
                       <span className="font-medium">{position.transactionCount || 0}회</span>
                     </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="mt-4">
+                <CardHeader>
+                  <CardTitle>매도 타이밍 알림</CardTitle>
+                  <CardDescription>
+                    목표 수익률과 매도 비율을 설정하면 조건 충족 시 이메일로 알림을 보냅니다.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="font-semibold">알림 활성화</Label>
+                      <p className="text-xs text-muted-foreground">조건 만족 시 알림을 받을지 여부를 설정합니다.</p>
+                    </div>
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4"
+                      checked={sellAlertForm.enabled}
+                      onChange={(event) => {
+                        const enabled = event.target.checked;
+                        setSellAlertForm((prev) => ({ ...prev, enabled }));
+                        setSellAlertError(null);
+                        setSellAlertSuccess(null);
+                      }}
+                    />
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="sellAlertTarget">목표 수익률 (%)</Label>
+                      <Input
+                        id="sellAlertTarget"
+                        type="number"
+                        step="0.1"
+                        placeholder="예: 15"
+                        value={sellAlertForm.targetReturnRate}
+                        disabled={!sellAlertForm.enabled}
+                        onChange={(event) => {
+                          setSellAlertForm((prev) => ({
+                            ...prev,
+                            targetReturnRate: event.target.value,
+                          }));
+                          setSellAlertSuccess(null);
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="sellAlertRatio">매도 비율 (%)</Label>
+                      <Input
+                        id="sellAlertRatio"
+                        type="number"
+                        step="1"
+                        min="0"
+                        max="100"
+                        placeholder="예: 50"
+                        value={sellAlertForm.sellRatio}
+                        disabled={!sellAlertForm.enabled}
+                        onChange={(event) => {
+                          setSellAlertForm((prev) => ({
+                            ...prev,
+                            sellRatio: event.target.value,
+                          }));
+                          setSellAlertSuccess(null);
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="sellAlertEmail">알림 이메일 (선택)</Label>
+                    <Input
+                      id="sellAlertEmail"
+                      type="email"
+                      placeholder="example@email.com"
+                      value={sellAlertForm.notifyEmail}
+                      disabled={!sellAlertForm.enabled}
+                      onChange={(event) => {
+                        setSellAlertForm((prev) => ({
+                          ...prev,
+                          notifyEmail: event.target.value,
+                        }));
+                        setSellAlertSuccess(null);
+                      }}
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="sellAlertTriggerOnce"
+                      type="checkbox"
+                      className="h-4 w-4"
+                      checked={sellAlertForm.triggerOnce}
+                      disabled={!sellAlertForm.enabled}
+                      onChange={(event) => {
+                        setSellAlertForm((prev) => ({
+                          ...prev,
+                          triggerOnce: event.target.checked,
+                        }));
+                        setSellAlertSuccess(null);
+                      }}
+                    />
+                    <Label htmlFor="sellAlertTriggerOnce" className="text-sm font-normal">
+                      한 번만 알림 (재충족 시 재알림 없음)
+                    </Label>
+                  </div>
+
+                  {sellAlertError && (
+                    <Alert variant="destructive">
+                      <AlertDescription>{sellAlertError}</AlertDescription>
+                    </Alert>
+                  )}
+
+                  {sellAlertSuccess && (
+                    <Alert>
+                      <AlertDescription>{sellAlertSuccess}</AlertDescription>
+                    </Alert>
+                  )}
+
+                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <p className="text-xs text-muted-foreground">
+                      {position?.sellAlert?.lastTriggeredAt
+                        ? `마지막 알림: ${formatDate(position.sellAlert.lastTriggeredAt, 'yyyy-MM-dd HH:mm')}`
+                        : '아직 발송된 알림이 없습니다.'}
+                    </p>
+                    <Button
+                      size="sm"
+                      onClick={handleSellAlertSave}
+                      disabled={sellAlertSaving}
+                    >
+                      {sellAlertSaving ? (
+                        <span className="flex items-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin" /> 저장 중...
+                        </span>
+                      ) : (
+                        '설정 저장'
+                      )}
+                    </Button>
                   </div>
                 </CardContent>
               </Card>

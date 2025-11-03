@@ -8,7 +8,14 @@
     "start": "next start",
     "lint": "next lint",
     "advisor:test": "curl -s -X POST http://localhost:3000/api/ai-advisor -H \"Content-Type: application/json\" -d '{\"periodDays\":7,\"store\":false}' | jq",
-    "qa:consistency": "node scripts/qa/dashboard-consistency-check.js"
+    "qa:consistency": "node scripts/qa/dashboard-consistency-check.js",
+    "qa:profit": "node scripts/qa/profit-discrepancy-report.js",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "test:e2e": "playwright test",
+    "test:all": "npm run test:unit && npm run test:integration && npm run test:e2e",
+    "test:watch": "vitest watch",
+    "qa:log": "node scripts/generate-qa-log.js"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.15",

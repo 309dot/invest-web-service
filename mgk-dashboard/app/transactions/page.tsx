@@ -42,7 +42,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { formatCurrency, formatDate, formatPercent } from '@/lib/utils/formatters';
+import { formatCurrency, formatDate, formatPercent, formatTime } from '@/lib/utils/formatters';
 import { useCurrency } from '@/lib/contexts/CurrencyContext';
 import type { Transaction, AutoInvestFrequency } from '@/types';
 import { deriveDefaultPortfolioId } from '@/lib/utils/portfolio';
@@ -100,6 +100,7 @@ type UpcomingAutoInvest = {
 
 type TransactionWithDisplay = Transaction & {
   displayDate?: string;
+  executedAt?: string;
 };
 
 const frequencyLabel: Record<AutoInvestFrequency, string> = {
@@ -132,6 +133,17 @@ export default function TransactionsPage() {
   // 삭제
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [transactionToDelete, setTransactionToDelete] = useState<TransactionWithDisplay | null>(null);
+
+  const resolveExecutedAt = useCallback((transaction: TransactionWithDisplay): string => {
+    if (transaction.executedAt) {
+      return transaction.executedAt;
+    }
+    const createdAt: any = transaction.createdAt as any;
+    if (createdAt && typeof createdAt === 'object' && 'seconds' in createdAt) {
+      return new Date(createdAt.seconds * 1000).toISOString();
+    }
+    return `${transaction.date}T00:00:00`;
+  }, []);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -542,7 +554,7 @@ export default function TransactionsPage() {
                             <div>
                               <h4 className="font-semibold">{transaction.symbol}</h4>
                               <p className="text-sm text-muted-foreground">
-                                {formatDate(transaction.displayDate ?? transaction.date)}
+                                {formatDate(transaction.displayDate ?? transaction.date)} · {formatTime(resolveExecutedAt(transaction))}
                               </p>
                             </div>
                             <Badge
@@ -605,6 +617,7 @@ export default function TransactionsPage() {
                       <thead>
                         <tr className="border-b">
                           <th className="text-left py-3 px-4 font-semibold text-xs uppercase tracking-wider text-muted-foreground">날짜</th>
+                          <th className="text-left py-3 px-4 font-semibold text-xs uppercase tracking-wider text-muted-foreground">시간</th>
                           <th className="text-left py-3 px-4 font-semibold text-xs uppercase tracking-wider text-muted-foreground">종목</th>
                           <th className="text-center py-3 px-4 font-semibold text-xs uppercase tracking-wider text-muted-foreground">유형</th>
                           <th className="text-right py-3 px-4 font-semibold text-xs uppercase tracking-wider text-muted-foreground">주식 수</th>
@@ -621,6 +634,9 @@ export default function TransactionsPage() {
                           <tr key={transaction.id} className="border-b hover:bg-muted/70 transition-colors">
                             <td className="py-3 px-4">
                               {formatDate(transaction.displayDate ?? transaction.date)}
+                            </td>
+                            <td className="py-3 px-4">
+                              {formatTime(resolveExecutedAt(transaction))}
                             </td>
                             <td className="py-3 px-4 font-semibold">
                               {transaction.symbol}
@@ -699,6 +715,7 @@ export default function TransactionsPage() {
                     <p><strong>종목:</strong> {transactionToDelete.symbol}</p>
                     <p><strong>유형:</strong> {transactionToDelete.type === 'buy' ? '매수' : '매도'}</p>
                     <p><strong>날짜:</strong> {formatDate(transactionToDelete.displayDate ?? transactionToDelete.date)}</p>
+                    <p><strong>시간:</strong> {formatTime(resolveExecutedAt(transactionToDelete))}</p>
                     <p><strong>금액:</strong> {formatAmount(transactionToDelete.totalAmount, resolveTransactionCurrency(transactionToDelete!))}</p>
                   </div>
                 </div>

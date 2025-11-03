@@ -16,9 +16,10 @@ import {
   Timestamp,
   writeBatch,
   deleteDoc,
+  updateDoc,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Position, Stock, Transaction } from '@/types';
+import type { Position, SellAlertConfig, Stock, Transaction } from '@/types';
 import {
   assertCurrency,
   convertWithRate,
@@ -32,6 +33,7 @@ import {
   formatDate as formatTradingDate,
   getMarketToday,
 } from '@/lib/utils/tradingCalendar';
+import { sendSellAlert } from '@/lib/services/notifications';
 
 const formatDateString = (date: Date): string => {
   const year = date.getFullYear();
@@ -42,6 +44,14 @@ const formatDateString = (date: Date): string => {
 
 const FLOAT_TOLERANCE = 1e-6;
 
+type PriceSource = 'realtime' | 'historical' | 'fallback' | 'cached';
+
+interface PriceCacheEntry {
+  price: number | null;
+  source: PriceSource;
+  timestamp: string;
+}
+
 function normalizeSymbolForAlphaVantage(symbol: string): string {
   return symbol.replace('-', '.').toUpperCase();
 }
@@ -51,7 +61,7 @@ async function applyLatestMarketPrices(positions: Position[]): Promise<Position[
     return positions;
   }
 
-  const priceCache = new Map<string, number | null>();
+  const priceCache = new Map<string, PriceCacheEntry>();
   const groupedBySymbol = new Map<string, Position[]>();
 
   positions.forEach((position) => {
@@ -66,14 +76,23 @@ async function applyLatestMarketPrices(positions: Position[]): Promise<Position[
     const symbol = sample.symbol;
     const isKorean = sample.currency === 'KRW' || /^[0-9]{4,6}$/.test(symbol);
     let price: number | null = null;
+    let source: PriceSource = 'cached';
 
     try {
       if (isKorean) {
         price = await getKoreanStockPrice(symbol);
+        if (price && Number.isFinite(price) && price > 0) {
+          source = 'realtime';
+        }
       } else {
         const alphaSymbol = normalizeSymbolForAlphaVantage(symbol);
         const currentPrice = await getCurrentPrice(alphaSymbol);
-        price = Number.isFinite(currentPrice?.price) ? currentPrice.price : null;
+        if (Number.isFinite(currentPrice?.price)) {
+          price = currentPrice!.price;
+          source = 'realtime';
+        } else {
+          price = null;
+        }
       }
     } catch (error) {
       console.error('Realtime price lookup failed:', symbol, error);
@@ -92,6 +111,7 @@ async function applyLatestMarketPrices(positions: Position[]): Promise<Position[
         );
         if (historical && Number.isFinite(historical) && historical > 0) {
           price = historical;
+          source = 'historical';
         }
       } catch (error) {
         console.warn('Historical price lookup failed:', symbol, error);
@@ -101,21 +121,30 @@ async function applyLatestMarketPrices(positions: Position[]): Promise<Position[
     if (!price || !Number.isFinite(price) || price <= 0) {
       if (sample.currentPrice && sample.currentPrice > 0) {
         price = sample.currentPrice;
+        source = 'fallback';
       } else if (sample.averagePrice && sample.averagePrice > 0) {
         price = sample.averagePrice;
+        source = 'fallback';
       } else {
         price = null;
+        source = 'fallback';
       }
     }
 
-    priceCache.set(key, price);
+    priceCache.set(key, {
+      price,
+      source,
+      timestamp: new Date().toISOString(),
+    });
   }
 
   return positions
     .map((position) => {
       const key = `${position.symbol}_${position.currency ?? 'USD'}`;
-      const cachedPrice = priceCache.get(key);
-      const currentPrice = cachedPrice && cachedPrice > 0 ? cachedPrice : position.currentPrice;
+      const cachedEntry = priceCache.get(key);
+      const currentPrice = cachedEntry && cachedEntry.price && cachedEntry.price > 0
+        ? cachedEntry.price
+        : position.currentPrice;
       const totalValue = position.shares * currentPrice;
       const returnRate = calculateReturnRate(totalValue, position.totalInvested);
       const profitLoss = totalValue - position.totalInvested;
@@ -126,6 +155,8 @@ async function applyLatestMarketPrices(positions: Position[]): Promise<Position[
         totalValue,
         returnRate,
         profitLoss,
+        priceSource: cachedEntry?.source ?? 'cached',
+        priceTimestamp: cachedEntry?.timestamp ?? new Date().toISOString(),
       } as Position;
     })
     .sort((a, b) => b.totalValue - a.totalValue);
@@ -244,6 +275,118 @@ function aggregatePositionMetrics(
       existingPosition?.lastTransactionDate ||
       formatDateString(new Date()),
   } as const;
+}
+
+function normalizeSellAlertSettings(
+  existing: SellAlertConfig | undefined,
+  updates: {
+    enabled: boolean;
+    targetReturnRate?: number;
+    sellRatio?: number;
+    notifyEmail?: string | null;
+    triggerOnce?: boolean;
+  }
+): SellAlertConfig {
+  const targetReturnRate = updates.targetReturnRate ?? existing?.targetReturnRate ?? 0;
+  const sellRatio = updates.sellRatio ?? existing?.sellRatio ?? 100;
+  const notifyEmail = updates.notifyEmail !== undefined ? updates.notifyEmail : existing?.notifyEmail ?? null;
+  const triggerOnce = updates.triggerOnce !== undefined ? updates.triggerOnce : existing?.triggerOnce ?? true;
+
+  return {
+    enabled: updates.enabled,
+    targetReturnRate: Math.max(0, Number.isFinite(targetReturnRate) ? targetReturnRate : 0),
+    sellRatio: Math.min(100, Math.max(0, Number.isFinite(sellRatio) ? sellRatio : 100)),
+    notifyEmail: notifyEmail ? notifyEmail : null,
+    triggerOnce,
+    lastTriggeredAt: updates.enabled ? existing?.lastTriggeredAt ?? null : null,
+  };
+}
+
+async function markSellAlertTriggered(
+  userId: string,
+  portfolioId: string,
+  positionId: string,
+  timestamp: string
+) {
+  const positionRef = doc(
+    db,
+    `users/${userId}/portfolios/${portfolioId}/positions`,
+    positionId
+  );
+
+  await updateDoc(positionRef, {
+    'sellAlert.lastTriggeredAt': timestamp,
+    updatedAt: Timestamp.now(),
+  });
+}
+
+async function evaluateSellAlerts(
+  userId: string,
+  portfolioId: string,
+  positions: Position[]
+): Promise<void> {
+  for (const position of positions) {
+    if (!position.id) {
+      continue;
+    }
+
+    const config = position.sellAlert;
+    if (!config || !config.enabled) {
+      continue;
+    }
+
+    if (!Number.isFinite(config.targetReturnRate)) {
+      continue;
+    }
+
+    if (!Number.isFinite(position.returnRate)) {
+      continue;
+    }
+
+    const currentReturnRate = position.returnRate;
+    if (currentReturnRate < config.targetReturnRate) {
+      continue;
+    }
+
+    if (config.triggerOnce && config.lastTriggeredAt) {
+      continue;
+    }
+
+    if (!config.triggerOnce && config.lastTriggeredAt) {
+      const lastTime = new Date(config.lastTriggeredAt).getTime();
+      if (!Number.isNaN(lastTime)) {
+        const hoursElapsed = (Date.now() - lastTime) / (1000 * 60 * 60);
+        if (hoursElapsed < 6) {
+          continue;
+        }
+      }
+    }
+
+    const sellRatio = Math.min(100, Math.max(0, config.sellRatio));
+    const sharesToSell = position.shares * (sellRatio / 100);
+
+    await sendSellAlert({
+      userId,
+      portfolioId,
+      positionId: position.id,
+      symbol: position.symbol,
+      currency: position.currency,
+      currentPrice: position.currentPrice,
+      currentReturnRate,
+      targetReturnRate: config.targetReturnRate,
+      sellRatio,
+      sharesToSell,
+      notifyEmail: config.notifyEmail ?? null,
+    });
+
+    const timestamp = new Date().toISOString();
+    await markSellAlertTriggered(userId, portfolioId, position.id, timestamp);
+
+    position.sellAlert = {
+      ...config,
+      lastTriggeredAt: timestamp,
+    };
+  }
 }
 
 /**
@@ -432,11 +575,48 @@ export async function getPortfolioPositions(
       }
     }
 
-    return applyLatestMarketPrices(positions);
+    const enrichedPositions = await applyLatestMarketPrices(positions);
+    await evaluateSellAlerts(userId, portfolioId, enrichedPositions);
+    return enrichedPositions;
   } catch (error) {
     console.error('Error getting portfolio positions:', error);
     return [];
   }
+}
+
+export async function updateSellAlertSettings(
+  userId: string,
+  portfolioId: string,
+  positionId: string,
+  settings: {
+    enabled: boolean;
+    targetReturnRate?: number;
+    sellRatio?: number;
+    notifyEmail?: string | null;
+    triggerOnce?: boolean;
+  }
+): Promise<SellAlertConfig> {
+  const positionRef = doc(
+    db,
+    `users/${userId}/portfolios/${portfolioId}/positions`,
+    positionId
+  );
+
+  const snapshot = await getDoc(positionRef);
+
+  if (!snapshot.exists()) {
+    throw new Error('포지션을 찾을 수 없습니다.');
+  }
+
+  const existing = snapshot.data().sellAlert as SellAlertConfig | undefined;
+  const normalized = normalizeSellAlertSettings(existing, settings);
+
+  await updateDoc(positionRef, {
+    sellAlert: normalized,
+    updatedAt: Timestamp.now(),
+  });
+
+  return normalized;
 }
 
 /**

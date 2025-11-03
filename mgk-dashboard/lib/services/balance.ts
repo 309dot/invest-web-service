@@ -18,6 +18,7 @@ import {
   limit as firestoreLimit,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { sendBalanceAlert } from '@/lib/services/notifications';
 
 export interface BalanceRecord {
   id?: string;
@@ -41,6 +42,72 @@ export interface ChargeRecord {
   date: string; // YYYY-MM-DD
   note?: string;
   createdAt: Timestamp;
+}
+
+export interface BalanceAlertSettings {
+  email?: string | null;
+  KRW?: number | null;
+  USD?: number | null;
+  enabled?: boolean;
+}
+
+export class InsufficientBalanceError extends Error {
+  currency: 'KRW' | 'USD';
+  currentBalance: number;
+  requiredAmount: number;
+
+  constructor(payload: { currency: 'KRW' | 'USD'; currentBalance: number; requiredAmount: number }) {
+    super('INSUFFICIENT_BALANCE');
+    this.currency = payload.currency;
+    this.currentBalance = payload.currentBalance;
+    this.requiredAmount = payload.requiredAmount;
+  }
+}
+
+async function getBalanceAlertDoc(
+  userId: string,
+  portfolioId: string
+) {
+  return doc(
+    db,
+    `users/${userId}/portfolios/${portfolioId}/settings`,
+    'balanceAlerts'
+  );
+}
+
+export async function getBalanceAlertSettings(
+  userId: string,
+  portfolioId: string
+): Promise<BalanceAlertSettings> {
+  try {
+    const settingsRef = await getBalanceAlertDoc(userId, portfolioId);
+    const snapshot = await getDoc(settingsRef);
+    if (!snapshot.exists()) {
+      return {};
+    }
+    const data = snapshot.data() as BalanceAlertSettings;
+    return {
+      email: data.email ?? null,
+      KRW: typeof data.KRW === 'number' ? data.KRW : null,
+      USD: typeof data.USD === 'number' ? data.USD : null,
+      enabled: data.enabled ?? true,
+    };
+  } catch (error) {
+    console.error('Error fetching balance alert settings:', error);
+    return {};
+  }
+}
+
+export async function setBalanceAlertSettings(
+  userId: string,
+  portfolioId: string,
+  settings: BalanceAlertSettings
+): Promise<void> {
+  const settingsRef = await getBalanceAlertDoc(userId, portfolioId);
+  await setDoc(settingsRef, {
+    ...settings,
+    updatedAt: Timestamp.now(),
+  });
 }
 
 /**
@@ -97,47 +164,107 @@ export async function getAllBalances(
 /**
  * 잔액 업데이트
  */
+export interface UpdateBalanceOptions {
+  reason?: string;
+  requiredAmount?: number;
+  metadata?: Record<string, unknown>;
+}
+
+async function triggerThresholdAlertIfNeeded(
+  params: {
+    userId: string;
+    portfolioId: string;
+    currency: 'KRW' | 'USD';
+    newBalance: number;
+    settings: BalanceAlertSettings;
+    options?: UpdateBalanceOptions;
+  }
+): Promise<void> {
+  const { userId, portfolioId, currency, newBalance, settings, options } = params;
+  if (settings.enabled === false) {
+    return;
+  }
+
+  const threshold = (settings?.[currency] ?? null) as number | null;
+  if (typeof threshold === 'number' && threshold > 0 && newBalance < threshold) {
+    await sendBalanceAlert({
+      type: 'threshold',
+      userId,
+      portfolioId,
+      currency,
+      currentBalance: newBalance,
+      threshold,
+      email: settings.email ?? null,
+      metadata: options?.metadata,
+    });
+  }
+}
+
 export async function updateBalance(
   userId: string,
   portfolioId: string,
   currency: 'KRW' | 'USD',
-  amount: number
-): Promise<void> {
-  try {
-    const balanceRef = doc(
-      db,
-      `users/${userId}/portfolios/${portfolioId}/balance`,
-      currency
-    );
+  amount: number,
+  options?: UpdateBalanceOptions
+): Promise<number> {
+  const balanceRef = doc(
+    db,
+    `users/${userId}/portfolios/${portfolioId}/balance`,
+    currency
+  );
 
-    const balanceDoc = await getDoc(balanceRef);
-    const currentBalance = balanceDoc.exists()
-      ? (balanceDoc.data() as BalanceRecord).balance
-      : 0;
+  const balanceDoc = await getDoc(balanceRef);
+  const currentBalance = balanceDoc.exists()
+    ? (balanceDoc.data() as BalanceRecord).balance
+    : 0;
 
-    const newBalance = currentBalance + amount;
+  const newBalance = currentBalance + amount;
+  const settings = await getBalanceAlertSettings(userId, portfolioId);
 
-    if (newBalance < 0) {
-      throw new Error('잔액이 부족합니다.');
-    }
-
-    const balanceData: BalanceRecord = {
+  if (newBalance < 0) {
+    const requiredAmount = options?.requiredAmount ?? Math.abs(amount);
+    await sendBalanceAlert({
+      type: 'insufficient',
       userId,
       portfolioId,
       currency,
-      balance: newBalance,
-      createdAt: balanceDoc.exists()
-        ? (balanceDoc.data() as BalanceRecord).createdAt
-        : Timestamp.now(),
-      updatedAt: Timestamp.now(),
-    };
-
-    await setDoc(balanceRef, balanceData);
-    console.log(`✅ 잔액 업데이트: ${currency} ${newBalance}`);
-  } catch (error) {
-    console.error('Error updating balance:', error);
-    throw error;
+      currentBalance,
+      requiredAmount,
+      deficit: Math.abs(newBalance),
+      email: settings.email ?? null,
+      metadata: options?.metadata,
+    });
+    throw new InsufficientBalanceError({
+      currency,
+      currentBalance,
+      requiredAmount,
+    });
   }
+
+  const balanceData: BalanceRecord = {
+    userId,
+    portfolioId,
+    currency,
+    balance: newBalance,
+    createdAt: balanceDoc.exists()
+      ? (balanceDoc.data() as BalanceRecord).createdAt
+      : Timestamp.now(),
+    updatedAt: Timestamp.now(),
+  };
+
+  await setDoc(balanceRef, balanceData);
+  console.log(`✅ 잔액 업데이트: ${currency} ${newBalance}`);
+
+  await triggerThresholdAlertIfNeeded({
+    userId,
+    portfolioId,
+    currency,
+    newBalance,
+    settings,
+    options,
+  });
+
+  return newBalance;
 }
 
 /**
@@ -197,13 +324,24 @@ export async function createChargeRecord(
 
     // 잔액 업데이트
     const balanceChange = chargeData.type === 'deposit' ? chargeData.amount : -chargeData.amount;
-    await updateBalance(userId, portfolioId, chargeData.currency, balanceChange);
+    await updateBalance(userId, portfolioId, chargeData.currency, balanceChange, {
+      reason: chargeData.type === 'deposit' ? 'deposit' : 'withdrawal',
+      requiredAmount: chargeData.type === 'withdrawal' ? chargeData.amount : undefined,
+      metadata: {
+        chargeId: chargeRef.id,
+      },
+    });
 
     // 환전한 경우 반대 통화 잔액도 업데이트
     if (chargeData.convertedAmount && chargeData.exchangeRate) {
       const targetCurrency = chargeData.currency === 'KRW' ? 'USD' : 'KRW';
       const targetChange = chargeData.type === 'deposit' ? -chargeData.convertedAmount : chargeData.convertedAmount;
-      await updateBalance(userId, portfolioId, targetCurrency, targetChange);
+      await updateBalance(userId, portfolioId, targetCurrency, targetChange, {
+        reason: 'conversion',
+        metadata: {
+          chargeId: chargeRef.id,
+        },
+      });
     }
 
     return chargeRef.id;

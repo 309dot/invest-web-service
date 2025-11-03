@@ -412,15 +412,15 @@ export function generateRebalancingSuggestions(
   const { targetAllocation, baseTotalValue, exchangeRate } = options;
 
   const toBase = (value: number, currency: SupportedCurrency) => {
-    if (currency === 'USD') return value;
+    if (currency === 'KRW') return value;
     if (!exchangeRate) return value;
-    return convertWithRate(value, 'KRW', 'USD', exchangeRate);
+    return convertWithRate(value, 'USD', 'KRW', exchangeRate);
   };
 
   const fromBase = (value: number, currency: SupportedCurrency) => {
-    if (currency === 'USD') return value;
+    if (currency === 'KRW') return value;
     if (!exchangeRate) return value;
-    return convertWithRate(value, 'USD', 'KRW', exchangeRate);
+    return convertWithRate(value, 'KRW', 'USD', exchangeRate);
   };
 
   const defaultTarget = 100 / positions.length;
@@ -476,7 +476,7 @@ export async function analyzePortfolio(
     const positions = await getPortfolioPositions(userId, portfolioId);
 
     const { rate, source } = await getUsdKrwRate();
-    const baseCurrency: SupportedCurrency = 'USD';
+    const baseCurrency: SupportedCurrency = 'KRW';
 
     const toBase = (value: number, currency: SupportedCurrency) => {
       if (currency === 'USD') return value;

@@ -22,7 +22,7 @@ import { RadioGroup, RadioGroupItem } from './ui/radio-group';
 import { Alert, AlertDescription } from './ui/alert';
 import { Loader2, AlertCircle, TrendingUp, TrendingDown, Calculator } from 'lucide-react';
 import type { Position } from '@/types';
-import { formatInputDate } from '@/lib/utils/formatters';
+import { formatInputDate, formatInputTime } from '@/lib/utils/formatters';
 import {
   adjustToNextTradingDay,
   determineMarketFromContext,
@@ -57,6 +57,7 @@ export function TransactionForm({
   // 거래 정보
   const [transactionType, setTransactionType] = useState<'buy' | 'sell'>('buy');
   const [date, setDate] = useState(formatInputDate());
+  const [time, setTime] = useState(formatInputTime());
   const [price, setPrice] = useState('');
   const [priceTouched, setPriceTouched] = useState(false);
   const [priceLoading, setPriceLoading] = useState(false);
@@ -97,6 +98,7 @@ export function TransactionForm({
     setTax('0');
     setNote('');
     setExchangeRate('');
+    setTime(formatInputTime());
     setError(null);
   };
 
@@ -116,6 +118,9 @@ export function TransactionForm({
     }
     if (!price || parseFloat(price) <= 0) {
       return '유효한 거래 가격을 입력해주세요.';
+    }
+    if (!time) {
+      return '거래 시간을 입력해주세요.';
     }
     if (!shares || parseFloat(shares) <= 0) {
       return '유효한 주식 수를 입력해주세요.';
@@ -166,6 +171,8 @@ export function TransactionForm({
       const taxValue = parseFloat(tax);
       const amount = sharesValue * priceValue;
 
+      const executedAtIso = new Date(`${date}T${time || '00:00'}:00`).toISOString();
+
       const transactionData = {
         userId: user.uid,
         portfolioId,
@@ -181,6 +188,7 @@ export function TransactionForm({
         note,
         exchangeRate: exchangeRate ? parseFloat(exchangeRate) : undefined,
         currency: currency,
+        executedAt: executedAtIso,
       };
 
       console.log('📤 Sending transaction:', transactionData);
@@ -294,7 +302,9 @@ export function TransactionForm({
   const feeValue = fee ? parseFloat(fee) : 0;
   const taxValue = tax ? parseFloat(tax) : 0;
   const amount = sharesValue * priceValue;
-  const totalCost = amount + feeValue + taxValue;
+  const totalCost = transactionType === 'buy'
+    ? amount + feeValue + taxValue
+    : Math.max(amount - feeValue - taxValue, 0);
 
   // 예상 포지션 계산
   const predictedShares = transactionType === 'buy' 
@@ -390,6 +400,17 @@ export function TransactionForm({
                 <p className="text-xs text-muted-foreground">{tradingNotice}</p>
               )}
             </div>
+
+          {/* 거래 시간 */}
+          <div className="space-y-2">
+            <Label htmlFor="time">거래 시간</Label>
+            <Input
+              id="time"
+              type="time"
+              value={time}
+              onChange={(e) => setTime(e.target.value)}
+            />
+          </div>
 
             {/* 거래 가격 */}
             <div className="space-y-2">
@@ -503,7 +524,9 @@ export function TransactionForm({
                   <span className="font-medium">{formatAmount(taxValue, currency)}</span>
                 </div>
                 <div className="flex justify-between pt-2 border-t">
-                  <span className="font-semibold">총 금액</span>
+                  <span className="font-semibold">
+                    {transactionType === 'buy' ? '총 지출 금액' : '순 매도 금액'}
+                  </span>
                   <span className="font-semibold">{formatAmount(totalCost, currency)}</span>
                 </div>
                 {currency === 'USD' && exchangeRate && (

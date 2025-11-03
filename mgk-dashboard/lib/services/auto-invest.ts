@@ -17,6 +17,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { createTransaction } from './transaction';
+import { InsufficientBalanceError } from './balance';
 import { recalculatePositionFromTransactions } from './position';
 import type { AutoInvestFrequency, AutoInvestSchedule, Position, Transaction } from '@/types';
 import { getHistoricalPrice, getHistoricalExchangeRate } from '@/lib/apis/alphavantage';
@@ -169,24 +170,35 @@ export async function generateAutoInvestTransactions(
         }
       }
 
-      await createTransaction(userId, portfolioId, positionId, {
-        type: 'buy',
-        symbol: config.symbol,
-        shares,
-        price: unitPrice,
-        amount: config.amount,
-        date: targetDate,
-        note: `자동 투자 (${config.frequency})`,
-        currency: config.currency,
-        purchaseMethod: 'auto',
-        purchaseUnit: 'amount',
-        exchangeRate,
-      });
+      try {
+        await createTransaction(userId, portfolioId, positionId, {
+          type: 'buy',
+          symbol: config.symbol,
+          shares,
+          price: unitPrice,
+          amount: config.amount,
+          date: targetDate,
+          note: `자동 투자 (${config.frequency})`,
+          currency: config.currency,
+          purchaseMethod: 'auto',
+          purchaseUnit: 'amount',
+          exchangeRate,
+          executedAt: new Date().toISOString(),
+        });
 
-      totalShares += shares;
-      totalAmount += config.amount;
-      createdCount += 1;
-      existingKeys.add(`${targetDate}:${config.amount}`);
+        totalShares += shares;
+        totalAmount += config.amount;
+        createdCount += 1;
+        existingKeys.add(`${targetDate}:${config.amount}`);
+      } catch (error) {
+        if (error instanceof InsufficientBalanceError) {
+          console.warn(
+            `⚠️ 자동 투자 잔액 부족으로 건너뜁니다: ${config.symbol} ${targetDate} (${config.amount} ${config.currency})`
+          );
+          continue;
+        }
+        throw error;
+      }
     }
 
     const totalAmountDisplay =

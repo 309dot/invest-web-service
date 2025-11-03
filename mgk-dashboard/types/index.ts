@@ -90,6 +90,8 @@ export interface Position {
   totalValue: number; // 총 평가액
   returnRate: number; // 수익률 (%)
   profitLoss: number; // 손익
+  priceSource?: 'realtime' | 'historical' | 'fallback' | 'cached';
+  priceTimestamp?: string;
   // 구매 방식 정보
   purchaseMethod: PurchaseMethod; // 자동/수동
   autoInvestConfig?: {
@@ -101,12 +103,22 @@ export interface Position {
     currentScheduleId?: string; // 활성 스케줄 ID
     lastUpdated?: string; // 마지막 수정일 (YYYY-MM-DD)
   };
+  sellAlert?: SellAlertConfig;
   // 메타데이터
   firstPurchaseDate: string; // 최초 매수일 (YYYY-MM-DD)
   lastTransactionDate: string; // 마지막 거래일
   transactionCount: number; // 거래 횟수
   createdAt: Timestamp;
   updatedAt: Timestamp;
+}
+
+export interface SellAlertConfig {
+  enabled: boolean;
+  targetReturnRate: number;
+  sellRatio: number;
+  notifyEmail?: string | null;
+  triggerOnce?: boolean;
+  lastTriggeredAt?: string | null;
 }
 
 // 거래 이력 (매수/매도 기록)
@@ -123,9 +135,11 @@ export interface Transaction {
   shares: number; // 거래 주식 수
   amount: number; // 거래 금액 (현지 통화)
   fee: number; // 수수료 (현지 통화)
+  tax?: number; // 세금 (현지 통화)
   totalAmount: number; // 총 금액 (수수료 포함)
   currency?: 'USD' | 'KRW';
   displayDate?: string; // 사용자 표시용 일자 (KST 기준)
+  executedAt?: string; // 거래 실행 시간 (ISO)
   // 환율 정보 (한국 주식의 경우)
   exchangeRate?: number; // USD/KRW 환율
   krwAmount?: number; // 원화 환산 금액

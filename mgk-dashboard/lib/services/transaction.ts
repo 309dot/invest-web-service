@@ -37,6 +37,10 @@ import {
   getUsdKrwRate,
   type SupportedCurrency,
 } from '@/lib/currency';
+import {
+  updateBalance,
+  InsufficientBalanceError,
+} from '@/lib/services/balance';
 
 async function normalizeTransactions(
   userId: string,
@@ -229,6 +233,7 @@ export async function createTransaction(
     currency?: string;
     purchaseMethod?: Transaction['purchaseMethod'];
     purchaseUnit?: Transaction['purchaseUnit'];
+    executedAt?: string;
   }
 ): Promise<string> {
   try {
@@ -264,6 +269,27 @@ export async function createTransaction(
         ? normalizedCurrency
         : 'USD';
 
+    const fee = transactionData.fee || 0;
+    const tax = transactionData.tax || 0;
+    const grossAmount = transactionData.amount;
+    const totalDebit = grossAmount + fee + tax;
+    const totalCredit = Math.max(grossAmount - fee - tax, 0);
+
+    const executedAt = transactionData.executedAt
+      ? new Date(transactionData.executedAt).toISOString()
+      : new Date().toISOString();
+
+    if (transactionData.type === 'buy') {
+      await updateBalance(userId, portfolioId, resolvedCurrency, -totalDebit, {
+        reason: 'buy',
+        requiredAmount: totalDebit,
+        metadata: {
+          symbol: transactionData.symbol,
+          shares: transactionData.shares,
+        },
+      });
+    }
+
     const transaction: Omit<Transaction, 'id'> = {
       portfolioId,
       positionId,
@@ -273,14 +299,16 @@ export async function createTransaction(
       shares: transactionData.shares,
       price: transactionData.price,
       amount: transactionData.amount,
-      fee: transactionData.fee || 0,
-      totalAmount: transactionData.amount + (transactionData.fee || 0),
+      fee,
+      tax,
+      totalAmount: transactionData.type === 'buy' ? totalDebit : totalCredit,
       date: normalizedDate,
       memo: transactionData.note || '',
       purchaseMethod: transactionData.purchaseMethod || 'manual',
       purchaseUnit: transactionData.purchaseUnit || 'shares',
       createdAt: Timestamp.now(),
       currency: resolvedCurrency,
+      executedAt,
       ...(typeof transactionData.exchangeRate === 'number' && {
         exchangeRate: transactionData.exchangeRate,
       }),
@@ -297,8 +325,21 @@ export async function createTransaction(
       date: normalizedDate,
     });
 
+    if (transactionData.type === 'sell' && totalCredit > 0) {
+      await updateBalance(userId, portfolioId, resolvedCurrency, totalCredit, {
+        reason: 'sell',
+        metadata: {
+          symbol: transactionData.symbol,
+          shares: transactionData.shares,
+        },
+      });
+    }
+
     return transactionRef.id;
   } catch (error) {
+    if (error instanceof InsufficientBalanceError) {
+      throw new Error('잔액이 부족합니다.');
+    }
     console.error('Error creating transaction:', error);
     throw error;
   }
@@ -476,6 +517,41 @@ export async function deleteTransaction(
 
     const transactionData = transactionSnapshot.data() as Transaction;
     const positionId = transactionData.positionId;
+
+    const currency = transactionData.currency === 'KRW' ? 'KRW' : 'USD';
+    const fee = transactionData.fee || 0;
+    const tax = transactionData.tax || 0;
+    const amount = transactionData.amount || 0;
+    const totalDebit = amount + fee + tax;
+    const totalCredit = Math.max(amount - fee - tax, 0);
+
+    if (transactionData.type === 'buy') {
+      await updateBalance(userId, portfolioId, currency, totalDebit, {
+        reason: 'rollback-buy',
+        metadata: {
+          transactionId,
+        },
+      });
+    } else if (transactionData.type === 'sell' && totalCredit > 0) {
+      try {
+        await updateBalance(userId, portfolioId, currency, -totalCredit, {
+          reason: 'rollback-sell',
+          requiredAmount: totalCredit,
+          metadata: {
+            transactionId,
+          },
+        });
+      } catch (error) {
+        if (!(error instanceof InsufficientBalanceError)) {
+          throw error;
+        }
+        console.warn('잔액 부족으로 매도 거래 롤백 차감에 실패했습니다.', {
+          transactionId,
+          currency,
+          totalCredit,
+        });
+      }
+    }
 
     await deleteDoc(transactionRef);
     console.log(`✅ 거래 삭제: ${transactionId}`);

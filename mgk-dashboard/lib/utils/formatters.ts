@@ -103,6 +103,10 @@ export function formatInputDate(date: Date = new Date()): string {
   return format(date, 'yyyy-MM-dd');
 }
 
+export function formatInputTime(date: Date = new Date()): string {
+  return format(date, 'HH:mm');
+}
+
 /**
  * Format datetime
  */

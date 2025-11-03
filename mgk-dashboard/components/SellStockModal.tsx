@@ -20,7 +20,7 @@ import {
 } from './ui/select';
 import { Loader2, AlertCircle, Calculator } from 'lucide-react';
 import { useAuth } from '@/lib/contexts/AuthContext';
-import { formatInputDate } from '@/lib/utils/formatters';
+import { formatInputDate, formatInputTime } from '@/lib/utils/formatters';
 import type { Position } from '@/types';
 import { useCurrency } from '@/lib/contexts/CurrencyContext';
 
@@ -41,6 +41,7 @@ export function SellStockModal({ open, onOpenChange, portfolioId, onSuccess }: S
   const [loadingPositions, setLoadingPositions] = useState(false);
 
   const [sellDate, setSellDate] = useState(formatInputDate());
+  const [sellTime, setSellTime] = useState(formatInputTime());
   const [sellPrice, setSellPrice] = useState('');
   const [sellShares, setSellShares] = useState('');
   const [exchangeRate, setExchangeRate] = useState('');
@@ -62,6 +63,7 @@ export function SellStockModal({ open, onOpenChange, portfolioId, onSuccess }: S
     setFee('0');
     setTax('0');
     setNote('');
+    setSellTime(formatInputTime());
     setError(null);
   };
 
@@ -160,6 +162,7 @@ export function SellStockModal({ open, onOpenChange, portfolioId, onSuccess }: S
   const validate = (): string | null => {
     if (!selectedPosition) return '매도할 포지션을 선택해주세요.';
     if (!sellDate) return '매도 날짜를 입력해주세요.';
+    if (!sellTime) return '매도 시간을 입력해주세요.';
     const priceValue = parseFloat(sellPrice);
     if (!sellPrice || Number.isNaN(priceValue) || priceValue <= 0) {
       return '유효한 매도 가격을 입력해주세요.';
@@ -202,6 +205,8 @@ export function SellStockModal({ open, onOpenChange, portfolioId, onSuccess }: S
       const taxValue = parseFloat(tax) || 0;
       const amount = sharesValue * priceValue;
 
+      const executedAtIso = new Date(`${sellDate}T${sellTime || '00:00'}:00`).toISOString();
+
       const response = await fetch('/api/transactions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -222,6 +227,7 @@ export function SellStockModal({ open, onOpenChange, portfolioId, onSuccess }: S
           currency: selectedPosition.currency,
           purchaseMethod: selectedPosition.purchaseMethod ?? 'manual',
           purchaseUnit: 'shares',
+          executedAt: executedAtIso,
         }),
       });
 
@@ -247,7 +253,7 @@ export function SellStockModal({ open, onOpenChange, portfolioId, onSuccess }: S
   const feeValue = fee ? parseFloat(fee) : 0;
   const taxValue = tax ? parseFloat(tax) : 0;
   const totalAmount = sharesValue * priceValue;
-  const totalCost = totalAmount - (feeValue + taxValue);
+  const totalCost = Math.max(totalAmount - (feeValue + taxValue), 0);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -301,6 +307,15 @@ export function SellStockModal({ open, onOpenChange, portfolioId, onSuccess }: S
                 type="date"
                 value={sellDate}
                 onChange={(e) => setSellDate(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="sellTime">매도 시간</Label>
+              <Input
+                id="sellTime"
+                type="time"
+                value={sellTime}
+                onChange={(e) => setSellTime(e.target.value)}
               />
             </div>
             <div className="space-y-2">

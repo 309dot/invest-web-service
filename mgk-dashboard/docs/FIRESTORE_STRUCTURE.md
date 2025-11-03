@@ -84,6 +84,8 @@ firestore/
   totalValue: number;
   returnRate: number;
   profitLoss: number;
+  priceSource?: 'realtime' | 'historical' | 'fallback' | 'cached';
+  priceTimestamp?: string;
   purchaseMethod: 'auto' | 'manual';
   autoInvestConfig?: {
     frequency: 'daily' | 'weekly' | 'biweekly' | 'monthly';
@@ -91,6 +93,14 @@ firestore/
     startDate: string;
     isActive: boolean;
     lastExecuted?: string;
+  };
+  sellAlert?: {
+    enabled: boolean;
+    targetReturnRate: number;
+    sellRatio: number;
+    notifyEmail?: string;
+    triggerOnce?: boolean;
+    lastTriggeredAt?: string;
   };
   firstPurchaseDate: string;
   lastTransactionDate: string;
@@ -122,7 +132,9 @@ firestore/
   shares: number;
   amount: number;
   fee: number;
+  tax?: number;
   totalAmount: number;
+  executedAt?: string;          // ISO timestamp (UTC)
   exchangeRate?: number;
   krwAmount?: number;
   purchaseMethod: 'auto' | 'manual';
