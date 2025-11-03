@@ -14,12 +14,12 @@ import {
   calculateTransactionStats,
 } from '@/lib/services/transaction';
 import { getPortfolioPositions } from '@/lib/services/position';
-import { getAutoInvestDates } from '@/lib/services/auto-invest';
 import {
   determineMarketFromContext,
   getMarketToday,
   isFutureTradingDate,
   formatDate,
+  getNextScheduledTradingDate,
 } from '@/lib/utils/tradingCalendar';
 
 /**
@@ -156,14 +156,19 @@ export async function GET(request: NextRequest) {
         const config = position.autoInvestConfig!;
         const market = determineMarketFromContext(position.market, position.currency, position.symbol);
         const today = formatDate(getMarketToday(market));
-        const scheduledDates = getAutoInvestDates(config.startDate, config.frequency, today, market);
+        const nextScheduledDate = getNextScheduledTradingDate(
+          config.startDate,
+          config.frequency,
+          market,
+          getMarketToday(market)
+        );
 
-        if (!scheduledDates.includes(today)) {
+        if (!nextScheduledDate) {
           return null;
         }
 
         const executed = position.id
-          ? autoTransactionIndex.has(`${position.id}:${today}`)
+          ? autoTransactionIndex.has(`${position.id}:${nextScheduledDate}`)
           : false;
 
         return {
@@ -171,9 +176,10 @@ export async function GET(request: NextRequest) {
           symbol: position.symbol,
           amount: config.amount,
           currency: position.currency === 'KRW' ? 'KRW' : 'USD',
-          scheduledDate: today,
+          scheduledDate: nextScheduledDate,
           frequency: config.frequency,
           executed,
+          isToday: nextScheduledDate === today,
         };
       })
       .filter((item): item is NonNullable<typeof item> => item !== null);

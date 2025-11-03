@@ -26,6 +26,7 @@ import {
   determineMarketFromContext,
   formatDate,
   getMarketToday,
+  isFutureTradingDate,
   parseISODate,
 } from '@/lib/utils/tradingCalendar';
 
@@ -98,6 +99,10 @@ export async function generateAutoInvestTransactions(
     const exchangeRateCache = new Map<string, number>();
 
     for (const targetDate of purchaseDates) {
+      if (isFutureTradingDate(targetDate, market)) {
+        continue;
+      }
+
       let unitPrice: number | null = null;
       try {
         unitPrice = await getHistoricalPrice(

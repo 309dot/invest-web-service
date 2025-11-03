@@ -95,6 +95,7 @@ type UpcomingAutoInvest = {
   scheduledDate: string;
   frequency: AutoInvestFrequency;
   executed: boolean;
+  isToday: boolean;
 };
 
 const frequencyLabel: Record<AutoInvestFrequency, string> = {
@@ -273,9 +274,17 @@ export default function TransactionsPage() {
                 {upcomingAutoInvests.map((plan) => {
                   const statusBadge = plan.executed ? (
                     <Badge className="bg-emerald-600 hover:bg-emerald-600">구매 완료</Badge>
+                  ) : plan.isToday ? (
+                    <Badge variant="outline" className="border-dashed">오늘 예정</Badge>
                   ) : (
-                    <Badge variant="outline" className="border-dashed">대기 중</Badge>
+                    <Badge variant="outline" className="border-dashed">예정</Badge>
                   );
+
+                  const helperText = plan.executed
+                    ? '오늘 예정된 자동 투자가 실행되었습니다.'
+                    : plan.isToday
+                    ? '장 마감 시 자동 구매가 실행됩니다.'
+                    : `${formatDate(plan.scheduledDate)}에 자동 투자 예정입니다.`;
 
                   return (
                     <div
@@ -295,7 +304,7 @@ export default function TransactionsPage() {
                       </div>
                       <div className="flex items-center gap-2 text-sm">
                         {statusBadge}
-                        {!plan.executed && <span className="text-muted-foreground">구매 시 자동으로 기록됩니다.</span>}
+                        <span className="text-muted-foreground">{helperText}</span>
                       </div>
                     </div>
                   );

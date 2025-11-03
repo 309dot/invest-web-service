@@ -76,10 +76,54 @@ export function adjustToNextTradingDay(
   return parseISODate(formatDate(date));
 }
 
+export function adjustToPreviousTradingDay(
+  dateInput: string | Date,
+  market?: SupportedMarket
+): Date {
+  const resolved = resolveMarket(market);
+  let date = typeof dateInput === 'string' ? parseISODate(dateInput) : new Date(dateInput.getTime());
+
+  let guard = 0;
+  while (!isTradingDay(date, resolved)) {
+    date.setUTCDate(date.getUTCDate() - 1);
+    guard += 1;
+    if (guard > 14) {
+      break;
+    }
+  }
+
+  return parseISODate(formatDate(date));
+}
+
 export function isFutureTradingDate(dateInput: string | Date, market?: SupportedMarket): boolean {
   const date = typeof dateInput === 'string' ? parseISODate(dateInput) : new Date(dateInput);
   const today = getMarketToday(market);
   return date > today;
+}
+
+export function getNextScheduledTradingDate(
+  startDate: string,
+  frequency: AutoInvestFrequency,
+  market: SupportedMarket,
+  referenceDate: Date
+): string | null {
+  let pointer = parseISODate(startDate);
+  const resolvedMarket = resolveMarket(market);
+  const boundary = parseISODate(formatDate(referenceDate));
+  let guard = 0;
+
+  while (guard < 5000) {
+    const tradingDate = adjustToNextTradingDay(pointer, resolvedMarket);
+
+    if (tradingDate >= boundary) {
+      return formatDate(tradingDate);
+    }
+
+    pointer = advanceByFrequency(pointer, frequency);
+    guard += 1;
+  }
+
+  return null;
 }
 
 export function advanceByFrequency(

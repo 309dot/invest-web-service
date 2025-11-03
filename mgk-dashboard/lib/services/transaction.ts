@@ -23,8 +23,11 @@ import type { Position, Transaction } from '@/types';
 import { updatePositionAfterTransaction, recalculatePositionFromTransactions } from './position';
 import {
   adjustToNextTradingDay,
+  adjustToPreviousTradingDay,
   determineMarketFromContext,
   formatDate as formatMarketDate,
+  getMarketToday,
+  isFutureTradingDate,
   isTradingDay,
 } from '@/lib/utils/tradingCalendar';
 import { getHistoricalExchangeRate } from '@/lib/apis/alphavantage';
@@ -43,12 +46,39 @@ async function normalizeTransactions(
   const fxCache = new Map<string, number | null>();
 
   for (const transaction of transactions) {
+    const position = transaction.positionId
+      ? positionMap.get(transaction.positionId)
+      : undefined;
+
+    const market = determineMarketFromContext(
+      (position?.market as any) || undefined,
+      position?.currency,
+      transaction.symbol
+    );
+
     const resolvedCurrency = resolveTransactionCurrency(transaction, positionMap);
     const updatePayload: Record<string, unknown> = {};
 
     if (transaction.currency !== resolvedCurrency) {
       updatePayload.currency = resolvedCurrency;
       transaction.currency = resolvedCurrency;
+    }
+
+    if (transaction.date) {
+      let normalizedDate = transaction.date;
+
+      if (isFutureTradingDate(normalizedDate, market)) {
+        normalizedDate = formatMarketDate(getMarketToday(market));
+      }
+
+      if (!isTradingDay(normalizedDate, market)) {
+        normalizedDate = formatMarketDate(adjustToPreviousTradingDay(normalizedDate, market));
+      }
+
+      if (normalizedDate !== transaction.date) {
+        updatePayload.date = normalizedDate;
+        transaction.date = normalizedDate;
+      }
     }
 
     if (!transaction.id || !transaction.date) {
@@ -78,16 +108,6 @@ async function normalizeTransactions(
       }
       continue;
     }
-
-    const position = transaction.positionId
-      ? positionMap.get(transaction.positionId)
-      : undefined;
-
-    const market = determineMarketFromContext(
-      (position?.market as any) || undefined,
-      position?.currency,
-      transaction.symbol
-    );
 
     if (transaction.purchaseMethod === 'auto' && !isTradingDay(transaction.date, market)) {
       const adjustedDate = formatMarketDate(adjustToNextTradingDay(transaction.date, market));
@@ -195,6 +215,22 @@ export async function createTransaction(
     );
     const transactionRef = doc(transactionsRef);
 
+    const market = determineMarketFromContext(
+      undefined,
+      transactionData.currency,
+      transactionData.symbol
+    );
+
+    let normalizedDate = transactionData.date;
+
+    if (isFutureTradingDate(normalizedDate, market)) {
+      normalizedDate = formatMarketDate(getMarketToday(market));
+    }
+
+    if (!isTradingDay(normalizedDate, market)) {
+      normalizedDate = formatMarketDate(adjustToPreviousTradingDay(normalizedDate, market));
+    }
+
     const normalizedCurrency =
       transactionData.currency && typeof transactionData.currency === 'string'
         ? transactionData.currency.toUpperCase()
@@ -216,7 +252,7 @@ export async function createTransaction(
       amount: transactionData.amount,
       fee: transactionData.fee || 0,
       totalAmount: transactionData.amount + (transactionData.fee || 0),
-      date: transactionData.date,
+      date: normalizedDate,
       memo: transactionData.note || '',
       purchaseMethod: transactionData.purchaseMethod || 'manual',
       purchaseUnit: transactionData.purchaseUnit || 'shares',
@@ -235,7 +271,7 @@ export async function createTransaction(
       type: transactionData.type,
       shares: transactionData.shares,
       price: transactionData.price,
-      date: transactionData.date,
+      date: normalizedDate,
     });
 
     return transactionRef.id;

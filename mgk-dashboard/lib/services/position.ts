@@ -25,6 +25,13 @@ import {
   getUsdKrwRate,
   type SupportedCurrency,
 } from '@/lib/currency';
+import { getCurrentPrice, getHistoricalPrice } from '@/lib/apis/alphavantage';
+import { getKoreanStockPrice } from '@/lib/apis/yahoo-finance';
+import {
+  determineMarketFromContext,
+  formatDate as formatTradingDate,
+  getMarketToday,
+} from '@/lib/utils/tradingCalendar';
 
 const formatDateString = (date: Date): string => {
   const year = date.getFullYear();
@@ -34,6 +41,95 @@ const formatDateString = (date: Date): string => {
 };
 
 const FLOAT_TOLERANCE = 1e-6;
+
+function normalizeSymbolForAlphaVantage(symbol: string): string {
+  return symbol.replace('-', '.').toUpperCase();
+}
+
+async function applyLatestMarketPrices(positions: Position[]): Promise<Position[]> {
+  if (positions.length === 0) {
+    return positions;
+  }
+
+  const priceCache = new Map<string, number | null>();
+  const groupedBySymbol = new Map<string, Position[]>();
+
+  positions.forEach((position) => {
+    const key = `${position.symbol}_${position.currency ?? 'USD'}`;
+    const group = groupedBySymbol.get(key) ?? [];
+    group.push(position);
+    groupedBySymbol.set(key, group);
+  });
+
+  for (const [key, group] of groupedBySymbol.entries()) {
+    const sample = group[0];
+    const symbol = sample.symbol;
+    const isKorean = sample.currency === 'KRW' || /^[0-9]{4,6}$/.test(symbol);
+    let price: number | null = null;
+
+    try {
+      if (isKorean) {
+        price = await getKoreanStockPrice(symbol);
+      } else {
+        const alphaSymbol = normalizeSymbolForAlphaVantage(symbol);
+        const currentPrice = await getCurrentPrice(alphaSymbol);
+        price = Number.isFinite(currentPrice?.price) ? currentPrice.price : null;
+      }
+    } catch (error) {
+      console.error('Realtime price lookup failed:', symbol, error);
+      price = null;
+    }
+
+    if (!price || !Number.isFinite(price) || price <= 0) {
+      try {
+        const market = determineMarketFromContext(sample.market, sample.currency, sample.symbol);
+        const today = formatTradingDate(getMarketToday(market));
+        const historical = await getHistoricalPrice(
+          normalizeSymbolForAlphaVantage(symbol),
+          today,
+          sample.purchaseMethod === 'auto' ? 'auto' : 'manual',
+          market
+        );
+        if (historical && Number.isFinite(historical) && historical > 0) {
+          price = historical;
+        }
+      } catch (error) {
+        console.warn('Historical price lookup failed:', symbol, error);
+      }
+    }
+
+    if (!price || !Number.isFinite(price) || price <= 0) {
+      if (sample.currentPrice && sample.currentPrice > 0) {
+        price = sample.currentPrice;
+      } else if (sample.averagePrice && sample.averagePrice > 0) {
+        price = sample.averagePrice;
+      } else {
+        price = null;
+      }
+    }
+
+    priceCache.set(key, price);
+  }
+
+  return positions
+    .map((position) => {
+      const key = `${position.symbol}_${position.currency ?? 'USD'}`;
+      const cachedPrice = priceCache.get(key);
+      const currentPrice = cachedPrice && cachedPrice > 0 ? cachedPrice : position.currentPrice;
+      const totalValue = position.shares * currentPrice;
+      const returnRate = calculateReturnRate(totalValue, position.totalInvested);
+      const profitLoss = totalValue - position.totalInvested;
+
+      return {
+        ...position,
+        currentPrice,
+        totalValue,
+        returnRate,
+        profitLoss,
+      } as Position;
+    })
+    .sort((a, b) => b.totalValue - a.totalValue);
+}
 
 function metricsNeedUpdate(
   existing: Position,
@@ -336,7 +432,7 @@ export async function getPortfolioPositions(
       }
     }
 
-    return positions;
+    return applyLatestMarketPrices(positions);
   } catch (error) {
     console.error('Error getting portfolio positions:', error);
     return [];
