@@ -99,6 +99,10 @@ type UpcomingAutoInvest = {
   isToday: boolean;
 };
 
+type TransactionWithDisplay = Transaction & {
+  displayDate?: string;
+};
+
 const frequencyLabel: Record<AutoInvestFrequency, string> = {
   daily: '매일',
   weekly: '매주',
@@ -115,7 +119,7 @@ export default function TransactionsPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
 
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [transactions, setTransactions] = useState<TransactionWithDisplay[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<TransactionStats | null>(null);
   const [upcomingAutoInvests, setUpcomingAutoInvests] = useState<UpcomingAutoInvest[]>([]);
@@ -128,7 +132,7 @@ export default function TransactionsPage() {
 
   // 삭제
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [transactionToDelete, setTransactionToDelete] = useState<Transaction | null>(null);
+  const [transactionToDelete, setTransactionToDelete] = useState<TransactionWithDisplay | null>(null);
 
   useEffect(() => {
     if (!authLoading && !user) {
