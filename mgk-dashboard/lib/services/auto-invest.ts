@@ -97,9 +97,31 @@ export async function generateAutoInvestTransactions(
     let totalAmount = 0;
     let createdCount = 0;
     const exchangeRateCache = new Map<string, number>();
+    const transactionsRef = collection(
+      db,
+      `users/${userId}/portfolios/${portfolioId}/transactions`
+    );
+    const existingAutoTransactions = await getDocs(
+      query(
+        transactionsRef,
+        where('positionId', '==', positionId),
+        where('purchaseMethod', '==', 'auto')
+      )
+    );
+    const existingKeys = new Set<string>();
+    existingAutoTransactions.forEach((docSnapshot) => {
+      const data = docSnapshot.data() as Transaction;
+      if (data.date) {
+        existingKeys.add(`${data.date}:${data.amount}`);
+      }
+    });
 
     for (const targetDate of purchaseDates) {
       if (isFutureTradingDate(targetDate, market)) {
+        continue;
+      }
+
+      if (existingKeys.has(`${targetDate}:${config.amount}`)) {
         continue;
       }
 
@@ -164,6 +186,7 @@ export async function generateAutoInvestTransactions(
       totalShares += shares;
       totalAmount += config.amount;
       createdCount += 1;
+      existingKeys.add(`${targetDate}:${config.amount}`);
     }
 
     const totalAmountDisplay =

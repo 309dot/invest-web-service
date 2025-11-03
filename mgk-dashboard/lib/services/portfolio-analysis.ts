@@ -6,6 +6,13 @@
 
 import { getPortfolioPositions } from './position';
 import type { Position, Sector, Market, AssetType } from '@/types';
+import {
+  assertCurrency,
+  convertWithRate,
+  getUsdKrwRate,
+  type SupportedCurrency,
+} from '@/lib/currency';
+import { calculateReturnRate } from '@/lib/utils/calculations';
 
 export interface SectorAllocation {
   sector: Sector | 'unknown';
@@ -59,6 +66,20 @@ export interface PortfolioAnalysis {
   totalValue: number;
   totalInvested: number;
   overallReturnRate: number;
+  baseCurrency: SupportedCurrency;
+  exchangeRate: {
+    base: 'USD';
+    quote: 'KRW';
+    rate: number;
+    source: 'cache' | 'live' | 'fallback';
+  };
+  currencyTotals: Record<SupportedCurrency, {
+    originalValue: number;
+    originalInvested: number;
+    convertedValue: number;
+    convertedInvested: number;
+    count: number;
+  }>;
   sectorAllocation: SectorAllocation[];
   regionAllocation: RegionAllocation[];
   assetAllocation: AssetAllocation[];
@@ -379,23 +400,65 @@ export async function analyzePortfolio(
   try {
     const positions = await getPortfolioPositions(userId, portfolioId);
 
-    const totalValue = positions.reduce((sum, p) => sum + p.totalValue, 0);
-    const totalInvested = positions.reduce((sum, p) => sum + p.totalInvested, 0);
+    const { rate, source } = await getUsdKrwRate();
+    const baseCurrency: SupportedCurrency = 'USD';
+
+    const currencyTotals: Record<SupportedCurrency, {
+      originalValue: number;
+      originalInvested: number;
+      convertedValue: number;
+      convertedInvested: number;
+      count: number;
+    }> = {
+      USD: { originalValue: 0, originalInvested: 0, convertedValue: 0, convertedInvested: 0, count: 0 },
+      KRW: { originalValue: 0, originalInvested: 0, convertedValue: 0, convertedInvested: 0, count: 0 },
+    };
+
+    const analysisPositions: Position[] = positions.map((position) => {
+      const currency = assertCurrency(position.currency, position.market === 'KR' ? 'KRW' : 'USD');
+
+      const convertedValue =
+        currency === 'USD' ? position.totalValue : convertWithRate(position.totalValue, 'KRW', 'USD', rate);
+      const convertedInvested =
+        currency === 'USD'
+          ? position.totalInvested
+          : convertWithRate(position.totalInvested, 'KRW', 'USD', rate);
+      const convertedProfitLoss = convertedValue - convertedInvested;
+      const convertedReturnRate = calculateReturnRate(convertedValue, convertedInvested);
+
+      const bucket = currencyTotals[currency];
+      bucket.originalValue += position.totalValue;
+      bucket.originalInvested += position.totalInvested;
+      bucket.convertedValue += convertedValue;
+      bucket.convertedInvested += convertedInvested;
+      bucket.count += 1;
+
+      return {
+        ...position,
+        totalValue: convertedValue,
+        totalInvested: convertedInvested,
+        profitLoss: convertedProfitLoss,
+        returnRate: convertedReturnRate,
+      };
+    });
+
+    const totalValue = analysisPositions.reduce((sum, p) => sum + p.totalValue, 0);
+    const totalInvested = analysisPositions.reduce((sum, p) => sum + p.totalInvested, 0);
     const overallReturnRate = totalInvested > 0 
       ? ((totalValue - totalInvested) / totalInvested) * 100 
       : 0;
 
-    const sectorAllocation = calculateSectorAllocation(positions);
-    const regionAllocation = calculateRegionAllocation(positions);
-    const assetAllocation = calculateAssetAllocation(positions);
-    const riskMetrics = calculateRiskMetrics(positions);
-    const topContributors = calculateTopContributors(positions);
-    const rebalancingSuggestions = generateRebalancingSuggestions(positions);
+    const sectorAllocation = calculateSectorAllocation(analysisPositions);
+    const regionAllocation = calculateRegionAllocation(analysisPositions);
+    const assetAllocation = calculateAssetAllocation(analysisPositions);
+    const riskMetrics = calculateRiskMetrics(analysisPositions);
+    const topContributors = calculateTopContributors(analysisPositions);
+    const rebalancingSuggestions = generateRebalancingSuggestions(analysisPositions);
     const diversificationScore = calculateDiversificationScore(
       sectorAllocation,
       regionAllocation,
       assetAllocation,
-      positions.length
+      analysisPositions.length
     );
 
     return {
@@ -403,6 +466,14 @@ export async function analyzePortfolio(
       totalValue,
       totalInvested,
       overallReturnRate,
+      baseCurrency,
+      exchangeRate: {
+        base: 'USD',
+        quote: 'KRW',
+        rate,
+        source,
+      },
+      currencyTotals,
       sectorAllocation,
       regionAllocation,
       assetAllocation,

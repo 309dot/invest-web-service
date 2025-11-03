@@ -93,6 +93,7 @@ type UpcomingAutoInvest = {
   amount: number;
   currency: 'USD' | 'KRW';
   scheduledDate: string;
+  displayDate: string;
   frequency: AutoInvestFrequency;
   executed: boolean;
   isToday: boolean;
@@ -284,7 +285,7 @@ export default function TransactionsPage() {
                     ? '오늘 예정된 자동 투자가 실행되었습니다.'
                     : plan.isToday
                     ? '장 마감 시 자동 구매가 실행됩니다.'
-                    : `${formatDate(plan.scheduledDate)}에 자동 투자 예정입니다.`;
+                    : `${formatDate(plan.displayDate)}에 자동 투자 예정입니다.`;
 
                   return (
                     <div
@@ -299,7 +300,7 @@ export default function TransactionsPage() {
                           </Badge>
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          예정일: {formatDate(plan.scheduledDate)} · 금액 {formatAmount(plan.amount, plan.currency)}
+                          예정일: {formatDate(plan.displayDate)} · 금액 {formatAmount(plan.amount, plan.currency)}
                         </p>
                       </div>
                       <div className="flex items-center gap-2 text-sm">
@@ -539,7 +540,7 @@ export default function TransactionsPage() {
                             <div>
                               <h4 className="font-semibold">{transaction.symbol}</h4>
                               <p className="text-sm text-muted-foreground">
-                                {formatDate(transaction.date)}
+                                {formatDate(transaction.displayDate ?? transaction.date)}
                               </p>
                             </div>
                             <Badge
@@ -617,7 +618,7 @@ export default function TransactionsPage() {
                         {transactions.map((transaction) => (
                           <tr key={transaction.id} className="border-b hover:bg-muted/70 transition-colors">
                             <td className="py-3 px-4">
-                              {formatDate(transaction.date)}
+                              {formatDate(transaction.displayDate ?? transaction.date)}
                             </td>
                             <td className="py-3 px-4 font-semibold">
                               {transaction.symbol}
@@ -695,7 +696,7 @@ export default function TransactionsPage() {
                   <div className="text-sm">
                     <p><strong>종목:</strong> {transactionToDelete.symbol}</p>
                     <p><strong>유형:</strong> {transactionToDelete.type === 'buy' ? '매수' : '매도'}</p>
-                    <p><strong>날짜:</strong> {formatDate(transactionToDelete.date)}</p>
+                    <p><strong>날짜:</strong> {formatDate(transactionToDelete.displayDate ?? transactionToDelete.date)}</p>
                     <p><strong>금액:</strong> {formatAmount(transactionToDelete.totalAmount, resolveTransactionCurrency(transactionToDelete!))}</p>
                   </div>
                 </div>

@@ -20,6 +20,8 @@ import {
   isFutureTradingDate,
   formatDate,
   getNextScheduledTradingDate,
+  getDisplayDateForMarket,
+  getDisplayNextScheduledTradingDate,
 } from '@/lib/utils/tradingCalendar';
 
 /**
@@ -171,15 +173,25 @@ export async function GET(request: NextRequest) {
           ? autoTransactionIndex.has(`${position.id}:${nextScheduledDate}`)
           : false;
 
+        const displayDate = getDisplayNextScheduledTradingDate(
+          config.startDate,
+          config.frequency,
+          market,
+          getMarketToday(market)
+        ) ?? nextScheduledDate;
+
         return {
           positionId: position.id ?? position.symbol,
           symbol: position.symbol,
           amount: config.amount,
           currency: position.currency === 'KRW' ? 'KRW' : 'USD',
           scheduledDate: nextScheduledDate,
+          displayDate,
           frequency: config.frequency,
           executed,
-          isToday: nextScheduledDate === today,
+          isToday:
+            getDisplayDateForMarket(nextScheduledDate, market) ===
+            getDisplayDateForMarket(today, market),
         };
       })
       .filter((item): item is NonNullable<typeof item> => item !== null);

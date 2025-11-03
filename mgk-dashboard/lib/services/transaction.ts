@@ -27,6 +27,7 @@ import {
   determineMarketFromContext,
   formatDate as formatMarketDate,
   getMarketToday,
+  getDisplayDateForMarket,
   isFutureTradingDate,
   isTradingDay,
 } from '@/lib/utils/tradingCalendar';
@@ -44,6 +45,9 @@ async function normalizeTransactions(
   positionMap: Map<string, Partial<Position>>
 ): Promise<void> {
   const fxCache = new Map<string, number | null>();
+
+  const normalizedList: Transaction[] = [];
+  const autoTransactionTracker = new Set<string>();
 
   for (const transaction of transactions) {
     const position = transaction.positionId
@@ -138,7 +142,26 @@ async function normalizeTransactions(
       );
       await updateDoc(transactionRef, updatePayload);
     }
+
+    if (transaction.purchaseMethod === 'auto' && transaction.id) {
+      const autoKey = `${transaction.positionId ?? 'unknown'}:${transaction.date}`;
+      if (autoTransactionTracker.has(autoKey)) {
+        const transactionRef = doc(
+          db,
+          `users/${userId}/portfolios/${portfolioId}/transactions`,
+          transaction.id
+        );
+        await deleteDoc(transactionRef);
+        continue;
+      }
+      autoTransactionTracker.add(autoKey);
+    }
+
+    normalizedList.push(transaction);
   }
+
+  transactions.length = 0;
+  transactions.push(...normalizedList);
 
   transactions.sort((a, b) => {
     if (a.date === b.date) {
@@ -370,7 +393,19 @@ export async function getPortfolioTransactions(
 
     await normalizeTransactions(userId, portfolioId, transactions, positionMap);
 
-    return transactions;
+    return transactions.map((tx) => {
+      const position = tx.positionId ? positionMap.get(tx.positionId) : undefined;
+      const market = determineMarketFromContext(
+        (position?.market as any) || undefined,
+        position?.currency,
+        tx.symbol
+      );
+
+      return {
+        ...tx,
+        displayDate: getDisplayDateForMarket(tx.date, market),
+      };
+    });
   } catch (error) {
     console.error('Error getting portfolio transactions:', error);
     return [];

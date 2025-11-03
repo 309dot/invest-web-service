@@ -9,6 +9,7 @@ import { Header } from '@/components/Header';
 import { RebalancingSimulator } from '@/components/RebalancingSimulator';
 import { MultiStockChart } from '@/components/MultiStockChart';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import type { PortfolioAnalysis } from '@/lib/services/portfolio-analysis';
 import type { Position } from '@/types';
 import type { PortfolioDiagnosisResult } from '@/lib/services/ai-advisor';
@@ -19,6 +20,7 @@ import { AllocationPieChart, type AllocationDatum, DEFAULT_ALLOCATION_COLORS } f
 import { TopContributorsChart } from '@/components/analysis/TopContributorsChart';
 import { GPTSummaryCard } from '@/components/analysis/GPTSummaryCard';
 import { RecommendationList } from '@/components/analysis/RecommendationList';
+import type { SupportedCurrency } from '@/lib/currency';
 
 export default function PortfolioAnalysisPage() {
   const { user, loading: authLoading } = useAuth();
@@ -143,6 +145,44 @@ export default function PortfolioAnalysisPage() {
     }));
   }, [analysis]);
 
+  const currencyBreakdown = useMemo(
+    () => {
+      if (!analysis) return [] as Array<{
+        currency: SupportedCurrency;
+        share: number;
+        originalValue: number;
+        originalInvested: number;
+        convertedValue: number;
+        convertedInvested: number;
+        count: number;
+      }>;
+
+      const total = analysis.totalValue;
+
+      return (Object.entries(analysis.currencyTotals) as Array<[
+        SupportedCurrency,
+        {
+          originalValue: number;
+          originalInvested: number;
+          convertedValue: number;
+          convertedInvested: number;
+          count: number;
+        }
+      ]>)
+        .filter(([, data]) => data.count > 0)
+        .map(([currency, data]) => ({
+          currency,
+          share: total > 0 ? (data.convertedValue / total) * 100 : 0,
+          originalValue: data.originalValue,
+          originalInvested: data.originalInvested,
+          convertedValue: data.convertedValue,
+          convertedInvested: data.convertedInvested,
+          count: data.count,
+        }));
+    },
+    [analysis]
+  );
+
   if (authLoading || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -180,6 +220,9 @@ export default function PortfolioAnalysisPage() {
     );
   }
 
+  const baseCurrency = analysis.baseCurrency ?? 'USD';
+  const exchangeRate = analysis.exchangeRate;
+
   return (
     <>
       <Header />
@@ -196,6 +239,71 @@ export default function PortfolioAnalysisPage() {
                 데이터 새로고침
               </Button>
             </div>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-3">
+            <Card className="lg:col-span-1">
+              <CardHeader>
+                <CardTitle>기준 통화 요약</CardTitle>
+                <CardDescription>{baseCurrency} 기준 환산 값</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <div>
+                  <p className="text-muted-foreground">총 투자금</p>
+                  <p className="text-lg font-semibold">
+                    {formatAmount(analysis.totalInvested, baseCurrency)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">평가 금액</p>
+                  <p className="text-lg font-semibold">
+                    {formatAmount(analysis.totalValue, baseCurrency)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">총 수익률</p>
+                  <p className={`text-lg font-semibold ${analysis.overallReturnRate >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                    {analysis.overallReturnRate.toFixed(2)}%
+                  </p>
+                </div>
+                {exchangeRate?.rate ? (
+                  <p className="text-xs text-muted-foreground">
+                    환율 (USD→KRW): {exchangeRate.rate.toFixed(2)} ({exchangeRate.source})
+                  </p>
+                ) : null}
+              </CardContent>
+            </Card>
+
+            {currencyBreakdown.map((item) => {
+              const currencyLabel = item.currency === 'USD' ? '해외 자산' : '국내 자산';
+              return (
+                <Card key={item.currency}>
+                  <CardHeader>
+                    <CardTitle>{currencyLabel}</CardTitle>
+                    <CardDescription>
+                      {item.count}개 종목 · 포트폴리오 비중 {item.share.toFixed(1)}%
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-2 text-sm">
+                    <div>
+                      <p className="text-muted-foreground">평가 금액 (원 화폐)</p>
+                      <p className="font-semibold">
+                        {formatAmount(item.originalValue, item.currency)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">투자 금액 (원 화폐)</p>
+                      <p className="font-semibold">
+                        {formatAmount(item.originalInvested, item.currency)}
+                      </p>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      기준 환산: {formatAmount(item.convertedValue, baseCurrency)} ({baseCurrency})
+                    </p>
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
 
           <RiskSection
