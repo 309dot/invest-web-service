@@ -124,6 +124,7 @@ export async function POST(
         rewriteSummary = {
           removed: 0,
           created: 0,
+          failures: [],
           error: getErrorMessage(error),
         };
       }
@@ -223,15 +224,25 @@ export async function PUT(
       | { removed: number; created: number; failures: AutoInvestFailure[]; error?: string }
       | null = null;
     if (regenerateTransactions && effectiveFrom) {
-      rewriteSummary = await rewriteAutoInvestTransactions(userId, portfolioId, positionId, {
-        effectiveFrom,
-        frequency: frequency || position.autoInvestConfig?.frequency || 'monthly',
-        amount: amount || position.autoInvestConfig?.amount || 0,
-        currency: position.currency,
-        symbol: position.symbol,
-        stockId: position.stockId,
-        market: position.market === 'GLOBAL' ? undefined : position.market,
-      });
+      try {
+        rewriteSummary = await rewriteAutoInvestTransactions(userId, portfolioId, positionId, {
+          effectiveFrom,
+          frequency: frequency || position.autoInvestConfig?.frequency || 'monthly',
+          amount: amount || position.autoInvestConfig?.amount || 0,
+          currency: position.currency,
+          symbol: position.symbol,
+          stockId: position.stockId,
+          market: position.market === 'GLOBAL' ? undefined : position.market,
+        });
+      } catch (error) {
+        console.error('Failed to regenerate auto invest transactions:', error);
+        rewriteSummary = {
+          removed: 0,
+          created: 0,
+          failures: [],
+          error: getErrorMessage(error),
+        };
+      }
     }
 
     const schedules = await listAutoInvestSchedules(userId, portfolioId, positionId);
