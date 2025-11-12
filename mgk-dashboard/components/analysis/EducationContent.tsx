@@ -1,7 +1,6 @@
 "use client";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 
 const EDUCATION_ITEMS = [
   {
@@ -44,23 +43,19 @@ export function EducationContent() {
         <CardDescription>핵심 지표의 의미와 활용법을 빠르게 확인하세요.</CardDescription>
       </CardHeader>
       <CardContent>
-        <Accordion type="single" collapsible className="space-y-2">
+        <div className="space-y-3">
           {EDUCATION_ITEMS.map((item) => (
-            <AccordionItem key={item.id} value={item.id} className="border rounded-lg px-3">
-              <AccordionTrigger className="font-semibold text-sm">
-                {item.title}
-              </AccordionTrigger>
-              <AccordionContent className="text-sm space-y-2 text-muted-foreground">
-                <p>{item.description}</p>
-                <ul className="list-disc pl-4 space-y-1">
-                  {item.tips.map((tip, index) => (
-                    <li key={`${item.id}-tip-${index}`}>{tip}</li>
-                  ))}
-                </ul>
-              </AccordionContent>
-            </AccordionItem>
+            <div key={item.id} className="rounded-lg border p-4">
+              <h4 className="text-sm font-semibold">{item.title}</h4>
+              <p className="mt-2 text-sm text-muted-foreground">{item.description}</p>
+              <ul className="mt-2 list-disc space-y-1 pl-4 text-sm text-muted-foreground">
+                {item.tips.map((tip, index) => (
+                  <li key={`${item.id}-tip-${index}`}>{tip}</li>
+                ))}
+              </ul>
+            </div>
           ))}
-        </Accordion>
+        </div>
       </CardContent>
     </Card>
   );

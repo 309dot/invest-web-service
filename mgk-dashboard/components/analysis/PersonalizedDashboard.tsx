@@ -4,7 +4,6 @@ import { useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { PortfolioAnalysis } from '@/lib/services/portfolio-analysis';
-import { Progress } from '@/components/ui/progress';
 
 type ProfileKey = 'conservative' | 'balanced' | 'aggressive';
 
@@ -106,7 +105,15 @@ export function PersonalizedDashboard({ analysis }: PersonalizedDashboardProps) 
         </div>
         <div>
           <p className="text-xs text-muted-foreground mb-2">목표 대비 분산 상태</p>
-          <Progress value={analysis.diversificationScore} />
+          <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full bg-primary transition-all"
+              style={{ width: `${Math.min(100, Math.max(0, analysis.diversificationScore))}%` }}
+            />
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {analysis.diversificationScore.toFixed(0)} / 100
+          </p>
         </div>
       </CardContent>
     </Card>

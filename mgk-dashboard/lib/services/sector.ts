@@ -59,10 +59,10 @@ const SECTOR_ALIAS_MAP: Record<string, Sector> = {
 
   healthcare: 'health-care',
   health: 'health-care',
-  health-care: 'health-care',
+  'health-care': 'health-care',
   pharmaceuticals: 'health-care',
   biotechnology: 'health-care',
-  life-sciences: 'health-care',
+  'life-sciences': 'health-care',
   medicaldevices: 'health-care',
 
   industrials: 'industrials',
