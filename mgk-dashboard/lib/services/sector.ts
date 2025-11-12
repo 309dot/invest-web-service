@@ -18,6 +18,8 @@ export interface PositionSectorInfo {
   symbol: string;
 }
 
+const DEFAULT_SECTOR: Sector = 'other';
+
 const SECTOR_ALIAS_MAP: Record<string, Sector> = {
   communicationservices: 'communication-services',
   communications: 'communication-services',
@@ -100,7 +102,7 @@ const SECTOR_ALIAS_MAP: Record<string, Sector> = {
   water: 'utilities',
   gas: 'utilities',
 
-  other: 'other',
+  other: DEFAULT_SECTOR,
   miscellaneous: 'other',
   diversified: 'other',
   unknown: 'other',
@@ -122,13 +124,13 @@ function sanitizeSectorKey(value: string): string {
 
 export function normalizeSectorValue(input?: string | null): Sector {
   if (!input) {
-    return 'other';
+    return DEFAULT_SECTOR;
   }
   const sanitized = sanitizeSectorKey(input);
   if (!sanitized) {
-    return 'other';
+    return DEFAULT_SECTOR;
   }
-  return SECTOR_ALIAS_MAP[sanitized] ?? 'other';
+  return SECTOR_ALIAS_MAP[sanitized] ?? DEFAULT_SECTOR;
 }
 
 function buildYahooSymbolCandidates(symbol: string, market?: Position['market']): string[] {
@@ -290,15 +292,15 @@ export async function resolveSectorAllocations(
 
     const positionSectors = group
       .map((position) => normalizeSectorValue(position.sector))
-      .filter((sector) => sector !== 'other');
+      .filter((sector) => sector !== DEFAULT_SECTOR);
 
-    let primarySector: Sector = positionSectors[0] ?? 'other';
+    let primarySector: Sector = positionSectors[0] ?? DEFAULT_SECTOR;
     let source: SectorSource = positionSectors.length > 0 ? 'position' : 'fallback';
     let weights: SectorWeighting[] = [];
 
-    if (primarySector === 'other' && stock?.sector) {
+    if (primarySector === DEFAULT_SECTOR && stock?.sector) {
       const normalized = normalizeSectorValue(stock.sector);
-      if (normalized !== 'other') {
+      if (normalized !== DEFAULT_SECTOR) {
         primarySector = normalized;
         source = 'stock-master';
       }
@@ -317,9 +319,9 @@ export async function resolveSectorAllocations(
     }
 
     if (weights.length === 0) {
-      if (primarySector === 'other') {
+      if (primarySector === DEFAULT_SECTOR) {
         const yahooSector = await fetchYahooSectorProfile(symbolKey, market);
-        if (yahooSector && yahooSector !== 'other') {
+        if (yahooSector && yahooSector !== DEFAULT_SECTOR) {
           primarySector = yahooSector;
           source = 'yahoo-profile';
         }
