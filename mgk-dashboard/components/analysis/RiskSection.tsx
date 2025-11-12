@@ -32,10 +32,9 @@ export function RiskSection({ diversificationScore, riskMetrics, overallReturnRa
           <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
             <Target className="h-4 w-4" />
             다각화 점수
-            <Info
-              className="h-3 w-3 text-muted-foreground"
-              title="섹터·지역·자산 유형 분산을 0~100 사이 점수로 환산한 값입니다."
-            />
+            <span title="섹터·지역·자산 유형 분산을 0~100 사이 점수로 환산한 값입니다.">
+              <Info className="h-3 w-3 text-muted-foreground" />
+            </span>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -49,10 +48,9 @@ export function RiskSection({ diversificationScore, riskMetrics, overallReturnRa
           <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
             <Activity className="h-4 w-4" />
             변동성
-            <Info
-              className="h-3 w-3 text-muted-foreground"
-              title="수익률의 표준편차로 계산되며, 값이 높을수록 가격이 크게 흔들린다는 의미입니다."
-            />
+            <span title="수익률의 표준편차로 계산되며, 값이 높을수록 가격이 크게 흔들린다는 의미입니다.">
+              <Info className="h-3 w-3 text-muted-foreground" />
+            </span>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -66,10 +64,9 @@ export function RiskSection({ diversificationScore, riskMetrics, overallReturnRa
           <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
             <Gauge className="h-4 w-4" />
             샤프 비율
-            <Info
-              className="h-3 w-3 text-muted-foreground"
-              title="무위험 수익률 대비 초과 수익을 변동성으로 나눈 값입니다. 1 이상이면 효율적인 성과로 해석합니다."
-            />
+            <span title="무위험 수익률 대비 초과 수익을 변동성으로 나눈 값입니다. 1 이상이면 효율적인 성과로 해석합니다.">
+              <Info className="h-3 w-3 text-muted-foreground" />
+            </span>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -83,10 +80,9 @@ export function RiskSection({ diversificationScore, riskMetrics, overallReturnRa
           <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
             <TrendingDown className="h-4 w-4" />
             최대 낙폭
-            <Info
-              className="h-3 w-3 text-muted-foreground"
-              title="기간 중 최고점 대비 최저점까지의 최대 하락률입니다. 손실 위험을 가늠하는 지표입니다."
-            />
+            <span title="기간 중 최고점 대비 최저점까지의 최대 하락률입니다. 손실 위험을 가늠하는 지표입니다.">
+              <Info className="h-3 w-3 text-muted-foreground" />
+            </span>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -100,10 +96,9 @@ export function RiskSection({ diversificationScore, riskMetrics, overallReturnRa
           <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
             <Target className="h-4 w-4" />
             집중도 & 수익률
-            <Info
-              className="h-3 w-3 text-muted-foreground"
-              title="Herfindahl-Hirschman Index(HHI) 기반 집중도와 포트폴리오 누적 수익률입니다."
-            />
+            <span title="Herfindahl-Hirschman Index(HHI) 기반 집중도와 포트폴리오 누적 수익률입니다.">
+              <Info className="h-3 w-3 text-muted-foreground" />
+            </span>
           </CardTitle>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-2">
