@@ -589,12 +589,7 @@ export async function analyzePortfolio(
       rebalancingSuggestions,
       diversificationScore,
       timestamp: new Date().toISOString(),
-      performanceSummary: {
-        latestValuationDate: performance.latestValuationDate,
-        currentValue: performance.currentValue,
-        periods: performance.periods,
-        positionSeries: performance.positionSeries,
-      },
+      performanceSummary: performance,
       benchmarkComparison: performance.benchmarks,
     };
   } catch (error) {
