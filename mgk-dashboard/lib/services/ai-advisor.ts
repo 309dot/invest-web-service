@@ -663,40 +663,46 @@ export async function diagnosePortfolio(
     return 'recommended';
   };
 
+  type NormalizedActionPlanItem = Required<PortfolioDiagnosisResult>['actionPlan'][number];
+
   const normalizedActionPlan =
     Array.isArray((parsed as any).actionPlan) &&
     (parsed as any).actionPlan.length > 0
       ? (parsed as any).actionPlan
-          .map((item: any) => {
+          .map((item: unknown): NormalizedActionPlanItem | null => {
             if (!item || typeof item !== 'object') return null;
-            const title =
-              typeof item.title === 'string' && item.title.trim()
-                ? item.title.trim()
-                : typeof item.description === 'string'
-                  ? item.description.slice(0, 20)
-                  : '';
-            const description =
-              typeof item.description === 'string' && item.description.trim()
-                ? item.description.trim()
+            const record = item as Record<string, unknown>;
+            const hasTitle = typeof record.title === 'string' && record.title.trim().length > 0;
+            const hasDescription =
+              typeof record.description === 'string' && record.description.trim().length > 0;
+            const title = hasTitle
+              ? (record.title as string).trim()
+              : hasDescription
+                ? (record.description as string).slice(0, 20)
                 : '';
+            const description =
+              hasDescription ? (record.description as string).trim() : '';
             if (!title || !description) {
               return null;
             }
-            return {
+            const normalized: NormalizedActionPlanItem = {
               title,
               description,
-              priority: normalizePriority(item.priority),
+              priority: normalizePriority(record.priority),
               expectedImpact:
-                typeof item.expectedImpact === 'string' && item.expectedImpact.trim()
-                  ? item.expectedImpact.trim()
+                typeof record.expectedImpact === 'string' && record.expectedImpact.trim()
+                  ? (record.expectedImpact as string).trim()
                   : undefined,
               timeframe:
-                typeof item.timeframe === 'string' && item.timeframe.trim()
-                  ? item.timeframe.trim()
+                typeof record.timeframe === 'string' && record.timeframe.trim()
+                  ? (record.timeframe as string).trim()
                   : undefined,
             };
+            return normalized;
           })
-          .filter((item): item is Required<PortfolioDiagnosisResult>['actionPlan'][number] => item !== null)
+          .filter(
+            (item: NormalizedActionPlanItem | null): item is NormalizedActionPlanItem => item !== null
+          )
       : [];
 
   const fallbackActionPlan =
