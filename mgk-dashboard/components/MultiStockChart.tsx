@@ -89,7 +89,7 @@ export function MultiStockChart({ positions, series, baseCurrency, exchangeRate 
   const chartData = useMemo(() => {
     if (!series || series.length === 0) return [];
 
-    const dataMap = new Map<string, Record<string, number>>();
+    const dataMap = new Map<string, { date: string; values: Record<string, number> }>();
 
     series.forEach((item) => {
       const filtered = item.series.filter((point) => {
@@ -106,19 +106,22 @@ export function MultiStockChart({ positions, series, baseCurrency, exchangeRate 
       filtered.forEach((point) => {
         const dateKey = point.date;
         if (!dataMap.has(dateKey)) {
-          dataMap.set(dateKey, { date: dateKey });
+          dataMap.set(dateKey, { date: dateKey, values: {} });
         }
         const entry = dataMap.get(dateKey)!;
-        entry[item.symbol] =
+        entry.values[item.symbol] =
           chartType === 'return'
             ? ((point.price - basePrice) / basePrice) * 100
             : point.price;
       });
     });
 
-    return Array.from(dataMap.values()).sort(
-      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-    );
+    return Array.from(dataMap.values())
+      .map((entry) => ({
+        date: entry.date,
+        ...entry.values,
+      }))
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   }, [series, chartType, periodStartDate]);
 
   const performanceTable = useMemo(() => {
