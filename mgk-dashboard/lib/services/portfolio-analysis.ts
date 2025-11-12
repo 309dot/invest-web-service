@@ -5,13 +5,8 @@
  */
 
 import { getPortfolioPositions } from './position';
-import type { Position, Sector, Market, AssetType } from '@/types';
-import {
-  assertCurrency,
-  convertWithRate,
-  getUsdKrwRate,
-  type SupportedCurrency,
-} from '@/lib/currency';
+import type { Position, Sector, Market, AssetType, SupportedCurrency } from '@/types';
+import { assertCurrency, convertWithRate, getUsdKrwRate } from '@/lib/currency';
 import { calculateReturnRate } from '@/lib/utils/calculations';
 import {
   getResolvedSectorInfo,
