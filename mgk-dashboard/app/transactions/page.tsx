@@ -573,7 +573,7 @@ export default function TransactionsPage() {
                           <div className="grid grid-cols-2 gap-2 text-sm">
                             <div>
                               <p className="text-muted-foreground">주식 수</p>
-                              <p className="font-medium">{transaction.shares.toFixed(4)}</p>
+                              <p className="font-medium">{transaction.shares.toFixed(6)}</p>
                             </div>
                             <div>
                               <p className="text-muted-foreground">가격</p>
@@ -655,7 +655,7 @@ export default function TransactionsPage() {
                               </Badge>
                             </td>
                             <td className="py-3 px-4 text-right">
-                              {transaction.shares.toFixed(4)}
+                              {transaction.shares.toFixed(6)}
                             </td>
                             <td className="py-3 px-4 text-right">
                               {formatAmount(transaction.price, resolveTransactionCurrency(transaction))}

@@ -35,6 +35,15 @@ import { AutoInvestScheduleDialog } from '@/components/AutoInvestScheduleDialog'
 import { ReapplyScheduleDialog } from '@/components/ReapplyScheduleDialog';
 import { TransactionTable } from '@/components/TransactionTable';
 
+type AutoInvestFailureResponse = {
+  date: string;
+  amount: number;
+  currency: 'USD' | 'KRW';
+  reason: 'INSUFFICIENT_BALANCE' | 'PRICE_LOOKUP_FAILED' | 'UNKNOWN';
+  message: string;
+  metadata?: Record<string, unknown>;
+};
+
 export default function PositionDetailPage() {
   const router = useRouter();
   const params = useParams();
@@ -67,6 +76,7 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [scheduleSuccess, setScheduleSuccess] = useState<string | null>(null);
+  const [scheduleWarnings, setScheduleWarnings] = useState<string[]>([]);
   const [scheduleSaving, setScheduleSaving] = useState(false);
   const [portfolioIdState, setPortfolioIdState] = useState<string | null>(null);
   const [scheduleForm, setScheduleForm] = useState({
@@ -112,6 +122,53 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
   };
 
   const { formatAmount } = useCurrency();
+
+  const formatCurrencyValue = (value: unknown, currency: 'USD' | 'KRW'): string | null => {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value.toLocaleString('ko-KR');
+    }
+    if (typeof value === 'string' && value.trim() !== '' && !Number.isNaN(Number(value))) {
+      return Number(value).toLocaleString('ko-KR');
+    }
+    if (typeof value === 'object' && value !== null && 'toString' in value) {
+      const parsed = Number((value as { toString: () => string }).toString());
+      if (!Number.isNaN(parsed)) {
+        return parsed.toLocaleString('ko-KR');
+      }
+    }
+    console.warn('formatCurrencyValue: 지원하지 않는 값입니다.', { value, currency });
+    return null;
+  };
+
+  const formatAutoInvestFailure = (failure: AutoInvestFailureResponse): string => {
+    const currencySymbol = failure.currency === 'KRW' ? '₩' : '$';
+    const metadata = failure.metadata ?? {};
+    const available =
+      typeof (metadata as Record<string, unknown>).availableBalance === 'number'
+        ? (metadata as Record<string, unknown>).availableBalance
+        : typeof (metadata as Record<string, unknown>).currentBalance === 'number'
+          ? (metadata as Record<string, unknown>).currentBalance
+          : undefined;
+    const required =
+      typeof (metadata as Record<string, unknown>).requiredAmount === 'number'
+        ? (metadata as Record<string, unknown>).requiredAmount
+        : undefined;
+
+    if (failure.reason === 'INSUFFICIENT_BALANCE') {
+      const availableText = available !== undefined ? formatCurrencyValue(available, failure.currency) : null;
+      const requiredText = required !== undefined ? formatCurrencyValue(required, failure.currency) : null;
+      if (availableText && requiredText) {
+        return `${failure.date}: ${failure.message} (${currencySymbol}${availableText} 보유, 필요 ${currencySymbol}${requiredText})`;
+      }
+      return `${failure.date}: ${failure.message} (잔액 부족)`;
+    }
+
+    if (failure.reason === 'PRICE_LOOKUP_FAILED') {
+      return `${failure.date}: ${failure.message} (가격 데이터를 찾을 수 없습니다)`;
+    }
+
+    return `${failure.date}: ${failure.message}`;
+  };
 
   const fetchAutoInvestSchedules = useCallback(
     async (uid: string, activePortfolioId: string, posId: string) => {
@@ -408,6 +465,7 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
       setScheduleSaving(true);
       setScheduleError(null);
       setScheduleSuccess(null);
+      setScheduleWarnings([]);
 
       const activePortfolioId =
         portfolioIdState || position.portfolioId || deriveDefaultPortfolioId(user.uid);
@@ -431,13 +489,30 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
         throw new Error(errorData?.error || '자동 투자 스케줄 저장에 실패했습니다.');
       }
 
-      const data = await response.json();
-      if (!data.success) {
+      const data: {
+        success: boolean;
+        status?: 'success' | 'partial' | 'error';
+        message?: string;
+        schedules?: AutoInvestSchedule[];
+        failures?: AutoInvestFailureResponse[];
+      } = await response.json();
+
+      if (data.status === 'error' || data.success === false) {
         throw new Error(data.message || '자동 투자 스케줄 저장에 실패했습니다.');
       }
 
       setAutoInvestSchedules(data.schedules || []);
-      setScheduleSuccess(data.message || '자동 투자 스케줄이 업데이트되었습니다.');
+
+      if (data.status === 'partial' && Array.isArray(data.failures) && data.failures.length > 0) {
+        setScheduleWarnings(data.failures.map((failure) => formatAutoInvestFailure(failure)));
+        setScheduleSuccess(
+          data.message ||
+            '자동 투자 스케줄이 저장되었지만 일부 거래가 잔액 부족 등으로 생성되지 않았습니다.'
+        );
+      } else {
+        setScheduleWarnings([]);
+        setScheduleSuccess(data.message || '자동 투자 스케줄이 업데이트되었습니다.');
+      }
       setScheduleForm((prev) => ({
         ...prev,
         note: '',
@@ -449,6 +524,7 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
     } catch (err) {
       console.error('Failed to save schedule:', err);
       setScheduleError(err instanceof Error ? err.message : '자동 투자 스케줄 저장 중 오류가 발생했습니다.');
+      setScheduleWarnings([]);
     } finally {
       setScheduleSaving(false);
     }
@@ -472,6 +548,7 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
     });
     setScheduleError(null);
     setScheduleSuccess(null);
+    setScheduleWarnings([]);
   };
 
   const handleEditSchedule = (schedule: AutoInvestSchedule) => {
@@ -490,6 +567,9 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
     if (!position || !user) return;
 
     const activePortfolioId = portfolioIdState || position.portfolioId || deriveDefaultPortfolioId(user.uid);
+    setScheduleError(null);
+    setScheduleSuccess(null);
+    setScheduleWarnings([]);
     
     const response = await fetch(
       `/api/positions/${position.id}/auto-invest?userId=${user.uid}&portfolioId=${activePortfolioId}`,
@@ -505,9 +585,30 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
       throw new Error(errorData?.error || '스케줄 수정에 실패했습니다.');
     }
 
-    const result = await response.json();
+    const result: {
+      success: boolean;
+      status?: 'success' | 'partial' | 'error';
+      message?: string;
+      schedules?: AutoInvestSchedule[];
+      failures?: AutoInvestFailureResponse[];
+    } = await response.json();
+
+    if (result.status === 'error' || result.success === false) {
+      throw new Error(result.message || '스케줄 수정에 실패했습니다.');
+    }
+
     setAutoInvestSchedules(result.schedules || []);
-    setScheduleSuccess('스케줄이 수정되었습니다.');
+
+    if (result.status === 'partial' && Array.isArray(result.failures) && result.failures.length > 0) {
+      setScheduleWarnings(result.failures.map((failure) => formatAutoInvestFailure(failure)));
+      setScheduleSuccess(
+        result.message || '스케줄이 수정되었지만 일부 거래가 잔액 부족 등으로 생성되지 않았습니다.'
+      );
+    } else {
+      setScheduleWarnings([]);
+      setScheduleSuccess(result.message || '스케줄이 수정되었습니다.');
+    }
+
     await fetchPosition(user.uid, activePortfolioId);
   };
 
@@ -524,6 +625,7 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
     try {
       setScheduleError(null);
       setScheduleSuccess(null);
+      setScheduleWarnings([]);
 
       const activePortfolioId = portfolioIdState || position.portfolioId || deriveDefaultPortfolioId(user.uid);
       const response = await fetch(
@@ -561,6 +663,9 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
     if (!position || !user) return;
 
     const activePortfolioId = portfolioIdState || position.portfolioId || deriveDefaultPortfolioId(user.uid);
+    setScheduleError(null);
+    setScheduleSuccess(null);
+    setScheduleWarnings([]);
     
     const response = await fetch(
       `/api/positions/${position.id}/auto-invest/reapply?userId=${user.uid}&portfolioId=${activePortfolioId}`,
@@ -576,8 +681,31 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
       throw new Error(errorData?.error || '스케줄 재적용에 실패했습니다.');
     }
 
-    const result = await response.json();
-    setScheduleSuccess(`스케줄이 재적용되었습니다. (거래 생성: ${result.created}건)`);
+    const result: {
+      success: boolean;
+      status?: 'success' | 'partial' | 'error';
+      message?: string;
+      created: number;
+      failures?: AutoInvestFailureResponse[];
+    } = await response.json();
+
+    if (result.status === 'error' || result.success === false) {
+      throw new Error(result.message || '스케줄 재적용에 실패했습니다.');
+    }
+
+    if (result.status === 'partial' && Array.isArray(result.failures) && result.failures.length > 0) {
+      setScheduleWarnings(result.failures.map((failure) => formatAutoInvestFailure(failure)));
+      setScheduleSuccess(
+        result.message ||
+          `스케줄이 재적용되었지만 일부 거래가 생성되지 않았습니다. (거래 생성: ${result.created}건)`
+      );
+    } else {
+      setScheduleWarnings([]);
+      setScheduleSuccess(
+        result.message || `스케줄이 재적용되었습니다. (거래 생성: ${result.created}건)`
+      );
+    }
+
     await fetchAutoInvestSchedules(user.uid, activePortfolioId, position.id!);
     await fetchPosition(user.uid, activePortfolioId);
   };
@@ -1046,6 +1174,18 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
                   {scheduleSuccess && (
                     <Alert>
                       <AlertDescription>{scheduleSuccess}</AlertDescription>
+                    </Alert>
+                  )}
+
+                  {scheduleWarnings.length > 0 && (
+                    <Alert className="border-yellow-500/60 bg-yellow-50 text-yellow-900">
+                      <AlertDescription>
+                        <ul className="list-disc space-y-1 pl-5 text-sm">
+                          {scheduleWarnings.map((warning, index) => (
+                            <li key={`schedule-warning-${index}`}>{warning}</li>
+                          ))}
+                        </ul>
+                      </AlertDescription>
                     </Alert>
                   )}
 

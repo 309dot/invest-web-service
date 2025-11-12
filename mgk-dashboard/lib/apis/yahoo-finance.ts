@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { Timestamp } from 'firebase/firestore';
+import type { Sector } from '@/types';
 
 const BASE_URL = 'https://query2.finance.yahoo.com/v1';
 
@@ -38,20 +39,55 @@ export async function searchKoreanStocks(query: string): Promise<any[]> {
 
     const quotes = response.data?.quotes || [];
     
-    const sectorMap: Record<string, string> = {
-      technology: 'technology',
-      tech: 'technology',
-      healthcare: 'healthcare',
-      health: 'healthcare',
-      financial: 'financial',
-      finance: 'financial',
-      consumer: 'consumer',
-      industrial: 'industrial',
+    const sectorMap: Record<string, Sector> = {
+      technology: 'information-technology',
+      tech: 'information-technology',
+      informationtechnology: 'information-technology',
+      software: 'information-technology',
+      semiconductors: 'information-technology',
+      hardware: 'information-technology',
+
+      healthcare: 'health-care',
+      health: 'health-care',
+      pharmaceutical: 'health-care',
+      pharmaceuticals: 'health-care',
+      biotechnology: 'health-care',
+
+      financial: 'financials',
+      financials: 'financials',
+      financialservices: 'financials',
+      finance: 'financials',
+      banks: 'financials',
+
+      consumer: 'consumer-discretionary',
+      consumerdiscretionary: 'consumer-discretionary',
+      consumercyclical: 'consumer-discretionary',
+      consumerdefensive: 'consumer-staples',
+      consumerstaples: 'consumer-staples',
+      consumergoods: 'consumer-staples',
+
+      industrial: 'industrials',
+      industrials: 'industrials',
+      industrialgoods: 'industrials',
+      manufacturing: 'industrials',
+
       energy: 'energy',
+      oilgas: 'energy',
+
       materials: 'materials',
+      basicmaterials: 'materials',
+
       utilities: 'utilities',
+
       realestate: 'real-estate',
-      communication: 'communication',
+      realestateinvestmenttrusts: 'real-estate',
+      reit: 'real-estate',
+
+      communication: 'communication-services',
+      communicationservices: 'communication-services',
+      telecommunications: 'communication-services',
+      telecom: 'communication-services',
+      media: 'communication-services',
     };
 
     // Filter for Korean exchanges (KS = KOSPI, KQ = KOSDAQ)
@@ -73,7 +109,7 @@ export async function searchKoreanStocks(query: string): Promise<any[]> {
           market: 'KR' as const,
           exchange: quote.exchDisp || (quote.symbol.endsWith('.KS') ? 'KOSPI' : 'KOSDAQ'),
           assetType: quote.quoteType?.toLowerCase() === 'etf' ? 'etf' : 'stock',
-          sector: sectorMap[rawSector] || 'other',
+          sector: sectorMap[rawSector] ?? 'other',
           currency: 'KRW' as const,
           description: longName || shortName || quote.symbol,
           searchCount: 0,

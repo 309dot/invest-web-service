@@ -94,7 +94,7 @@ export function SellStockModal({ open, onOpenChange, portfolioId, onSuccess }: S
     const found = positions.find((pos) => pos.id === selectedPositionId) || null;
     setSelectedPosition(found || null);
     if (found) {
-      setSellShares(found.shares > 0 ? found.shares.toFixed(4) : '');
+      setSellShares(found.shares > 0 ? found.shares.toFixed(6) : '');
       if (found.currency === 'KRW') {
         setExchangeRate('');
       }
@@ -172,7 +172,7 @@ export function SellStockModal({ open, onOpenChange, portfolioId, onSuccess }: S
       return '유효한 매도 주식 수를 입력해주세요.';
     }
     if (sharesValue > canSellShares) {
-      return `보유 수량(${canSellShares.toFixed(4)}주)보다 많이 매도할 수 없습니다.`;
+      return `보유 수량(${canSellShares.toFixed(6)}주)보다 많이 매도할 수 없습니다.`;
     }
     if (selectedPosition.currency === 'USD') {
       const rate = parseFloat(exchangeRate);
@@ -285,7 +285,7 @@ export function SellStockModal({ open, onOpenChange, portfolioId, onSuccess }: S
                 ) : (
                   positions.map((position) => (
                     <SelectItem key={position.id} value={position.id!}>
-                      {position.symbol} · 평가 {formatAmount(position.totalValue, position.currency)} ({position.shares.toFixed(4)}주)
+                      {position.symbol} · 평가 {formatAmount(position.totalValue, position.currency)} ({position.shares.toFixed(6)}주)
                     </SelectItem>
                   ))
                 )}
@@ -293,7 +293,7 @@ export function SellStockModal({ open, onOpenChange, portfolioId, onSuccess }: S
             </Select>
             {selectedPosition && (
               <p className="text-xs text-muted-foreground">
-                보유 수량: {selectedPosition.shares.toFixed(4)}주 · 평균 단가 {formatAmount(selectedPosition.averagePrice, currency)}
+                보유 수량: {selectedPosition.shares.toFixed(6)}주 · 평균 단가 {formatAmount(selectedPosition.averagePrice, currency)}
               </p>
             )}
           </div>
@@ -344,7 +344,7 @@ export function SellStockModal({ open, onOpenChange, portfolioId, onSuccess }: S
               />
               {selectedPosition && (
                 <p className="text-xs text-muted-foreground">
-                  매도 후 보유 예상: {(selectedPosition.shares - (parseFloat(sellShares) || 0)).toFixed(4)} 주
+                  매도 후 보유 예상: {(selectedPosition.shares - (parseFloat(sellShares) || 0)).toFixed(6)} 주
                 </p>
               )}
             </div>

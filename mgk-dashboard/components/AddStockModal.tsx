@@ -393,7 +393,7 @@ export function AddStockModal({
                       />
                       {calculatedShares !== null && (
                         <p className="text-sm text-muted-foreground">
-                          주식 수: {calculatedShares.toFixed(4)} 주
+                          주식 수: {calculatedShares.toFixed(6)} 주
                         </p>
                       )}
                     </div>

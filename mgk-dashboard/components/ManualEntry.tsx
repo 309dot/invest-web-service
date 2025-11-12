@@ -355,7 +355,7 @@ export function ManualEntry() {
               {purchaseSummary && (
                 <div className="p-3 bg-muted rounded-md space-y-1">
                   <p className="text-sm text-muted-foreground">
-                    매수 주식 수: <Badge variant="secondary">{purchaseSummary.shares.toFixed(4)} 주</Badge>
+                    매수 주식 수: <Badge variant="secondary">{purchaseSummary.shares.toFixed(6)} 주</Badge>
                   </p>
                   <p className="text-sm text-muted-foreground">
                     평가 금액: <Badge variant="outline">{purchaseSummary.totalValue.toFixed(2)} USD</Badge>

@@ -524,8 +524,12 @@ function buildPortfolioDiagnosisPrompt(
     '   - 구체적인 조정 방향',
     '   - 추천 비중',
     '',
-    '5. 향후 전략 (3가지)',
-    '   - 실행 가능한 구체적 액션',
+    '5. 실행 계획 (최대 5개)',
+    '   - priority: urgent | important | recommended',
+    '   - title: 15자 내외 핵심 요약',
+    '   - description: 구체적인 실행 방법',
+    '   - expectedImpact: 기대 효과',
+    '   - timeframe: 권장 실행 시점',
     '',
     '포트폴리오 데이터:',
     JSON.stringify(portfolioData, null, 2),
@@ -547,6 +551,15 @@ function buildPortfolioDiagnosisPrompt(
     '    }',
     '  ],',
     '  "rebalancingSuggestion": "...",',
+    '  "actionPlan": [',
+    '    {',
+    '      "title": "...",',
+    '      "description": "...",',
+    '      "priority": "urgent",',
+    '      "expectedImpact": "...",',
+    '      "timeframe": "1주 이내"',
+    '    }',
+    '  ],',
     '  "strategies": ["...", "...", "..."],',
     '  "overallScore": 85',
     '}',
@@ -570,6 +583,13 @@ export interface PortfolioDiagnosisResult {
   }[];
   rebalancingSuggestion: string;
   strategies: string[];
+  actionPlan: {
+    title: string;
+    description: string;
+    priority: 'urgent' | 'important' | 'recommended';
+    expectedImpact?: string;
+    timeframe?: string;
+  }[];
   overallScore?: number;
   rawText?: string;
 }
@@ -635,6 +655,61 @@ export async function diagnosePortfolio(
     throw new Error('AI 응답 파싱 결과가 null입니다.');
   }
 
+  const normalizePriority = (value: unknown): 'urgent' | 'important' | 'recommended' => {
+    if (typeof value !== 'string') return 'recommended';
+    const lower = value.toLowerCase();
+    if (lower.includes('urgent') || lower.includes('긴급')) return 'urgent';
+    if (lower.includes('important') || lower.includes('중요')) return 'important';
+    return 'recommended';
+  };
+
+  const normalizedActionPlan =
+    Array.isArray((parsed as any).actionPlan) &&
+    (parsed as any).actionPlan.length > 0
+      ? (parsed as any).actionPlan
+          .map((item: any) => {
+            if (!item || typeof item !== 'object') return null;
+            const title =
+              typeof item.title === 'string' && item.title.trim()
+                ? item.title.trim()
+                : typeof item.description === 'string'
+                  ? item.description.slice(0, 20)
+                  : '';
+            const description =
+              typeof item.description === 'string' && item.description.trim()
+                ? item.description.trim()
+                : '';
+            if (!title || !description) {
+              return null;
+            }
+            return {
+              title,
+              description,
+              priority: normalizePriority(item.priority),
+              expectedImpact:
+                typeof item.expectedImpact === 'string' && item.expectedImpact.trim()
+                  ? item.expectedImpact.trim()
+                  : undefined,
+              timeframe:
+                typeof item.timeframe === 'string' && item.timeframe.trim()
+                  ? item.timeframe.trim()
+                  : undefined,
+            };
+          })
+          .filter((item): item is Required<PortfolioDiagnosisResult>['actionPlan'][number] => item !== null)
+      : [];
+
+  const fallbackActionPlan =
+    normalizedActionPlan.length === 0 && Array.isArray(parsed.strategies)
+      ? parsed.strategies
+          .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+          .map((strategy, index) => ({
+            title: `전략 ${index + 1}`,
+            description: strategy.trim(),
+            priority: 'recommended' as const,
+          }))
+      : [];
+
   return {
     diagnosis: parsed.diagnosis || '',
     strengths: parsed.strengths || [],
@@ -642,6 +717,7 @@ export async function diagnosePortfolio(
     stockEvaluations: parsed.stockEvaluations || [],
     rebalancingSuggestion: parsed.rebalancingSuggestion || '',
     strategies: parsed.strategies || [],
+    actionPlan: normalizedActionPlan.length > 0 ? normalizedActionPlan : fallbackActionPlan,
     overallScore: parsed.overallScore,
     rawText: rawContent,
   };

@@ -338,7 +338,15 @@ export async function createTransaction(
     return transactionRef.id;
   } catch (error) {
     if (error instanceof InsufficientBalanceError) {
-      throw new Error('잔액이 부족합니다.');
+      console.warn('⚠️ 거래 생성 실패 - 잔액 부족', {
+        symbol: transactionData.symbol,
+        currency: error.currency,
+        requiredAmount: error.requiredAmount,
+        currentBalance: error.currentBalance,
+        type: transactionData.type,
+        purchaseMethod: transactionData.purchaseMethod || 'manual',
+      });
+      throw error;
     }
     console.error('Error creating transaction:', error);
     throw error;

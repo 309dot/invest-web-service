@@ -1,6 +1,5 @@
 import { getExchangeRate } from '@/lib/apis/exchangerate';
-
-export type SupportedCurrency = 'USD' | 'KRW';
+import type { SupportedCurrency } from '@/types';
 
 type FxCacheEntry = {
   rate: number;

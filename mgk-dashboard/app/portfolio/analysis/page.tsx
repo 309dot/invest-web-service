@@ -20,7 +20,13 @@ import { AllocationPieChart, type AllocationDatum, DEFAULT_ALLOCATION_COLORS } f
 import { TopContributorsChart } from '@/components/analysis/TopContributorsChart';
 import { GPTSummaryCard } from '@/components/analysis/GPTSummaryCard';
 import { RecommendationList } from '@/components/analysis/RecommendationList';
+import { PerformanceTabs } from '@/components/analysis/PerformanceTabs';
+import { BenchmarkComparison } from '@/components/analysis/BenchmarkComparison';
+import { CorrelationHeatmap } from '@/components/analysis/CorrelationHeatmap';
+import { PersonalizedDashboard } from '@/components/analysis/PersonalizedDashboard';
+import { EducationContent } from '@/components/analysis/EducationContent';
 import type { SupportedCurrency } from '@/lib/currency';
+import { formatSectorLabel } from '@/lib/utils/formatters';
 
 export default function PortfolioAnalysisPage() {
   const { user, loading: authLoading } = useAuth();
@@ -108,23 +114,9 @@ export default function PortfolioAnalysisPage() {
 
   const sectorData: AllocationDatum[] = useMemo(() => {
     if (!analysis) return [];
-    const sectorLabels: Record<string, string> = {
-      technology: '기술',
-      healthcare: '헬스케어',
-      financial: '금융',
-      consumer: '소비재',
-      industrial: '산업재',
-      energy: '에너지',
-      materials: '소재',
-      utilities: '유틸리티',
-      'real-estate': '부동산',
-      communication: '커뮤니케이션',
-      other: '기타',
-    };
-
     return analysis.sectorAllocation.map((sector) => ({
       id: sector.sector,
-      label: sectorLabels[sector.sector] ?? sector.sector,
+      label: formatSectorLabel(sector.sector),
       value: sector.value,
       percentage: sector.percentage,
       returnRate: sector.returnRate,
@@ -315,6 +307,16 @@ export default function PortfolioAnalysisPage() {
             overallReturnRate={analysis.overallReturnRate}
           />
 
+          <PerformanceTabs
+            performance={analysis.performanceSummary}
+            formatValue={formatBaseAmount}
+          />
+
+          <BenchmarkComparison
+            portfolioPerformance={analysis.performanceSummary}
+            benchmarks={analysis.benchmarkComparison}
+          />
+
           <GPTSummaryCard
             diagnosis={diagnosis}
             loading={diagnosisLoading}
@@ -341,7 +343,22 @@ export default function PortfolioAnalysisPage() {
 
           <TopContributorsChart data={analysis.topContributors} valueFormatter={formatBaseAmount} />
 
-          {positions.length > 0 && <MultiStockChart positions={positions} />}
+          {positions.length > 0 && (
+            <MultiStockChart
+              positions={positions}
+              series={analysis.performanceSummary.positionSeries}
+              baseCurrency={analysis.baseCurrency}
+              exchangeRate={analysis.exchangeRate?.rate ?? null}
+            />
+          )}
+
+          {analysis.performanceSummary.positionSeries.length > 1 && (
+            <CorrelationHeatmap series={analysis.performanceSummary.positionSeries} />
+          )}
+
+          <PersonalizedDashboard analysis={analysis} />
+
+          <EducationContent />
 
           {positions.length > 0 && (
             <RebalancingSimulator
@@ -349,6 +366,7 @@ export default function PortfolioAnalysisPage() {
               totalValue={analysis.totalValue}
               baseCurrency={analysis.baseCurrency}
               exchangeRate={analysis.exchangeRate?.rate ?? null}
+              suggestions={analysis.rebalancingSuggestions}
             />
           )}
 

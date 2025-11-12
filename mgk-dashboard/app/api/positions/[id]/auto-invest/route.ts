@@ -5,6 +5,7 @@ import {
   rewriteAutoInvestTransactions,
   deleteAutoInvestSchedule,
 } from '@/lib/services/auto-invest';
+import type { AutoInvestFailure } from '@/lib/services/auto-invest';
 import { getPosition } from '@/lib/services/position';
 import { deriveDefaultPortfolioId } from '@/lib/utils/portfolio';
 import type { AutoInvestSchedule } from '@/types';
@@ -102,7 +103,9 @@ export async function POST(
       );
     }
 
-    let rewriteSummary: { removed: number; created: number; error?: string } | null = null;
+    let rewriteSummary:
+      | { removed: number; created: number; failures: AutoInvestFailure[]; error?: string }
+      | null = null;
     if (regenerate) {
       try {
         rewriteSummary = await rewriteAutoInvestTransactions(userId, portfolioId, positionId, {
@@ -133,17 +136,38 @@ export async function POST(
       console.error('Failed to list auto invest schedules:', error);
     }
 
-    const success = !rewriteSummary?.error;
-    const message = success
-      ? '자동 투자 스케줄이 저장되었습니다.'
-      : rewriteSummary?.error || '자동 투자 거래 재생성에 실패했습니다.';
+    const failureCount = rewriteSummary?.failures?.length ?? 0;
+    const hasError = Boolean(rewriteSummary?.error);
+    const status: 'success' | 'partial' | 'error' = hasError
+      ? 'error'
+      : failureCount > 0
+        ? 'partial'
+        : 'success';
+    const success = status !== 'error';
+
+    const message = hasError
+      ? `자동 투자 거래 재생성에 실패했습니다: ${rewriteSummary?.error}`
+      : failureCount > 0
+        ? `자동 투자 스케줄이 저장되었지만 ${failureCount}건의 거래가 생성되지 않았습니다.`
+        : '자동 투자 스케줄이 저장되었습니다.';
+
+    const failureSummary = rewriteSummary?.failures.map((failure) => ({
+      date: failure.date,
+      amount: failure.amount,
+      currency: failure.currency,
+      reason: failure.reason,
+      message: failure.message,
+      metadata: failure.metadata,
+    }));
 
     return NextResponse.json({
       success,
+      status,
       message,
       scheduleId,
       schedules,
       rewriteSummary,
+      failures: failureSummary,
       portfolioId,
     });
   } catch (error) {
@@ -195,7 +219,9 @@ export async function PUT(
     // });
 
     // 거래 재생성 옵션이 활성화된 경우
-    let rewriteSummary: { removed: number; created: number; error?: string } | null = null;
+    let rewriteSummary:
+      | { removed: number; created: number; failures: AutoInvestFailure[]; error?: string }
+      | null = null;
     if (regenerateTransactions && effectiveFrom) {
       rewriteSummary = await rewriteAutoInvestTransactions(userId, portfolioId, positionId, {
         effectiveFrom,
@@ -210,11 +236,20 @@ export async function PUT(
 
     const schedules = await listAutoInvestSchedules(userId, portfolioId, positionId);
 
+    const failureCount = rewriteSummary?.failures?.length ?? 0;
+    const status: 'success' | 'partial' | 'error' =
+      (rewriteSummary?.error ? 'error' : failureCount > 0 ? 'partial' : 'success');
+
     return NextResponse.json({
       success: true,
-      message: '자동 투자 스케줄이 수정되었습니다.',
+      message:
+        failureCount > 0
+          ? `자동 투자 스케줄이 수정되었지만 ${failureCount}건의 거래 생성이 누락되었습니다.`
+          : '자동 투자 스케줄이 수정되었습니다.',
       schedules,
       rewriteSummary,
+      failures: rewriteSummary?.failures,
+      status,
     });
   } catch (error) {
     console.error('Update auto invest schedule error:', error);

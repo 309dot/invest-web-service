@@ -14,10 +14,15 @@ import { Badge } from './ui/badge';
 import { formatDate, formatPercent } from '@/lib/utils/formatters';
 import { useCurrency } from '@/lib/contexts/CurrencyContext';
 import { TrendingUp, TrendingDown, Eye, EyeOff } from 'lucide-react';
-import type { Position } from '@/types';
+import type { Position, SupportedCurrency } from '@/types';
+import type { PortfolioAnalysis } from '@/lib/services/portfolio-analysis';
+import { assertCurrency, convertWithRate } from '@/lib/currency';
 
 interface MultiStockChartProps {
   positions: Position[];
+  series: PortfolioAnalysis['performanceSummary']['positionSeries'];
+  baseCurrency: SupportedCurrency;
+  exchangeRate?: number | null;
 }
 
 type Period = '7d' | '1m' | '3m' | '6m' | '1y' | 'all';
@@ -33,67 +38,131 @@ const CHART_COLORS = [
   '#f97316', // orange
 ];
 
-export function MultiStockChart({ positions }: MultiStockChartProps) {
+export function MultiStockChart({ positions, series, baseCurrency, exchangeRate }: MultiStockChartProps) {
   const [period, setPeriod] = useState<Period>('1m');
   const [visibleStocks, setVisibleStocks] = useState<Set<string>>(
     new Set(positions.map(p => p.symbol))
   );
   const [chartType, setChartType] = useState<'price' | 'return'>('return');
   const { formatAmount } = useCurrency();
+  const toBase = useMemo(() => {
+    return (value: number, currency: SupportedCurrency) => {
+      if (baseCurrency === 'KRW') {
+        if (currency === 'KRW') return value;
+        if (!exchangeRate) return value;
+        return convertWithRate(value, 'USD', 'KRW', exchangeRate);
+      }
+
+      if (currency === 'USD') return value;
+      if (!exchangeRate) return value;
+      return convertWithRate(value, 'KRW', 'USD', exchangeRate);
+    };
+  }, [baseCurrency, exchangeRate]);
+
+  const totalValueBase = useMemo(() => {
+    return positions.reduce((sum, position) => {
+      const currency = assertCurrency(position.currency, position.market === 'KR' ? 'KRW' : 'USD');
+      return sum + toBase(position.totalValue, currency);
+    }, 0);
+  }, [positions, toBase]);
+
+  const periodStartDate = useMemo(() => {
+    const now = new Date();
+    switch (period) {
+      case '7d':
+        return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      case '1m':
+        return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      case '3m':
+        return new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+      case '6m':
+        return new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000);
+      case '1y':
+        return new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+      case 'all':
+      default:
+        return new Date(now.getTime() - 365 * 5 * 24 * 60 * 60 * 1000);
+    }
+  }, [period]);
 
   // 차트 데이터 생성 (정규화된 수익률)
   const chartData = useMemo(() => {
-    if (positions.length === 0) return [];
+    if (!series || series.length === 0) return [];
 
-    // 기간 계산
-    const now = new Date();
-    let daysAgo = 30;
-    switch (period) {
-      case '7d': daysAgo = 7; break;
-      case '1m': daysAgo = 30; break;
-      case '3m': daysAgo = 90; break;
-      case '6m': daysAgo = 180; break;
-      case '1y': daysAgo = 365; break;
-      case 'all': daysAgo = 365 * 10; break;
-    }
+    const dataMap = new Map<string, Record<string, number>>();
 
-    const startDate = new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000);
+    series.forEach((item) => {
+      const filtered = item.series.filter((point) => {
+        const pointDate = new Date(point.date);
+        return pointDate >= periodStartDate;
+      });
 
-    // 날짜별 데이터 포인트 생성
-    const dataPoints: { [key: string]: any } = {};
-    
-    positions.forEach((position) => {
-      // priceHistory는 아직 구현되지 않았으므로 스킵
-      const priceHistory = (position as any).priceHistory;
-      if (!priceHistory) return;
+      if (filtered.length === 0) {
+        return;
+      }
 
-      const startPrice = position.averagePrice;
-      
-      priceHistory.forEach((point: any) => {
-        const date = new Date(point.date);
-        if (date < startDate) return;
+      const basePrice = filtered[0].price;
 
-        const dateKey = formatDate(date, 'yyyy-MM-dd');
-        
-        if (!dataPoints[dateKey]) {
-          dataPoints[dateKey] = { date: dateKey };
+      filtered.forEach((point) => {
+        const dateKey = point.date;
+        if (!dataMap.has(dateKey)) {
+          dataMap.set(dateKey, { date: dateKey });
         }
-
-        // 정규화된 수익률 계산 (100 기준)
-        if (chartType === 'return') {
-          const returnRate = ((point.price - startPrice) / startPrice) * 100;
-          dataPoints[dateKey][position.symbol] = returnRate;
-        } else {
-          dataPoints[dateKey][position.symbol] = point.price;
-        }
+        const entry = dataMap.get(dateKey)!;
+        entry[item.symbol] =
+          chartType === 'return'
+            ? ((point.price - basePrice) / basePrice) * 100
+            : point.price;
       });
     });
 
-    // 날짜순 정렬
-    return Object.values(dataPoints).sort((a, b) => 
-      new Date(a.date).getTime() - new Date(b.date).getTime()
+    return Array.from(dataMap.values()).sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
     );
-  }, [positions, period, chartType]);
+  }, [series, chartType, periodStartDate]);
+
+  const performanceTable = useMemo(() => {
+    if (!series || series.length === 0) return [];
+    return series
+      .map((item) => {
+        const filtered = item.series.filter((point) => {
+          const pointDate = new Date(point.date);
+          return pointDate >= periodStartDate;
+        });
+
+        if (filtered.length < 2) return null;
+
+        const startPrice = filtered[0].price;
+        const endPrice = filtered[filtered.length - 1].price;
+        const returnRate = ((endPrice - startPrice) / startPrice) * 100;
+
+        const position = positions.find((p) => p.symbol === item.symbol);
+        const currency = assertCurrency(position?.currency, position?.market === 'KR' ? 'KRW' : 'USD');
+        const currentWeight =
+          position && totalValueBase > 0
+            ? (toBase(position.totalValue, currency) / totalValueBase) * 100
+            : 0;
+
+        return {
+          symbol: item.symbol,
+          currency: item.currency,
+          startPrice,
+          endPrice,
+          returnRate,
+          currentWeight,
+        };
+      })
+      .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
+      .sort((a, b) => b.returnRate - a.returnRate);
+  }, [series, positions, toBase, totalValueBase, periodStartDate]);
+
+  const currencyBySymbol = useMemo(() => {
+    const map = new Map<string, SupportedCurrency>();
+    series?.forEach((item) => {
+      map.set(item.symbol, item.currency);
+    });
+    return map;
+  }, [series]);
 
   // 종목 토글
   const toggleStock = (symbol: string) => {
@@ -125,10 +194,14 @@ export function MultiStockChart({ positions }: MultiStockChartProps) {
               <div key={index} className="flex items-center justify-between gap-3 text-sm">
                 <span style={{ color: item.color }}>{item.name}:</span>
                 <span className="font-medium">
-                  {chartType === 'return' 
-                    ? formatPercent(item.value)
-                    : formatAmount(item.value, 'USD')
-                  }
+                  {(() => {
+                    if (chartType === 'return') {
+                      return formatPercent(item.value);
+                    }
+                    const symbol = item.dataKey || item.name;
+                    const currency = currencyBySymbol.get(symbol) ?? 'USD';
+                    return formatAmount(item.value, currency);
+                  })()}
                 </span>
               </div>
             ))}
@@ -257,8 +330,8 @@ export function MultiStockChart({ positions }: MultiStockChartProps) {
                 className="text-xs"
               />
               <YAxis
-                tickFormatter={(value) => 
-                  chartType === 'return' ? `${value.toFixed(1)}%` : `$${value}`
+                tickFormatter={(value) =>
+                  chartType === 'return' ? `${value.toFixed(1)}%` : value.toLocaleString()
                 }
                 className="text-xs"
               />
@@ -290,35 +363,53 @@ export function MultiStockChart({ positions }: MultiStockChartProps) {
         )}
 
         {/* 성과 요약 */}
-        {visibleStocks.size > 0 && (
+        {visibleStocks.size > 0 && performanceTable.length > 0 && (
           <div className="mt-6 p-4 bg-muted/50 rounded-lg">
-            <h4 className="font-semibold mb-3">현재 성과</h4>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {positions
-                .filter(p => visibleStocks.has(p.symbol))
-                .map((position, index) => {
-                  const color = CHART_COLORS[index % CHART_COLORS.length];
-                  return (
-                    <div key={position.symbol} className="text-sm">
-                      <div 
-                        className="font-semibold mb-1"
-                        style={{ color }}
-                      >
-                        {position.symbol}
-                      </div>
-                      <div className={`font-medium ${
-                        position.returnRate >= 0 
-                          ? 'text-green-600' 
-                          : 'text-red-600'
-                      }`}>
-                        {formatPercent(position.returnRate)}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {formatAmount(position.totalValue, 'USD')}
-                      </div>
-                    </div>
-                  );
-                })}
+            <h4 className="font-semibold mb-3">기간별 성과 요약</h4>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-muted-foreground">
+                    <th className="py-2 px-2 text-left">종목</th>
+                    <th className="py-2 px-2 text-right">현재 비중</th>
+                    <th className="py-2 px-2 text-right">기간 수익률</th>
+                    <th className="py-2 px-2 text-right">시작가</th>
+                    <th className="py-2 px-2 text-right">현재가</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {performanceTable
+                    .filter((item) => visibleStocks.has(item.symbol))
+                    .map((item, index) => {
+                      const color = CHART_COLORS[index % CHART_COLORS.length];
+                      const isPositive = item.returnRate >= 0;
+                      return (
+                        <tr key={item.symbol} className="border-b last:border-none">
+                          <td className="py-2 px-2 font-semibold" style={{ color }}>
+                            {item.symbol}
+                          </td>
+                          <td className="py-2 px-2 text-right">
+                            {item.currentWeight.toFixed(1)}%
+                          </td>
+                          <td
+                            className={`py-2 px-2 text-right font-medium ${
+                              isPositive ? 'text-green-600' : 'text-red-600'
+                            }`}
+                          >
+                            {item.returnRate >= 0 ? '+' : ''}
+                            {item.returnRate.toFixed(2)}%
+                          </td>
+                          <td className="py-2 px-2 text-right text-muted-foreground">
+                            {formatAmount(item.startPrice, item.currency)}
+                          </td>
+                          <td className="py-2 px-2 text-right text-muted-foreground">
+                            {formatAmount(item.endPrice, item.currency)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
             </div>
           </div>
         )}

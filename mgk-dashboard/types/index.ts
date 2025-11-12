@@ -19,21 +19,44 @@ export type TransactionType = 'buy' | 'sell' | 'dividend';
 // 시장 구분
 export type Market = 'US' | 'KR' | 'GLOBAL';
 
+export type SupportedCurrency = 'USD' | 'KRW';
+
 // 자산 유형
 export type AssetType = 'stock' | 'etf' | 'reit' | 'fund';
 
+export type PerformancePeriodKey = '1D' | '1W' | '1M' | '3M' | 'YTD' | '1Y' | 'ALL';
+
+export interface PerformancePeriod {
+  period: PerformancePeriodKey;
+  startDate: string;
+  effectiveStartDate: string | null;
+  endDate: string;
+  startValue: number;
+  endValue: number;
+  absoluteChange: number;
+  returnRate: number | null;
+}
+
+export interface BenchmarkPeriodPerformance extends PerformancePeriod {
+  benchmarkId: string;
+  benchmarkName: string;
+  symbol: string;
+  currency: SupportedCurrency;
+}
+
 // 섹터
-export type Sector = 
-  | 'technology'
-  | 'healthcare'
-  | 'financial'
-  | 'consumer'
-  | 'industrial'
+export type Sector =
+  | 'communication-services'
+  | 'consumer-discretionary'
+  | 'consumer-staples'
   | 'energy'
+  | 'financials'
+  | 'health-care'
+  | 'industrials'
+  | 'information-technology'
   | 'materials'
-  | 'utilities'
   | 'real-estate'
-  | 'communication'
+  | 'utilities'
   | 'other';
 
 // 종목 마스터 데이터
@@ -80,7 +103,7 @@ export interface Position {
   market: 'US' | 'KR' | 'GLOBAL'; // 시장
   exchange: string; // 거래소
   assetType: 'stock' | 'etf' | 'reit' | 'fund'; // 자산 유형
-  sector?: string; // 섹터
+  sector?: Sector; // 섹터
   currency: 'USD' | 'KRW'; // 통화
   // 보유 정보
   shares: number; // 보유 주식 수
@@ -209,7 +232,22 @@ export interface PortfolioAnalysis {
     symbol: string;
     contribution: number; // 기여도 (%)
     returnRate: number;
+    weight: number;
   }[];
+  performanceSummary: {
+    latestValuationDate: string | null;
+    currentValue: number;
+    periods: Record<PerformancePeriodKey, PerformancePeriod>;
+    positionSeries: Array<{
+      symbol: string;
+      currency: SupportedCurrency;
+      series: Array<{
+        date: string;
+        price: number;
+      }>;
+    }>;
+  };
+  benchmarkComparison: BenchmarkPeriodPerformance[];
   // 리밸런싱 제안
   rebalancingSuggestions?: {
     symbol: string;

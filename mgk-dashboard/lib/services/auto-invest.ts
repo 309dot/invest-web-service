@@ -17,7 +17,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { createTransaction } from './transaction';
-import { InsufficientBalanceError } from './balance';
+import { InsufficientBalanceError, getBalance } from './balance';
 import { recalculatePositionFromTransactions } from './position';
 import type { AutoInvestFrequency, AutoInvestSchedule, Position, Transaction } from '@/types';
 import { getHistoricalPrice, getHistoricalExchangeRate } from '@/lib/apis/alphavantage';
@@ -65,6 +65,23 @@ function computeScheduledTradingDates(
  * 자동 투자 거래 내역 생성
  * 시작일부터 오늘까지 정기적으로 구매한 거래 내역을 자동 생성
  */
+export interface AutoInvestFailure {
+  date: string;
+  amount: number;
+  currency: 'USD' | 'KRW';
+  reason: 'INSUFFICIENT_BALANCE' | 'PRICE_LOOKUP_FAILED' | 'UNKNOWN';
+  message: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AutoInvestGenerationResult {
+  count: number;
+  totalShares: number;
+  totalAmount: number;
+  scheduledCount: number;
+  failures: AutoInvestFailure[];
+}
+
 export async function generateAutoInvestTransactions(
   userId: string,
   portfolioId: string,
@@ -79,7 +96,7 @@ export async function generateAutoInvestTransactions(
     currency: 'USD' | 'KRW';
     market?: 'US' | 'KR' | 'GLOBAL';
   }
-): Promise<{ count: number; totalShares: number; totalAmount: number }> {
+): Promise<AutoInvestGenerationResult> {
   try {
     const market = determineMarketFromContext(config.market, config.currency, config.symbol);
     const today = getMarketToday(market);
@@ -97,6 +114,7 @@ export async function generateAutoInvestTransactions(
     let totalShares = 0;
     let totalAmount = 0;
     let createdCount = 0;
+    const failures: AutoInvestFailure[] = [];
     const exchangeRateCache = new Map<string, number>();
     const transactionsRef = collection(
       db,
@@ -117,12 +135,35 @@ export async function generateAutoInvestTransactions(
       }
     });
 
+    let availableBalance = await getBalance(userId, portfolioId, config.currency);
+    console.log(
+      `ℹ️ 자동 투자 생성 시작 - 보유 잔액: ${availableBalance.toLocaleString()} ${config.currency}`
+    );
+
     for (const targetDate of purchaseDates) {
       if (isFutureTradingDate(targetDate, market)) {
         continue;
       }
 
       if (existingKeys.has(`${targetDate}:${config.amount}`)) {
+        continue;
+      }
+
+      if (availableBalance < config.amount) {
+        failures.push({
+          date: targetDate,
+          amount: config.amount,
+          currency: config.currency,
+          reason: 'INSUFFICIENT_BALANCE',
+          message: `투자 금액 ${config.amount.toLocaleString()} ${config.currency} 대비 잔액 부족`,
+          metadata: {
+            availableBalance,
+            requiredAmount: config.amount,
+          },
+        });
+        console.warn(
+          `⚠️ 자동 투자 건너뜀 (잔액 부족) - ${config.symbol} ${targetDate}, 현재 ${availableBalance.toLocaleString()} ${config.currency}`
+        );
         continue;
       }
 
@@ -151,6 +192,13 @@ export async function generateAutoInvestTransactions(
           console.warn(
             `⚠️ ${targetDate} 가격과 fallback 가격이 없어 자동 투자 거래를 건너뜁니다. (${config.symbol})`
           );
+          failures.push({
+            date: targetDate,
+            amount: config.amount,
+            currency: config.currency,
+            reason: 'PRICE_LOOKUP_FAILED',
+            message: `${targetDate} 가격 조회 및 폴백 실패`,
+          });
           continue;
         }
       }
@@ -190,11 +238,24 @@ export async function generateAutoInvestTransactions(
         totalAmount += config.amount;
         createdCount += 1;
         existingKeys.add(`${targetDate}:${config.amount}`);
+        availableBalance -= config.amount;
       } catch (error) {
         if (error instanceof InsufficientBalanceError) {
           console.warn(
             `⚠️ 자동 투자 잔액 부족으로 건너뜁니다: ${config.symbol} ${targetDate} (${config.amount} ${config.currency})`
           );
+          failures.push({
+            date: targetDate,
+            amount: config.amount,
+            currency: config.currency,
+            reason: 'INSUFFICIENT_BALANCE',
+            message: '거래 생성 중 잔액 부족으로 실패했습니다.',
+            metadata: {
+              availableBalance: error.currentBalance,
+              requiredAmount: error.requiredAmount,
+            },
+          });
+          availableBalance = error.currentBalance;
           continue;
         }
         throw error;
@@ -207,13 +268,15 @@ export async function generateAutoInvestTransactions(
         : `$${totalAmount.toFixed(2)}`;
 
     console.log(
-      `✅ 자동 투자 거래 내역 생성 완료: ${createdCount}/${purchaseDates.length}건, 총 ${totalShares.toFixed(4)}주, 총 ${totalAmountDisplay}`
+      `✅ 자동 투자 거래 내역 생성 완료: ${createdCount}/${purchaseDates.length}건, 총 ${totalShares.toFixed(6)}주, 총 ${totalAmountDisplay}`
     );
 
     return {
       count: createdCount,
       totalShares,
       totalAmount,
+      scheduledCount: purchaseDates.length,
+      failures,
     };
   } catch (error) {
     console.error('Error generating auto invest transactions:', error);
@@ -354,7 +417,7 @@ export async function rewriteAutoInvestTransactions(
     stockId: string;
     market?: 'US' | 'KR' | 'GLOBAL';
   }
-): Promise<{ removed: number; created: number; error?: string }> {
+): Promise<{ removed: number; created: number; failures: AutoInvestFailure[]; error?: string }> {
   try {
     const transactionsRef = collection(
       db,
@@ -396,12 +459,14 @@ export async function rewriteAutoInvestTransactions(
     return {
       removed: toDelete.length,
       created: generationResult.count,
+      failures: generationResult.failures,
     };
   } catch (error) {
     console.error('Error rewriting auto invest transactions:', error);
     return {
       removed: 0,
       created: 0,
+      failures: [],
       error: error instanceof Error ? error.message : '자동 투자 거래 재생성 중 오류가 발생했습니다.',
     };
   }
@@ -617,7 +682,7 @@ export async function reapplySchedule(
     currency: 'USD' | 'KRW';
     market?: 'US' | 'KR' | 'GLOBAL';
   }
-): Promise<{ removed: number; created: number; newScheduleId: string }> {
+): Promise<{ removed: number; created: number; failures: AutoInvestFailure[]; newScheduleId: string }> {
   try {
     const scheduleRef = doc(
       db,
@@ -669,6 +734,7 @@ export async function reapplySchedule(
     return {
       removed: rewriteSummary.removed,
       created: rewriteSummary.created,
+      failures: rewriteSummary.failures,
       newScheduleId,
     };
   } catch (error) {

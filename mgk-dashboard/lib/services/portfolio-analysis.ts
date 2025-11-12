@@ -13,9 +13,15 @@ import {
   type SupportedCurrency,
 } from '@/lib/currency';
 import { calculateReturnRate } from '@/lib/utils/calculations';
+import {
+  getResolvedSectorInfo,
+  resolveSectorAllocations,
+  type PositionSectorInfo,
+} from '@/lib/services/sector';
+import { calculatePortfolioPerformance } from '@/lib/services/performance';
 
 export interface SectorAllocation {
-  sector: Sector | 'unknown';
+  sector: Sector;
   value: number;
   percentage: number;
   returnRate: number;
@@ -97,33 +103,53 @@ export interface PortfolioAnalysis {
  */
 export function calculateSectorAllocation(
   positions: Position[],
-  fxRate: number | null
+  fxRate: number | null,
+  sectorResolution: Map<string, PositionSectorInfo>
 ): SectorAllocation[] {
-  const sectorMap = new Map<Sector | 'unknown', {
+  const sectorMap = new Map<Sector, {
     value: number;
     invested: number;
     count: number;
   }>();
 
   positions.forEach((position) => {
-    const sector = (position as any).sector || 'unknown';
+    const metadata = getResolvedSectorInfo(position.symbol, sectorResolution);
+    const weightings = metadata?.weights?.length
+      ? metadata.weights
+      : [
+          {
+            sector: metadata?.primarySector ?? 'other',
+            weight: 1,
+            source: metadata?.source ?? 'fallback',
+          },
+        ];
+
     const currency = assertCurrency(position.currency, position.market === 'KR' ? 'KRW' : 'USD');
-    const baseValue = currency === 'USD'
-      ? position.totalValue
-      : fxRate
-        ? convertWithRate(position.totalValue, 'KRW', 'USD', fxRate)
-        : position.totalValue;
-    const baseInvested = currency === 'USD'
-      ? position.totalInvested
-      : fxRate
-        ? convertWithRate(position.totalInvested, 'KRW', 'USD', fxRate)
-        : position.totalInvested;
-    const existing = sectorMap.get(sector) || { value: 0, invested: 0, count: 0 };
-    
-    sectorMap.set(sector, {
-      value: existing.value + baseValue,
-      invested: existing.invested + baseInvested,
-      count: existing.count + 1,
+    const baseValue =
+      currency === 'USD'
+        ? position.totalValue
+        : fxRate
+          ? convertWithRate(position.totalValue, 'KRW', 'USD', fxRate)
+          : position.totalValue;
+    const baseInvested =
+      currency === 'USD'
+        ? position.totalInvested
+        : fxRate
+          ? convertWithRate(position.totalInvested, 'KRW', 'USD', fxRate)
+          : position.totalInvested;
+
+    weightings.forEach((allocation) => {
+      const sectorKey: Sector = allocation.sector ?? 'other';
+      const ratio = Number.isFinite(allocation.weight) && allocation.weight > 0 ? allocation.weight : 0;
+      if (ratio <= 0) {
+        return;
+      }
+      const existing = sectorMap.get(sectorKey) || { value: 0, invested: 0, count: 0 };
+      sectorMap.set(sectorKey, {
+        value: existing.value + baseValue * ratio,
+        invested: existing.invested + baseInvested * ratio,
+        count: existing.count + ratio,
+      });
     });
   });
 
@@ -474,9 +500,17 @@ export async function analyzePortfolio(
 ): Promise<PortfolioAnalysis> {
   try {
     const positions = await getPortfolioPositions(userId, portfolioId);
+    const sectorResolution = await resolveSectorAllocations(positions);
 
     const { rate, source } = await getUsdKrwRate();
     const baseCurrency: SupportedCurrency = 'KRW';
+
+    const performance = await calculatePortfolioPerformance({
+      userId,
+      portfolioId,
+      positions,
+      fxRate: rate ?? null,
+    });
 
     const toBase = (value: number, currency: SupportedCurrency) => {
       if (currency === 'USD') return value;
@@ -516,7 +550,7 @@ export async function analyzePortfolio(
 
     const overallReturnRate = calculateReturnRate(totalValue, totalInvested);
 
-    const sectorAllocation = calculateSectorAllocation(positions, rate ?? null);
+    const sectorAllocation = calculateSectorAllocation(positions, rate ?? null, sectorResolution);
     const regionAllocation = calculateRegionAllocation(positions, rate ?? null);
     const assetAllocation = calculateAssetAllocation(positions, rate ?? null);
     const riskMetrics = calculateRiskMetrics(positions);
@@ -554,6 +588,13 @@ export async function analyzePortfolio(
       rebalancingSuggestions,
       diversificationScore,
       timestamp: new Date().toISOString(),
+      performanceSummary: {
+        latestValuationDate: performance.latestValuationDate,
+        currentValue: performance.currentValue,
+        periods: performance.periods,
+        positionSeries: performance.positionSeries,
+      },
+      benchmarkComparison: performance.benchmarks,
     };
   } catch (error) {
     console.error('Portfolio analysis error:', error);

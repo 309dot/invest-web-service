@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import type { Stock } from '@/types';
 import { debounce } from '@/lib/utils';
+import { formatSectorLabel } from '@/lib/utils/formatters';
 
 interface StockSearchProps {
   onSelect: (stock: Omit<Stock, 'id'>) => void;
@@ -229,17 +230,7 @@ export function StockSearch({
                     </div>
                     {stock.sector && (
                       <Badge variant="outline" className="text-xs shrink-0">
-                        {stock.sector === 'technology' && '기술'}
-                        {stock.sector === 'healthcare' && '헬스케어'}
-                        {stock.sector === 'financial' && '금융'}
-                        {stock.sector === 'consumer' && '소비재'}
-                        {stock.sector === 'industrial' && '산업'}
-                        {stock.sector === 'energy' && '에너지'}
-                        {stock.sector === 'materials' && '소재'}
-                        {stock.sector === 'utilities' && '유틸리티'}
-                        {stock.sector === 'real-estate' && '부동산'}
-                        {stock.sector === 'communication' && '통신'}
-                        {stock.sector === 'other' && '기타'}
+                        {formatSectorLabel(stock.sector)}
                       </Badge>
                     )}
                   </div>

@@ -53,12 +53,16 @@ export async function POST(
       market: position.market === 'GLOBAL' ? undefined : position.market,
     });
 
+    const status: 'success' | 'partial' = result.failures.length > 0 ? 'partial' : 'success';
+
     return NextResponse.json({
       success: true,
       message: '스케줄이 재적용되었습니다.',
       removed: result.removed,
       created: result.created,
       newScheduleId: result.newScheduleId,
+      failures: result.failures,
+      status,
     });
   } catch (error) {
     console.error('Reapply schedule error:', error);

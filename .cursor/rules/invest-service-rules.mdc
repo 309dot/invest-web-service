@@ -1,0 +1,102 @@
+---
+alwaysApply: true
+---
+# 주식 투자 추적 시스템 - 프로젝트 규칙
+
+## 🎯 프로젝트 개요
+모든 주식(한국/미국/글로벌)을 추적하는 범용 투자 관리 시스템
+
+## 💻 기술 스택
+- Frontend: Next.js 14 + TypeScript
+- UI: Shadcn/ui + TailwindCSS
+- Database: Firebase (Firestore)
+- AI: Claude API + MCP 연동
+- 테스트: Playwright (E2E) + Vitest (Unit/Integration)
+
+## 📁 폴더 구조 규칙
+- `/app`: Next.js 앱 라우터 (페이지 및 API)
+- `/components`: 재사용 컴포넌트 (기능별 분류)
+- `/lib`: 유틸리티, API 클라이언트, Firebase 설정
+- `/tests`: 테스트 파일 (e2e, integration, unit)
+- `/QA_log`: QA 관리 (issues, test-reports, improvements, checklists)
+- `/scripts`: 자동화 스크립트
+
+## 🎨 코딩 컨벤션
+### 네이밍
+- 컴포넌트: PascalCase (예: `PortfolioCard.tsx`)
+- 함수/변수: camelCase (예: `calculateProfit`)
+- 상수: UPPER_SNAKE_CASE (예: `API_BASE_URL`)
+- CSS 클래스: kebab-case (예: `portfolio-card`)
+
+### 파일명
+- 컴포넌트: `ComponentName.tsx`
+- 테스트: `component-name.test.tsx` 또는 `feature.spec.ts`
+- API 라우트: `route.ts`
+- 유틸리티: `utility-name.ts`
+
+## ✅ 테스트 작성 기준
+### 필수 테스트 케이스
+1. **핵심 기능**: 종목 추가/수정/삭제, 수익률 계산, 포트폴리오 조회
+2. **데이터 정합성**: 가격 동기화, 환율 계산, 거래 이력
+3. **UI/UX**: 반응형, 접근성, 에러 처리, 로딩 상태
+4. **통합**: 외부 API (주식 데이터, 뉴스), Firebase 연동
+
+### 테스트 커버리지 목표
+- 전체: 70% 이상
+- 핵심 로직 (수익률 계산 등): 90% 이상
+- UI 컴포넌트: 60% 이상
+
+## 🔍 QA 프로세스
+### 기능 개발 전
+1. QA_log/checklists에 체크리스트 생성
+2. 요구사항과 예외 케이스 정의
+3. 테스트 시나리오 작성
+
+### 개발 중
+1. 단위 테스트 먼저 작성 (TDD 권장)
+2. 로컬에서 테스트 실행 및 확인
+3. 코드 리뷰 전 모든 테스트 통과 확인
+
+### 개발 완료 후
+1. E2E 테스트 실행
+2. QA 체크리스트 검증
+3. 이슈 발견 시 QA_log/issues에 기록
+4. 테스트 결과를 QA_log/test-reports에 저장
+
+## 📝 문서화 규칙
+### 코드 주석
+- 복잡한 로직: 왜 이렇게 작성했는지 설명
+- 임시 해결책: TODO 또는 FIXME 태그 사용
+- API 함수: JSDoc 형식으로 파라미터와 리턴값 설명
+
+### QA 문서
+- 이슈: `YYYY-MM-DD_issue-name.md` 형식
+- 테스트 리포트: `YYYY-MM-DD_test-report.md` 형식
+- 체크리스트: `feature-name_checklist.md` 형식
+
+## 🚨 에러 처리
+- 모든 API 호출은 try-catch로 감싸기
+- 사용자에게 친화적인 에러 메시지 표시
+- 에러 로그는 콘솔 대신 로깅 시스템 사용
+- 중요 에러는 Sentry 등으로 트래킹
+
+## 🔐 보안 규칙
+- API 키는 환경 변수로만 관리 (.env.local)
+- 민감 정보는 절대 커밋하지 않음
+- Firebase Rules 엄격하게 설정
+- 사용자 입력은 항상 검증 및 새니타이징
+
+## 📊 성능 기준
+- 페이지 로드: 3초 이내
+- API 응답: 1초 이내
+- 이미지 최적화: WebP 사용, Lazy Loading 적용
+- 번들 사이즈: 페이지당 500KB 이하
+
+## 🎨 UI/UX 원칙
+- 모바일 우선 (Mobile First)
+- 접근성 준수 (WCAG 2.1 AA 이상)
+- 다크 모드 지원
+- 로딩 상태 항상 표시
+- 에러 상태 사용자 친화적으로 처리
+
+## 🔄 커밋 메시지 형식

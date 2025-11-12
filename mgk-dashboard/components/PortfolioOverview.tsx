@@ -467,7 +467,7 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                         <div className="grid grid-cols-2 gap-3 text-sm">
                           <div>
                             <p className="text-muted-foreground">보유 수량</p>
-                            <p className="font-medium">{position.shares.toFixed(4)} 주</p>
+                            <p className="font-medium">{position.shares.toFixed(6)} 주</p>
                           </div>
                           <div>
                             <p className="text-muted-foreground">평균 단가</p>
@@ -532,7 +532,7 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                             <div className="font-semibold">{position.symbol}</div>
                           </td>
                           <td className="py-3 px-4 text-right">
-                            {position.shares.toFixed(4)} 주
+                            {position.shares.toFixed(6)} 주
                           </td>
                           <td className="py-3 px-4 text-right">
                             {formatAmount(position.averagePrice, resolveCurrency(position))}

@@ -41,26 +41,55 @@ interface GoogleFinanceMatch {
 }
 
 const SECTOR_MAP: Record<string, Sector> = {
-  technology: 'technology',
-  tech: 'technology',
-  healthcare: 'healthcare',
-  health: 'healthcare',
-  financial: 'financial',
-  finance: 'financial',
-  consumer: 'consumer',
-  industrial: 'industrial',
-  industry: 'industrial',
+  'information-technology': 'information-technology',
+  technology: 'information-technology',
+  tech: 'information-technology',
+  software: 'information-technology',
+  semiconductors: 'information-technology',
+  'information-services': 'information-technology',
+
+  'health-care': 'health-care',
+  healthcare: 'health-care',
+  health: 'health-care',
+
+  financials: 'financials',
+  financial: 'financials',
+  finance: 'financials',
+  'financial-services': 'financials',
+
+  'consumer-discretionary': 'consumer-discretionary',
+  consumer: 'consumer-discretionary',
+  'consumer-cyclical': 'consumer-discretionary',
+
+  'consumer-staples': 'consumer-staples',
+  'consumer-defensive': 'consumer-staples',
+  'consumer-goods': 'consumer-staples',
+
+  industrials: 'industrials',
+  industrial: 'industrials',
+  industry: 'industrials',
+  'industrial-goods': 'industrials',
+
   energy: 'energy',
+
   materials: 'materials',
   material: 'materials',
+  'basic-materials': 'materials',
+
   utilities: 'utilities',
   utility: 'utilities',
+
   'real-estate': 'real-estate',
-  'realestate': 'real-estate',
+  realestate: 'real-estate',
   'real-estate-services': 'real-estate',
-  communication: 'communication',
-  telecom: 'communication',
-  telecommunications: 'communication',
+  reit: 'real-estate',
+
+  'communication-services': 'communication-services',
+  communication: 'communication-services',
+  telecom: 'communication-services',
+  telecommunications: 'communication-services',
+  media: 'communication-services',
+
   other: 'other',
 };
 

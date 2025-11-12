@@ -128,7 +128,7 @@ export function TransactionForm({
     if (transactionType === 'sell') {
       const sellShares = parseFloat(shares);
       if (sellShares > position.shares) {
-        return `보유 주식 수(${position.shares.toFixed(4)})보다 많이 매도할 수 없습니다.`;
+        return `보유 주식 수(${position.shares.toFixed(6)})보다 많이 매도할 수 없습니다.`;
       }
     }
     if (parseFloat(fee) < 0 || parseFloat(tax) < 0) {
@@ -340,7 +340,7 @@ export function TransactionForm({
               </div>
               <div>
                 <p className="text-muted-foreground">보유 수량</p>
-                <p className="font-medium">{position.shares.toFixed(4)} 주</p>
+                <p className="font-medium">{position.shares.toFixed(6)} 주</p>
               </div>
               <div>
                 <p className="text-muted-foreground">평균 단가</p>
@@ -444,7 +444,7 @@ export function TransactionForm({
               />
               {transactionType === 'sell' && sharesValue > 0 && (
                 <p className="text-xs text-muted-foreground">
-                  거래 후 보유: {(position.shares - sharesValue).toFixed(4)} 주
+                  거래 후 보유: {(position.shares - sharesValue).toFixed(6)} 주
                 </p>
               )}
             </div>
@@ -549,7 +549,7 @@ export function TransactionForm({
                   </div>
                   <div className="flex justify-between text-sm mt-1">
                     <span className="text-muted-foreground">거래 후 보유</span>
-                    <span className="font-medium">{predictedShares.toFixed(4)} 주</span>
+                    <span className="font-medium">{predictedShares.toFixed(6)} 주</span>
                   </div>
                 </div>
               )}

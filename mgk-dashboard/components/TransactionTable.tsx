@@ -113,7 +113,7 @@ export function TransactionTable({
                     )}
                   </TableCell>
                   <TableCell className="text-right">
-                    {transaction.shares.toFixed(4)}주
+                    {transaction.shares.toFixed(6)}주
                   </TableCell>
                   <TableCell className="text-right">
                     {formatCurrency(transaction.price, resolveRowCurrency(transaction))}

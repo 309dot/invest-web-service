@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import type { PortfolioDiagnosisResult } from '@/lib/services/ai-advisor';
-import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
+import { AlertTriangle, Clock3, Loader2, RefreshCw, Zap } from 'lucide-react';
 
 interface GPTSummaryCardProps {
   diagnosis: PortfolioDiagnosisResult | null;
@@ -15,6 +15,15 @@ interface GPTSummaryCardProps {
 }
 
 export function GPTSummaryCard({ diagnosis, loading, error, onRetry }: GPTSummaryCardProps) {
+  const priorityBadges: Record<
+    NonNullable<PortfolioDiagnosisResult['actionPlan']>[number]['priority'],
+    { label: string; variant: 'destructive' | 'default' | 'secondary' }
+  > = {
+    urgent: { label: '긴급', variant: 'destructive' },
+    important: { label: '중요', variant: 'default' },
+    recommended: { label: '권장', variant: 'secondary' },
+  };
+
   return (
     <Card>
       <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -105,7 +114,41 @@ export function GPTSummaryCard({ diagnosis, loading, error, onRetry }: GPTSummar
               </section>
             ) : null}
 
-            {diagnosis.strategies?.length ? (
+            {diagnosis.actionPlan?.length ? (
+              <section className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-semibold text-primary">우선순위 액션 플랜</h3>
+                  <Zap className="h-4 w-4 text-primary" />
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {diagnosis.actionPlan.map((item, index) => {
+                    const priority = priorityBadges[item.priority] ?? priorityBadges.recommended;
+                    return (
+                      <div key={`action-${index}`} className="rounded-md border p-3 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <h4 className="text-sm font-semibold">{item.title}</h4>
+                          <Badge variant={priority.variant}>{priority.label}</Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground whitespace-pre-line">
+                          {item.description}
+                        </p>
+                        <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                          {item.expectedImpact ? (
+                            <span>효과: {item.expectedImpact}</span>
+                          ) : null}
+                          {item.timeframe ? (
+                            <span className="flex items-center gap-1">
+                              <Clock3 className="h-3 w-3" />
+                              {item.timeframe}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            ) : diagnosis.strategies?.length ? (
               <section className="space-y-2">
                 <h3 className="text-sm font-semibold text-primary">향후 전략</h3>
                 <ul className="space-y-1 text-sm text-muted-foreground">

@@ -1,5 +1,11 @@
 import { format, formatDistanceToNow, parseISO } from 'date-fns';
 import { ko } from 'date-fns/locale';
+import type { Sector } from '@/types';
+
+const SHARE_FORMATTER = new Intl.NumberFormat('en-US', {
+  minimumFractionDigits: 6,
+  maximumFractionDigits: 6,
+});
 
 /**
  * Format currency amount
@@ -152,13 +158,48 @@ export function formatExchangeRate(rate: number): string {
  * Format shares with appropriate decimals
  */
 export function formatShares(shares: number): string {
-  if (shares < 1) {
-    return shares.toFixed(4);
+  if (!Number.isFinite(shares)) {
+    return '0.000000';
   }
-  if (shares < 10) {
-    return shares.toFixed(2);
+  return SHARE_FORMATTER.format(shares);
+}
+
+const SECTOR_LABELS_KO: Record<Sector, string> = {
+  'communication-services': '커뮤니케이션 서비스',
+  'consumer-discretionary': '경기소비재',
+  'consumer-staples': '필수소비재',
+  energy: '에너지',
+  financials: '금융',
+  'health-care': '헬스케어',
+  industrials: '산업재',
+  'information-technology': '정보기술',
+  materials: '소재',
+  'real-estate': '부동산',
+  utilities: '유틸리티',
+  other: '기타',
+};
+
+const SECTOR_LABELS_EN: Record<Sector, string> = {
+  'communication-services': 'Communication Services',
+  'consumer-discretionary': 'Consumer Discretionary',
+  'consumer-staples': 'Consumer Staples',
+  energy: 'Energy',
+  financials: 'Financials',
+  'health-care': 'Health Care',
+  industrials: 'Industrials',
+  'information-technology': 'Information Technology',
+  materials: 'Materials',
+  'real-estate': 'Real Estate',
+  utilities: 'Utilities',
+  other: 'Other',
+};
+
+export function formatSectorLabel(sector: Sector, locale: 'ko' | 'en' = 'ko'): string {
+  const normalized = sector || 'other';
+  if (locale === 'en') {
+    return SECTOR_LABELS_EN[normalized] ?? SECTOR_LABELS_EN.other;
   }
-  return formatNumber(shares, 2);
+  return SECTOR_LABELS_KO[normalized] ?? SECTOR_LABELS_KO.other;
 }
 
 /**
