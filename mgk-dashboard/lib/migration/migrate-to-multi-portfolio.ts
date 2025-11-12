@@ -299,7 +299,7 @@ export async function migrateUserData(userId: string): Promise<MigrationResult> 
       market: 'US',
       exchange: 'NYSE',
       assetType: 'etf',
-      sector: 'technology',
+      sector: 'information-technology',
       currency: 'USD',
       shares: latestPurchase.totalShares,
       averagePrice: latestPurchase.averagePrice,
