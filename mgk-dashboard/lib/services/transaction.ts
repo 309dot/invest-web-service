@@ -19,7 +19,7 @@ import {
   updateDoc,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Position, Transaction } from '@/types';
+import type { Position, Transaction, SupportedCurrency } from '@/types';
 import { updatePositionAfterTransaction, recalculatePositionFromTransactions } from './position';
 import {
   adjustToNextTradingDay,
@@ -32,11 +32,7 @@ import {
   isTradingDay,
 } from '@/lib/utils/tradingCalendar';
 import { getHistoricalExchangeRate } from '@/lib/apis/alphavantage';
-import {
-  convertWithRate,
-  getUsdKrwRate,
-  type SupportedCurrency,
-} from '@/lib/currency';
+import { convertWithRate, getUsdKrwRate } from '@/lib/currency';
 import {
   updateBalance,
   InsufficientBalanceError,

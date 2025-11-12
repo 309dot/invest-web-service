@@ -19,13 +19,8 @@ import {
   updateDoc,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Position, SellAlertConfig, Stock, Transaction } from '@/types';
-import {
-  assertCurrency,
-  convertWithRate,
-  getUsdKrwRate,
-  type SupportedCurrency,
-} from '@/lib/currency';
+import type { Position, SellAlertConfig, Stock, Transaction, SupportedCurrency } from '@/types';
+import { assertCurrency, convertWithRate, getUsdKrwRate } from '@/lib/currency';
 import { getCurrentPrice, getHistoricalPrice } from '@/lib/apis/alphavantage';
 import { getKoreanStockPrice } from '@/lib/apis/yahoo-finance';
 import {
