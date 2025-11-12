@@ -18,7 +18,11 @@ import {
   resolveSectorAllocations,
   type PositionSectorInfo,
 } from '@/lib/services/sector';
-import { calculatePortfolioPerformance } from '@/lib/services/performance';
+import {
+  calculatePortfolioPerformance,
+  type PortfolioPerformanceResult,
+  type BenchmarkPeriodPerformance,
+} from '@/lib/services/performance';
 
 export interface SectorAllocation {
   sector: Sector;
@@ -96,6 +100,8 @@ export interface PortfolioAnalysis {
   rebalancingSuggestions: RebalancingSuggestion[];
   diversificationScore: number; // 0-100
   timestamp: string;
+  performanceSummary: PortfolioPerformanceResult;
+  benchmarkComparison: BenchmarkPeriodPerformance[];
 }
 
 /**
