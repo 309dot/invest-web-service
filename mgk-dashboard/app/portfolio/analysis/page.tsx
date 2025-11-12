@@ -25,7 +25,7 @@ import { BenchmarkComparison } from '@/components/analysis/BenchmarkComparison';
 import { CorrelationHeatmap } from '@/components/analysis/CorrelationHeatmap';
 import { PersonalizedDashboard } from '@/components/analysis/PersonalizedDashboard';
 import { EducationContent } from '@/components/analysis/EducationContent';
-import type { SupportedCurrency } from '@/lib/currency';
+import type { SupportedCurrency } from '@/types';
 import { formatSectorLabel } from '@/lib/utils/formatters';
 
 export default function PortfolioAnalysisPage() {
