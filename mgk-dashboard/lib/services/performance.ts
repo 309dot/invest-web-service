@@ -1,7 +1,7 @@
 import { subDays, subMonths, subYears, startOfYear, formatISO } from 'date-fns';
-import type { Position, Transaction } from '@/types';
+import type { Position, Transaction, SupportedCurrency } from '@/types';
 import { getPortfolioTransactions } from '@/lib/services/transaction';
-import { assertCurrency, convertWithRate, type SupportedCurrency } from '@/lib/currency';
+import { assertCurrency, convertWithRate } from '@/lib/currency';
 import { getPriceSeries, getPriceOnOrBefore, getMostRecentPrice } from '@/lib/services/price-history';
 
 export type PerformancePeriodKey = '1D' | '1W' | '1M' | '3M' | 'YTD' | '1Y' | 'ALL';
