@@ -29,6 +29,7 @@ import {
   getMarketToday,
 } from '@/lib/utils/tradingCalendar';
 import { sendSellAlert } from '@/lib/services/notifications';
+import { normalizeSectorValue } from '@/lib/services/sector';
 
 const formatDateString = (date: Date): string => {
   const year = date.getFullYear();
@@ -416,6 +417,8 @@ export async function createPosition(
     const returnRate = calculateReturnRate(totalValue, totalInvested);
     const profitLoss = totalValue - totalInvested;
 
+    const normalizedSector = normalizeSectorValue(stock.sector);
+
     // Position 데이터 생성 (undefined 필드 제외)
     const position: Omit<Position, 'id'> = {
       portfolioId,
@@ -425,7 +428,7 @@ export async function createPosition(
       market: stock.market,
       exchange: stock.exchange || '',
       assetType: stock.assetType,
-      sector: stock.sector || '미분류',
+      sector: normalizedSector,
       currency: stock.currency,
       shares: shares,
       averagePrice: initialData.averagePrice || 0,
