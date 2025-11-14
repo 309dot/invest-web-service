@@ -10,6 +10,7 @@ export const runtime = 'nodejs';
 import { NextRequest, NextResponse } from 'next/server';
 import { analyzePortfolio } from '@/lib/services/portfolio-analysis';
 import { getPortfolioPositions } from '@/lib/services/position';
+import { getPortfolioPerformancePeriods } from '@/lib/server/portfolioPerformance';
 
 /**
  * GET /api/portfolio/analysis?portfolioId=xxx
@@ -28,13 +29,17 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const analysis = await analyzePortfolio(userId, portfolioId);
-    const positions = await getPortfolioPositions(userId, portfolioId);
+    const [analysis, positions, performance] = await Promise.all([
+      analyzePortfolio(userId, portfolioId),
+      getPortfolioPositions(userId, portfolioId),
+      getPortfolioPerformancePeriods(),
+    ]);
 
     return NextResponse.json({
       success: true,
       analysis,
       positions,
+      performance,
     });
   } catch (error) {
     console.error('Portfolio analysis error:', error);

@@ -32,11 +32,27 @@ interface AuthProviderProps {
   children: React.ReactNode;
 }
 
+const isE2EMode = process.env.NEXT_PUBLIC_E2E === 'true';
+
 export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (isE2EMode) {
+      const mockUser = {
+        uid: 'e2e-user',
+        email: 'e2e@example.com',
+        displayName: 'E2E Test User',
+        photoURL: null,
+        providerId: 'e2e',
+      } as unknown as User;
+
+      setUser(mockUser);
+      setLoading(false);
+      return;
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         // 사용자 프로필 확인/생성

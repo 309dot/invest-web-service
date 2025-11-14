@@ -21,6 +21,9 @@ import { TopContributorsChart } from '@/components/analysis/TopContributorsChart
 import { GPTSummaryCard } from '@/components/analysis/GPTSummaryCard';
 import { RecommendationList } from '@/components/analysis/RecommendationList';
 import type { SupportedCurrency } from '@/lib/currency';
+import { PortfolioGuidedTour } from '@/components/PortfolioGuidedTour';
+import { LearningProgress } from '@/components/LearningProgress';
+import { AlertPreferenceCard } from '@/components/AlertPreferenceCard';
 
 export default function PortfolioAnalysisPage() {
   const { user, loading: authLoading } = useAuth();
@@ -186,6 +189,103 @@ export default function PortfolioAnalysisPage() {
     [analysis]
   );
 
+  const dailySummary = useMemo(() => {
+    if (!analysis) {
+      return null;
+    }
+
+    const gain = analysis.overallReturnRate;
+    const diversification = analysis.diversificationScore;
+    const maxDrawdown = analysis.riskMetrics.maxDrawdown;
+
+    let headline: string;
+    if (gain >= 5) {
+      headline = `포트폴리오가 +${gain.toFixed(1)}% 상승세를 이어가고 있습니다.`;
+    } else if (gain >= 0) {
+      headline = `수익률이 +${gain.toFixed(1)}%로 안정적으로 유지되고 있습니다.`;
+    } else {
+      headline = `수익률이 ${gain.toFixed(1)}%로 조정 중이지만 장기 추세는 건재합니다.`;
+    }
+
+    let detail: string;
+    if (diversification < 50) {
+      detail = '자산이 한 섹터에 치우쳐 있어요. ETF나 해외 자산을 1~2개만 추가해도 흔들림이 크게 줄어듭니다.';
+    } else if (maxDrawdown <= -30) {
+      detail = '최근 최대 손실폭이 커졌습니다. 현금·채권 비중을 5~10% 보강하면 변동성을 완화할 수 있어요.';
+    } else {
+      detail = '분산과 리스크 모두 건강한 상태입니다. 다음 달에도 리밸런싱만 꾸준히 점검하면 충분합니다.';
+    }
+
+    return { headline, detail };
+  }, [analysis]);
+
+  const learningPath = useMemo(() => {
+    if (!analysis) return [];
+    const modules: Array<{ title: string; detail: string; duration: string }> = [];
+
+    if (analysis.diversificationScore < 55) {
+      modules.push({
+        title: '분산 업그레이드',
+        detail: 'ETF와 해외 섹터를 활용해 한 종목 비중을 낮추는 방법',
+        duration: '15분',
+      });
+    }
+
+    if (analysis.riskMetrics.maxDrawdown <= -30) {
+      modules.push({
+        title: '드로다운 방어 전략',
+        detail: '현금·채권·배당주 비중을 활용해 낙폭을 줄이는 법',
+        duration: '10분',
+      });
+    }
+
+    if (analysis.overallReturnRate < 0) {
+      modules.push({
+        title: '감정 관리 노트',
+        detail: '손실 구간에서 체크해야 할 3가지 질문',
+        duration: '8분',
+      });
+    }
+
+    if (modules.length === 0) {
+      modules.push({
+        title: '정기 리밸런싱 유지',
+        detail: '현재 전략을 유지하면서 분기별로 비중만 점검하세요.',
+        duration: '5분',
+      });
+    }
+
+    return modules.slice(0, 3);
+  }, [analysis]);
+
+  const earnedBadges = useMemo(() => {
+    if (!analysis) return [];
+    const badges: Array<{ label: string; description: string }> = [];
+
+    if (analysis.diversificationScore >= 70) {
+      badges.push({
+        label: '분산 챌린지 클리어',
+        description: '자산이 고르게 분산되어 있습니다.',
+      });
+    }
+
+    if (analysis.overallReturnRate >= 10) {
+      badges.push({
+        label: '두 자릿수 수익',
+        description: '최근 12개월 수익률이 두 자릿수를 돌파했습니다.',
+      });
+    }
+
+    if (analysis.riskMetrics.volatility <= 15) {
+      badges.push({
+        label: '안정 추구자',
+        description: '변동성을 15% 이하로 관리 중입니다.',
+      });
+    }
+
+    return badges;
+  }, [analysis]);
+
   if (authLoading || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -231,6 +331,7 @@ export default function PortfolioAnalysisPage() {
       <Header />
       <div className="min-h-screen p-4 md:p-8">
         <main className="max-w-7xl mx-auto space-y-6">
+          <PortfolioGuidedTour />
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-3xl font-bold tracking-tight">포트폴리오 분석</h1>
@@ -243,6 +344,16 @@ export default function PortfolioAnalysisPage() {
               </Button>
             </div>
           </div>
+
+          {dailySummary ? (
+            <Card data-tour="headline" className="border-primary/20 bg-primary/5">
+              <CardContent className="py-5">
+                <p className="text-xs font-semibold uppercase tracking-wide text-primary">오늘의 한 줄 요약</p>
+                <p className="mt-2 text-lg font-semibold text-primary">{dailySummary.headline}</p>
+                <p className="mt-1 text-sm text-muted-foreground">{dailySummary.detail}</p>
+              </CardContent>
+            </Card>
+          ) : null}
 
           <div className="grid gap-4 lg:grid-cols-3">
             <Card className="lg:col-span-1">
@@ -309,18 +420,22 @@ export default function PortfolioAnalysisPage() {
             })}
           </div>
 
-          <RiskSection
-            diversificationScore={analysis.diversificationScore}
-            riskMetrics={analysis.riskMetrics}
-            overallReturnRate={analysis.overallReturnRate}
-          />
+          <div data-tour="risk-cards">
+            <RiskSection
+              diversificationScore={analysis.diversificationScore}
+              riskMetrics={analysis.riskMetrics}
+              overallReturnRate={analysis.overallReturnRate}
+            />
+          </div>
 
-          <GPTSummaryCard
-            diagnosis={diagnosis}
-            loading={diagnosisLoading}
-            error={diagnosisError}
-            onRetry={handleDiagnosisRetry}
-          />
+          <div data-tour="ai-summary">
+            <GPTSummaryCard
+              diagnosis={diagnosis}
+              loading={diagnosisLoading}
+              error={diagnosisError}
+              onRetry={handleDiagnosisRetry}
+            />
+          </div>
 
           <div className="grid gap-6 md:grid-cols-2">
             <AllocationPieChart
@@ -339,22 +454,94 @@ export default function PortfolioAnalysisPage() {
             />
           </div>
 
+          <LearningProgress />
+          <AlertPreferenceCard />
+          {learningPath.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>맞춤 학습 경로</CardTitle>
+                <CardDescription>이번 주에 집중하면 좋은 학습 주제입니다.</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-3 md:grid-cols-3">
+                {learningPath.map((module) => (
+                  <div key={module.title} className="rounded-md border p-3 text-sm">
+                    <p className="font-semibold text-primary">{module.title}</p>
+                    <p className="mt-1 text-muted-foreground">{module.detail}</p>
+                    <p className="mt-2 text-xs text-muted-foreground">소요 시간 · {module.duration}</p>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+          {earnedBadges.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>획득한 배지</CardTitle>
+                <CardDescription>투자 습관을 꾸준히 이어온 흔적입니다.</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-wrap gap-3">
+                {earnedBadges.map((badge) => (
+                  <div key={badge.label} className="rounded-full border border-primary/30 bg-primary/5 px-4 py-2 text-xs font-semibold text-primary">
+                    {badge.label}
+                    <span className="ml-2 text-[11px] text-muted-foreground">{badge.description}</span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+          <Card>
+            <CardHeader>
+              <CardTitle>학습 자료</CardTitle>
+              <CardDescription>추천 콘텐츠로 투자 감각을 점검해보세요.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-3 md:grid-cols-3">
+              {[
+                {
+                  title: '분산투자 가이드',
+                  description: 'ETF로 간단히 시작하는 글로벌 분산 전략',
+                  link: 'https://www.investopedia.com/articles/basics/06/diversification.asp',
+                },
+                {
+                  title: '리밸런싱 체크리스트',
+                  description: '분할 매매, 현금흐름, 세금 이슈 정리',
+                  link: 'https://m.blog.naver.com/PostView.naver?blogId=naverfinance&logNo=222701448177',
+                },
+                {
+                  title: '감정 관리하기',
+                  description: '손실 회피 심리를 다루는 5가지 방법',
+                  link: 'https://www.morningstar.com/articles/1052663/how-to-deal-with-loss-aversion',
+                },
+              ].map((resource) => (
+                <a
+                  key={resource.title}
+                  href={resource.link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-md border p-3 transition hover:border-primary/50 hover:bg-muted/50"
+                >
+                  <p className="text-sm font-semibold text-primary">{resource.title}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{resource.description}</p>
+                </a>
+              ))}
+            </CardContent>
+          </Card>
+
           <TopContributorsChart data={analysis.topContributors} valueFormatter={formatBaseAmount} />
 
           {positions.length > 0 && <MultiStockChart positions={positions} />}
 
-          {positions.length > 0 && (
-            <RebalancingSimulator
-              positions={positions}
-              totalValue={analysis.totalValue}
-              baseCurrency={analysis.baseCurrency}
-              exchangeRate={analysis.exchangeRate?.rate ?? null}
-            />
-          )}
+          <div data-tour="action-panel" className="space-y-6">
+            {positions.length > 0 && (
+              <RebalancingSimulator
+                positions={positions}
+                totalValue={analysis.totalValue}
+                baseCurrency={analysis.baseCurrency}
+                exchangeRate={analysis.exchangeRate?.rate ?? null}
+              />
+            )}
 
-          <RecommendationList
-            suggestions={analysis.rebalancingSuggestions}
-          />
+            <RecommendationList suggestions={analysis.rebalancingSuggestions} />
+          </div>
         </main>
       </div>
     </>

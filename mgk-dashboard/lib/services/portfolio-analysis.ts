@@ -5,7 +5,12 @@
  */
 
 import { getPortfolioPositions } from './position';
-import type { Position, Sector, Market, AssetType } from '@/types';
+import { getStocksBySymbols } from './stock-master';
+import { getEtfSectorWeights } from '@/lib/apis/yahoo-finance';
+import { normalizeSector } from '@/lib/utils/sectors';
+import { getBenchmarkComparisons } from '@/lib/server/benchmark';
+import { parseISO, isValid, subYears } from 'date-fns';
+import type { Position, Sector, Market, AssetType, Stock } from '@/types';
 import {
   assertCurrency,
   convertWithRate,
@@ -15,7 +20,7 @@ import {
 import { calculateReturnRate } from '@/lib/utils/calculations';
 
 export interface SectorAllocation {
-  sector: Sector | 'unknown';
+  sector: Sector;
   value: number;
   percentage: number;
   returnRate: number;
@@ -88,6 +93,7 @@ export interface PortfolioAnalysis {
   riskMetrics: RiskMetrics;
   topContributors: TopContributor[];
   rebalancingSuggestions: RebalancingSuggestion[];
+  benchmarkComparison: Awaited<ReturnType<typeof getBenchmarkComparisons>>;
   diversificationScore: number; // 0-100
   timestamp: string;
 }
@@ -95,16 +101,162 @@ export interface PortfolioAnalysis {
 /**
  * 섹터별 분산도 계산
  */
-export function calculateSectorAllocation(
+export async function calculateSectorAllocation(
   positions: Position[],
   fxRate: number | null
-): SectorAllocation[] {
-  const sectorMap = new Map<Sector | 'unknown', {
+): Promise<SectorAllocation[]> {
+  const sectorMap = new Map<Sector, {
     value: number;
     invested: number;
     count: number;
   }>();
 
+  if (positions.length === 0) {
+    return [];
+  }
+
+  const uniqueSymbols = Array.from(new Set(positions.map((position) => position.symbol)));
+  let stocks: Stock[] = [];
+
+  try {
+    stocks = await getStocksBySymbols(uniqueSymbols);
+  } catch (error) {
+    console.warn('Failed to load stock metadata for sector allocation:', error);
+  }
+
+  const stockLookup = new Map<string, Stock>();
+  stocks.forEach((stock) => {
+    stockLookup.set(stock.symbol, stock);
+  });
+
+  const etfWeightsCache = new Map<string, { sector: Sector; weight: number }[] | null>();
+
+  const getCurrency = (position: Position) =>
+    assertCurrency(position.currency, position.market === 'KR' ? 'KRW' : 'USD');
+
+  const toBaseValue = (amount: number, currency: SupportedCurrency) =>
+    currency === 'USD'
+      ? amount
+      : fxRate
+        ? convertWithRate(amount, 'KRW', 'USD', fxRate)
+        : amount;
+
+  const addExposure = (sector: Sector, value: number, invested: number, weight: number) => {
+    const key: Sector = sector ?? 'other';
+    const existing = sectorMap.get(key) || { value: 0, invested: 0, count: 0 };
+
+    sectorMap.set(key, {
+      value: existing.value + value,
+      invested: existing.invested + invested,
+      count: existing.count + weight,
+    });
+  };
+
+  const sanitizeBreakdown = (breakdown?: Record<string, number> | null) => {
+    if (!breakdown) return null;
+
+    const entries = Object.entries(breakdown)
+      .map<[Sector, number]>(([key, rawWeight]) => {
+        const sector = normalizeSector(key);
+        const weight = typeof rawWeight === 'number' ? rawWeight : Number(rawWeight);
+        return [sector, Number.isFinite(weight) ? weight : 0];
+      })
+      .filter(([, weight]) => weight > 0);
+
+    if (entries.length === 0) {
+      return null;
+    }
+
+    let total = entries.reduce((sum, [, weight]) => sum + weight, 0);
+    if (total === 0) {
+      return null;
+    }
+
+    if (total > 1.05) {
+      total = total === 0 ? 1 : total;
+      return entries.map(([sector, weight]) => ({ sector, weight: weight / total }));
+    }
+
+    const normalized = entries.map(([sector, weight]) => ({
+      sector,
+      weight: weight > 1 ? weight / 100 : weight,
+    }));
+
+    const normalizedTotal = normalized.reduce((sum, item) => sum + item.weight, 0);
+    if (normalizedTotal < 0.99) {
+      normalized.push({ sector: 'other', weight: Math.max(0, 1 - normalizedTotal) });
+    }
+
+    return normalized;
+  };
+
+  const resolveEtfWeights = async (position: Position, stock?: Stock | null) => {
+    if (etfWeightsCache.has(position.symbol)) {
+      return etfWeightsCache.get(position.symbol) ?? null;
+    }
+
+    const fromStock = sanitizeBreakdown(stock?.sectorBreakdown);
+    if (fromStock) {
+      etfWeightsCache.set(position.symbol, fromStock);
+      return fromStock;
+    }
+
+    const fetched = await getEtfSectorWeights(position.symbol);
+    if (fetched && fetched.length > 0) {
+      etfWeightsCache.set(position.symbol, fetched);
+      return fetched;
+    }
+
+    etfWeightsCache.set(position.symbol, null);
+    return null;
+  };
+
+  for (const position of positions) {
+    const currency = getCurrency(position);
+    const baseValue = toBaseValue(position.totalValue, currency);
+    const baseInvested = toBaseValue(position.totalInvested, currency);
+    const stock = stockLookup.get(position.symbol);
+
+    if (position.assetType === 'etf') {
+      const weights = await resolveEtfWeights(position, stock);
+      if (weights && weights.length > 0) {
+        weights.forEach(({ sector, weight }) => {
+          addExposure(sector, baseValue * weight, baseInvested * weight, weight);
+        });
+        continue;
+      }
+    }
+
+    const rawSector =
+      (position as any).sector ||
+      stock?.sector ||
+      (position.assetType === 'etf' ? 'other' : undefined);
+    const sector = normalizeSector(rawSector);
+    addExposure(sector, baseValue, baseInvested, 1);
+  }
+
+  const totalValue = Array.from(sectorMap.values()).reduce((sum, data) => sum + data.value, 0);
+
+  const allocations: SectorAllocation[] = [];
+
+  sectorMap.forEach((data, sector) => {
+    const percentage = totalValue > 0 ? (data.value / totalValue) * 100 : 0;
+    const returnRate =
+      data.invested > 0 ? ((data.value - data.invested) / data.invested) * 100 : 0;
+
+    allocations.push({
+      sector,
+      value: data.value,
+      percentage,
+      returnRate,
+      count: data.count,
+    });
+  });
+
+  return allocations
+    .filter((allocation) => allocation.value > 0 || allocation.count > 0)
+    .sort((a, b) => b.value - a.value);
+}
   positions.forEach((position) => {
     const sector = (position as any).sector || 'unknown';
     const currency = assertCurrency(position.currency, position.market === 'KR' ? 'KRW' : 'USD');
@@ -364,7 +516,10 @@ export function calculateDiversificationScore(
 
   // 2. 섹터 분산 (최대 30점)
   const sectorCount = sectorAllocation.length;
-  const maxSectorWeight = Math.max(...sectorAllocation.map(s => s.percentage));
+  const maxSectorWeight =
+    sectorAllocation.length > 0
+      ? Math.max(...sectorAllocation.map((s) => s.percentage))
+      : 0;
   if (sectorCount >= 8) score += 15;
   else if (sectorCount >= 5) score += 10;
   else score += sectorCount * 2;
@@ -375,7 +530,10 @@ export function calculateDiversificationScore(
 
   // 3. 지역 분산 (최대 20점)
   const regionCount = regionAllocation.length;
-  const maxRegionWeight = Math.max(...regionAllocation.map(r => r.percentage));
+  const maxRegionWeight =
+    regionAllocation.length > 0
+      ? Math.max(...regionAllocation.map((r) => r.percentage))
+      : 0;
   if (regionCount >= 3) score += 10;
   else score += regionCount * 3;
   
@@ -385,7 +543,10 @@ export function calculateDiversificationScore(
 
   // 4. 자산 유형 분산 (최대 20점)
   const assetCount = assetAllocation.length;
-  const maxAssetWeight = Math.max(...assetAllocation.map(a => a.percentage));
+  const maxAssetWeight =
+    assetAllocation.length > 0
+      ? Math.max(...assetAllocation.map((a) => a.percentage))
+      : 0;
   if (assetCount >= 3) score += 10;
   else score += assetCount * 3;
   
@@ -516,7 +677,7 @@ export async function analyzePortfolio(
 
     const overallReturnRate = calculateReturnRate(totalValue, totalInvested);
 
-    const sectorAllocation = calculateSectorAllocation(positions, rate ?? null);
+    const sectorAllocation = await calculateSectorAllocation(positions, rate ?? null);
     const regionAllocation = calculateRegionAllocation(positions, rate ?? null);
     const assetAllocation = calculateAssetAllocation(positions, rate ?? null);
     const riskMetrics = calculateRiskMetrics(positions);
@@ -532,6 +693,28 @@ export async function analyzePortfolio(
       assetAllocation,
       positions.length
     );
+
+    const today = new Date();
+    const defaultBenchmarkStart = subYears(today, 1);
+    let benchmarkStart = new Date(defaultBenchmarkStart.getTime());
+
+    positions.forEach((position) => {
+      if (!position.firstPurchaseDate) {
+        return;
+      }
+      const parsed = parseISO(position.firstPurchaseDate);
+      if (!isValid(parsed)) {
+        return;
+      }
+      if (parsed < benchmarkStart) {
+        benchmarkStart = parsed;
+      }
+    });
+
+    const benchmarkComparison = await getBenchmarkComparisons({
+      startDate: benchmarkStart.toISOString().slice(0, 10),
+      endDate: today.toISOString().slice(0, 10),
+    });
 
     return {
       portfolioId,
@@ -552,6 +735,7 @@ export async function analyzePortfolio(
       riskMetrics,
       topContributors,
       rebalancingSuggestions,
+      benchmarkComparison,
       diversificationScore,
       timestamp: new Date().toISOString(),
     };

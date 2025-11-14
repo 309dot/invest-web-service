@@ -25,6 +25,10 @@ export function formatCurrency(
   return `${sign}$${formatted}`;
 }
 
+export function formatAmount(amount: number, currency: 'USD' | 'KRW' = 'USD'): string {
+  return formatCurrency(amount, currency);
+}
+
 /**
  * Format percentage
  */

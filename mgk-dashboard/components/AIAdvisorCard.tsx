@@ -1,12 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, History, Loader2, RefreshCw, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, CalendarClock, History, Loader2, RefreshCw, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+import type { AIAdvisorActionItem } from '@/types';
+import { formatPercent } from '@/lib/utils/formatters';
 
 type AdvisorAction = 'buy' | 'sell' | 'hold';
 
@@ -29,6 +31,7 @@ interface AIAdvisorData {
   newsHighlights: string[];
   recommendations: AIAdvisorRecommendation[];
   signals: AIAdvisorSignal;
+  actionItems: AIAdvisorActionItem[];
   generatedAt?: string;
   rawText?: string;
   confidenceScore?: number;
@@ -45,6 +48,124 @@ const ACTION_LABELS: Record<AdvisorAction, string> = {
   hold: '유지',
 };
 
+const PRIORITY_LABEL: Record<AIAdvisorActionItem['priority'], string> = {
+  high: '우선순위 높음',
+  medium: '우선순위 보통',
+  low: '우선순위 낮음',
+};
+
+const URGENCY_LABEL: Record<AIAdvisorActionItem['urgency'], string> = {
+  today: '오늘 실행',
+  this_week: '이번 주',
+  this_month: '이번 달',
+  long_term: '장기 과제',
+};
+
+const PRIORITY_STYLE: Record<AIAdvisorActionItem['priority'], string> = {
+  high: 'bg-red-600 hover:bg-red-600',
+  medium: 'bg-amber-600 hover:bg-amber-600',
+  low: 'bg-emerald-600 hover:bg-emerald-600',
+};
+
+const IMPACT_LABEL: Record<string, string> = {
+  return: '수익 개선',
+  risk: '리스크 관리',
+  diversification: '분산 강화',
+  cost: '비용 절감',
+  income: '현금흐름 개선',
+};
+
+function parseActionItems(value: unknown): AIAdvisorActionItem[] {
+  if (!value) {
+    return [];
+  }
+
+  const items = Array.isArray(value) ? value : [value];
+
+  return items
+    .map((item, index): AIAdvisorActionItem | null => {
+      if (typeof item === 'string' && item.trim()) {
+        const title = item.trim();
+        return {
+          id: `item-${index}`,
+          title,
+          summary: title,
+          priority: 'medium',
+          urgency: 'this_week',
+          impact: 'return',
+          relatedTickers: [],
+          steps: [],
+        };
+      }
+
+      if (!item || typeof item !== 'object') {
+        return null;
+      }
+
+      const raw = item as Record<string, unknown>;
+      const title =
+        typeof raw.title === 'string' && raw.title.trim()
+          ? raw.title.trim()
+          : typeof raw.summary === 'string' && raw.summary.trim()
+          ? raw.summary.trim()
+          : 'Action Item';
+      const summary =
+        typeof raw.summary === 'string' && raw.summary.trim()
+          ? raw.summary.trim()
+          : typeof raw.description === 'string' && raw.description.trim()
+          ? raw.description.trim()
+          : title;
+      const priority =
+        typeof raw.priority === 'string' && ['high', 'medium', 'low'].includes(raw.priority.toLowerCase())
+          ? (raw.priority.toLowerCase() as AIAdvisorActionItem['priority'])
+          : 'medium';
+      const urgency =
+        typeof raw.urgency === 'string' &&
+        ['today', 'this_week', 'this_month', 'long_term'].includes(raw.urgency.toLowerCase())
+          ? (raw.urgency.toLowerCase() as AIAdvisorActionItem['urgency'])
+          : 'this_week';
+      const impact =
+        typeof raw.impact === 'string' && raw.impact.trim()
+          ? raw.impact.trim().toLowerCase()
+          : 'return';
+      const relatedTickers = Array.isArray(raw.relatedTickers)
+        ? raw.relatedTickers
+            .filter((ticker): ticker is string => typeof ticker === 'string' && ticker.trim())
+            .map((ticker) => ticker.trim().toUpperCase())
+        : undefined;
+      const dueDate =
+        typeof raw.dueDate === 'string' && raw.dueDate.trim()
+          ? raw.dueDate.trim()
+          : typeof raw.due === 'string' && raw.due.trim()
+          ? raw.due.trim()
+          : undefined;
+      const estimatedEffort =
+        typeof raw.estimatedEffort === 'string' &&
+        ['low', 'medium', 'high'].includes(raw.estimatedEffort.toLowerCase())
+          ? (raw.estimatedEffort.toLowerCase() as AIAdvisorActionItem['estimatedEffort'])
+          : undefined;
+      const steps = Array.isArray(raw.steps)
+        ? raw.steps
+            .filter((step): step is string => typeof step === 'string' && step.trim())
+            .map((step) => step.trim())
+        : undefined;
+
+      return {
+        id: typeof raw.id === 'string' && raw.id.trim() ? raw.id.trim() : `item-${index}`,
+        title,
+        summary,
+        priority,
+        urgency,
+        impact,
+        relatedTickers,
+        dueDate,
+        estimatedEffort,
+        steps,
+      };
+    })
+    .filter((item): item is AIAdvisorActionItem => item !== null);
+}
+
 function normalizeAdvisorData(value: unknown): AIAdvisorData | null {
   if (!value || typeof value !== 'object') {
     return null;
@@ -58,6 +179,8 @@ function normalizeAdvisorData(value: unknown): AIAdvisorData | null {
   const newsHighlights = Array.isArray(source.newsHighlights)
     ? source.newsHighlights.filter((item): item is string => typeof item === 'string')
     : [];
+
+  const actionItems = parseActionItems(source.actionItems);
 
   const recommendations: AIAdvisorRecommendation[] = Array.isArray(source.recommendations)
     ? source.recommendations
@@ -110,6 +233,7 @@ function normalizeAdvisorData(value: unknown): AIAdvisorData | null {
     newsHighlights,
     recommendations,
     signals,
+    actionItems,
     generatedAt: typeof source.generatedAt === 'string' ? source.generatedAt : undefined,
     rawText: typeof source.rawText === 'string' ? source.rawText : undefined,
     confidenceScore: typeof source.confidenceScore === 'number' ? source.confidenceScore : undefined,
@@ -128,6 +252,17 @@ function summarizeRecommendations(recommendations: AIAdvisorRecommendation[]): s
     .join(', ');
 
   return recommendations.length > 2 ? `${summary} 외` : summary;
+}
+
+function formatDueDate(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return parsed.toLocaleDateString('ko-KR', {
+    month: '2-digit',
+    day: '2-digit',
+  });
 }
 
 const DEFAULT_ERROR_MESSAGE = 'AI 어드바이저 호출에 실패했습니다.';
@@ -289,6 +424,70 @@ export function AIAdvisorCard({ initialData = null }: AIAdvisorCardProps) {
               </p>
             </section>
 
+            {data.actionItems && data.actionItems.length ? (
+              <section className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-primary">실행 가능한 액션</h3>
+                  <Badge variant="outline" className="border-primary/40 text-xs">
+                    총 {data.actionItems.length}건
+                  </Badge>
+                </div>
+                <div className="space-y-3">
+                  {data.actionItems.map((item) => (
+                    <div
+                      key={item.id}
+                      className="space-y-2 rounded-md border border-primary/10 bg-primary/5 p-3"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge className={`${PRIORITY_STYLE[item.priority]} text-xs`}>
+                            {PRIORITY_LABEL[item.priority]}
+                          </Badge>
+                          <Badge variant="secondary" className="text-xs uppercase">
+                            {URGENCY_LABEL[item.urgency]}
+                          </Badge>
+                          <Badge variant="outline" className="text-xs">
+                            {IMPACT_LABEL[item.impact] ?? `영향: ${item.impact}`}
+                          </Badge>
+                          {item.estimatedEffort ? (
+                            <Badge variant="outline" className="text-xs">
+                              소요: {item.estimatedEffort === 'high' ? '높음' : item.estimatedEffort === 'low' ? '낮음' : '보통'}
+                            </Badge>
+                          ) : null}
+                        </div>
+                        {item.dueDate ? (
+                          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <CalendarClock className="h-3 w-3" />
+                            마감 {formatDueDate(item.dueDate)}
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-primary">{item.title}</p>
+                        <p className="text-sm text-muted-foreground">{item.summary}</p>
+                      </div>
+                      {item.relatedTickers && item.relatedTickers.length ? (
+                        <div className="flex flex-wrap items-center gap-1 pt-1">
+                          {item.relatedTickers.map((ticker) => (
+                            <Badge key={`${item.id}-${ticker}`} variant="secondary" className="uppercase">
+                              {ticker}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : null}
+                      {item.steps && item.steps.length ? (
+                        <ul className="space-y-1 rounded-md border border-primary/10 bg-background/60 p-3 text-xs text-muted-foreground">
+                          {item.steps.map((step, stepIndex) => (
+                            <li key={`${item.id}-step-${stepIndex}`}>• {step}</li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
             {data.newsHighlights?.length ? (
               <section className="space-y-2">
                 <h3 className="text-sm font-semibold text-primary">핵심 뉴스</h3>
@@ -387,6 +586,12 @@ export function AIAdvisorCard({ initialData = null }: AIAdvisorCardProps) {
                   {item.recommendations?.length ? (
                     <p className="mt-2 text-xs text-muted-foreground">
                       추천: {summarizeRecommendations(item.recommendations)}
+                    </p>
+                  ) : null}
+                  {item.actionItems?.length ? (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      액션: {item.actionItems[0].title}
+                      {item.actionItems.length > 1 ? ` 외 ${item.actionItems.length - 1}건` : ''}
                     </p>
                   ) : null}
                 </button>

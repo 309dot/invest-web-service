@@ -80,12 +80,13 @@ const createInitialTotals = (): PortfolioTotals => ({
 export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
-  const { formatAmount, displayCurrency } = useCurrency();
+  const { exchangeRate } = useCurrency();
   const [positions, setPositions] = useState<Position[]>([]);
   const [totals, setTotals] = useState<PortfolioTotals>(() => createInitialTotals());
   const [loading, setLoading] = useState(true);
   const [selectedPosition, setSelectedPosition] = useState<Position | null>(null);
   const [showTransactionForm, setShowTransactionForm] = useState(false);
+  const [viewCurrency, setViewCurrency] = useState<'KRW' | 'USD'>('KRW');
 
   const fetchPositions = useCallback(async (uid: string) => {
     try {
@@ -168,6 +169,42 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
     setShowTransactionForm(true);
   };
 
+  const fxRate = exchangeRate ?? totals.exchangeRate?.rate ?? null;
+
+  const convertForView = useCallback(
+    (value: number, sourceCurrency: 'USD' | 'KRW') => {
+      if (viewCurrency === sourceCurrency) {
+        return value;
+      }
+
+      if (!fxRate || fxRate <= 0) {
+        return value;
+      }
+
+      return viewCurrency === 'KRW' ? value * fxRate : value / fxRate;
+    },
+    [viewCurrency, fxRate]
+  );
+
+  const aggregatedTotals = viewCurrency === 'KRW' ? totals.converted.KRW : totals.converted.USD;
+  const aggregatedInvested = aggregatedTotals?.totalInvested ?? 0;
+  const aggregatedValue = aggregatedTotals?.totalValue ?? 0;
+  const aggregatedProfit = aggregatedValue - aggregatedInvested;
+  const aggregatedReturnRate =
+    aggregatedInvested > 0 ? ((aggregatedValue - aggregatedInvested) / aggregatedInvested) * 100 : 0;
+  const currencySummaries = [
+    {
+      label: 'USD 자산',
+      totals: totals.byCurrency.USD,
+      currency: 'USD' as const,
+    },
+    {
+      label: 'KRW 자산',
+      totals: totals.byCurrency.KRW,
+      currency: 'KRW' as const,
+    },
+  ];
+
   const handleEditPosition = (
     position: Position,
     e?: { stopPropagation?: () => void }
@@ -229,29 +266,6 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
     setSelectedPosition(null);
   };
 
-  const usdTotals = totals.byCurrency.USD;
-  const krwTotals = totals.byCurrency.KRW;
-
-  const usdProfit = usdTotals.totalValue - usdTotals.totalInvested;
-  const krwProfit = krwTotals.totalValue - krwTotals.totalInvested;
-
-  const usdReturnRate = usdTotals.totalInvested > 0
-    ? ((usdTotals.totalValue - usdTotals.totalInvested) / usdTotals.totalInvested) * 100
-    : 0;
-  const krwReturnRate = krwTotals.totalInvested > 0
-    ? ((krwTotals.totalValue - krwTotals.totalInvested) / krwTotals.totalInvested) * 100
-    : 0;
-
-  const showCombined = displayCurrency !== 'original';
-  const combinedCurrency: 'USD' | 'KRW' = displayCurrency === 'KRW' ? 'KRW' : 'USD';
-  const combinedStats = totals.converted?.[combinedCurrency] ?? { totalInvested: 0, totalValue: 0 };
-  const combinedInvested = showCombined ? combinedStats.totalInvested : 0;
-  const combinedValue = showCombined ? combinedStats.totalValue : 0;
-  const combinedProfit = combinedValue - combinedInvested;
-  const combinedReturnRate = showCombined && combinedInvested > 0
-    ? ((combinedValue - combinedInvested) / combinedInvested) * 100
-    : 0;
-
   const resolveCurrency = (position: Position): 'USD' | 'KRW' => {
     if (position.currency === 'KRW' || position.currency === 'USD') {
       return position.currency;
@@ -281,80 +295,91 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
         {/* 포트폴리오 요약 */}
         <Card>
           <CardHeader className="space-y-3">
-            <div>
-              <CardTitle>포트폴리오 현황</CardTitle>
-              <CardDescription>통화별 투자 현황을 확인하세요.</CardDescription>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <CardTitle>포트폴리오 현황</CardTitle>
+                <CardDescription>기준 통화를 바꿔 전체 자산을 한눈에 확인하세요.</CardDescription>
+              </div>
+              <div className="inline-flex overflow-hidden rounded-full border border-muted-foreground/30 bg-muted/40">
+                {(['KRW', 'USD'] as const).map((currency) => (
+                  <button
+                    key={currency}
+                    onClick={() => setViewCurrency(currency)}
+                    className={`px-4 py-1 text-sm font-medium transition ${
+                      viewCurrency === currency
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {currency}
+                  </button>
+                ))}
+              </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              {[{ label: 'USD 자산', totals: usdTotals, profit: usdProfit, returnRate: usdReturnRate, currency: 'USD' as const },
-                { label: 'KRW 자산', totals: krwTotals, profit: krwProfit, returnRate: krwReturnRate, currency: 'KRW' as const }]
-                .map(({ label, totals: currencyTotals, profit, returnRate, currency }) => {
-                  const isPositive = profit >= 0;
-                  const formattedProfit = isPositive
-                    ? `+${formatCurrency(profit, currency)}`
-                    : `-${formatCurrency(Math.abs(profit), currency)}`;
-
-                  return (
-                    <div key={currency} className="rounded-lg border p-4 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-muted-foreground">{label}</span>
-                        <Badge variant="outline">{currencyTotals.count} 종목</Badge>
-                      </div>
-                      <div className="grid gap-3 text-sm">
-                        <div>
-                          <p className="text-muted-foreground">총 투자금</p>
-                          <p className="text-xl font-semibold">{formatCurrency(currencyTotals.totalInvested, currency)}</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">평가 금액</p>
-                          <p className="text-xl font-semibold">{formatCurrency(currencyTotals.totalValue, currency)}</p>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground">수익률</span>
-                          <span className={`text-sm font-semibold ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
-                            {formatPercent(returnRate)} ({formattedProfit})
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-            </div>
-
-            {showCombined && (
-              <div className="rounded-lg border p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-sm font-medium text-muted-foreground">표시 통화 기준 합산</h3>
-                  <Badge variant="secondary">{combinedCurrency}</Badge>
+            <div className="rounded-lg border p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-muted-foreground">
+                  선택 통화 기준 합산 ({viewCurrency === 'KRW' ? '원화' : '달러'})
+                </span>
+                <Badge variant="secondary">{viewCurrency}</Badge>
+              </div>
+              <div className="grid gap-3 text-sm md:grid-cols-3">
+                <div>
+                  <p className="text-muted-foreground">총 투자금</p>
+                  <p className="text-xl font-semibold">{formatCurrency(aggregatedInvested, viewCurrency)}</p>
                 </div>
-                <div className="grid gap-3 text-sm md:grid-cols-3">
-                  <div>
-                    <p className="text-muted-foreground">총 투자금</p>
-                    <p className="text-lg font-semibold">
-                      {formatCurrency(combinedInvested, combinedCurrency)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">평가 금액</p>
-                    <p className="text-lg font-semibold">
-                      {formatCurrency(combinedValue, combinedCurrency)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">수익률</p>
-                    <p className={`text-lg font-semibold ${combinedProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {formatPercent(combinedReturnRate)} (
-                      {combinedProfit >= 0
-                        ? `+${formatCurrency(combinedProfit, combinedCurrency)}`
-                        : `-${formatCurrency(Math.abs(combinedProfit), combinedCurrency)}`}
-                      )
-                    </p>
-                  </div>
+                <div>
+                  <p className="text-muted-foreground">평가 금액</p>
+                  <p className="text-xl font-semibold">{formatCurrency(aggregatedValue, viewCurrency)}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">손익 / 수익률</p>
+                  <p className={`text-xl font-semibold ${aggregatedProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {aggregatedProfit >= 0 ? '+' : ''}
+                    {formatCurrency(Math.abs(aggregatedProfit), viewCurrency)} · {formatPercent(aggregatedReturnRate)}
+                  </p>
                 </div>
               </div>
-            )}
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              {currencySummaries.map(({ label, totals: currencyTotals, currency }) => {
+                const profit = currencyTotals.totalValue - currencyTotals.totalInvested;
+                const returnRate =
+                  currencyTotals.totalInvested > 0
+                    ? ((currencyTotals.totalValue - currencyTotals.totalInvested) / currencyTotals.totalInvested) * 100
+                    : 0;
+                const isPositive = profit >= 0;
+                const formattedProfit = `${profit >= 0 ? '+' : '-'}${formatCurrency(Math.abs(profit), currency)}`;
+
+                return (
+                  <div key={currency} className="rounded-lg border p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-muted-foreground">{label}</span>
+                      <Badge variant="outline">{currencyTotals.count} 종목</Badge>
+                    </div>
+                    <div className="grid gap-3 text-sm">
+                      <div>
+                        <p className="text-muted-foreground">총 투자금</p>
+                        <p className="text-xl font-semibold">{formatCurrency(currencyTotals.totalInvested, currency)}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">평가 금액</p>
+                        <p className="text-xl font-semibold">{formatCurrency(currencyTotals.totalValue, currency)}</p>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">수익률</span>
+                        <span className={`text-sm font-semibold ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
+                          {formatPercent(returnRate)} ({formattedProfit})
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </CardContent>
         </Card>
 
@@ -464,42 +489,48 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                           </DropdownMenu>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-3 text-sm">
-                          <div>
-                            <p className="text-muted-foreground">보유 수량</p>
-                            <p className="font-medium">{position.shares.toFixed(4)} 주</p>
-                          </div>
-                          <div>
-                            <p className="text-muted-foreground">평균 단가</p>
-                            <p className="font-medium">{formatAmount(position.averagePrice, resolveCurrency(position))}</p>
-                          </div>
-                          <div>
-                            <p className="text-muted-foreground">투자 금액</p>
-                            <p className="font-medium">{formatAmount(position.totalInvested, resolveCurrency(position))}</p>
-                          </div>
-                          <div>
-                            <p className="text-muted-foreground">평가 금액</p>
-                            <p className="font-medium">{formatAmount(position.totalValue, resolveCurrency(position))}</p>
-                          </div>
-                        </div>
+                        {(() => {
+                          const positionCurrency = resolveCurrency(position);
+                          const evaluatedValue = convertForView(position.totalValue, positionCurrency);
+                          const convertedProfit = convertForView(
+                            position.profitLoss ?? position.totalValue - position.totalInvested,
+                            positionCurrency
+                          );
+                          const profitLabel = `${convertedProfit >= 0 ? '+' : '-'}${formatCurrency(
+                            Math.abs(convertedProfit),
+                            viewCurrency
+                          )}`;
 
-                        <div className="mt-3 pt-3 border-t">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm text-muted-foreground">수익률</span>
-                            <div className="flex items-center gap-2">
-                              <span className={`text-sm font-semibold ${
-                                position.returnRate >= 0 ? 'text-green-600' : 'text-red-600'
-                              }`}>
-                                {formatPercent(position.returnRate)}
-                              </span>
-                              <span className={`text-xs ${
-                                position.profitLoss >= 0 ? 'text-green-600' : 'text-red-600'
-                              }`}>
-                                ({position.profitLoss >= 0 ? '+' : ''}{formatAmount(position.profitLoss, resolveCurrency(position))})
-                              </span>
+                          return (
+                            <div className="space-y-2 text-sm">
+                              <div className="flex items-center justify-between">
+                                <span className="text-muted-foreground">보유 수량</span>
+                                <span className="font-medium">{position.shares.toFixed(4)} 주</span>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span className="text-muted-foreground">평가 금액 ({viewCurrency})</span>
+                                <span className="font-semibold">
+                                  {formatCurrency(evaluatedValue, viewCurrency)}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between border-t pt-2">
+                                <span className="text-muted-foreground">손익 / 수익률</span>
+                                <div className="text-right">
+                                  <span
+                                    className={`font-semibold ${
+                                      convertedProfit >= 0 ? 'text-green-600' : 'text-red-600'
+                                    }`}
+                                  >
+                                    {profitLabel}
+                                  </span>
+                                  <p className="text-xs text-muted-foreground">
+                                    {formatPercent(position.returnRate)}
+                                  </p>
+                                </div>
+                              </div>
                             </div>
-                          </div>
-                        </div>
+                          );
+                        })()}
                       </CardContent>
                     </Card>
                   ))}
@@ -512,102 +543,109 @@ export function PortfolioOverview({ portfolioId }: PortfolioOverviewProps) {
                       <tr className="border-b">
                         <th className="text-left py-3 px-4 font-medium">종목</th>
                         <th className="text-right py-3 px-4 font-medium">보유 수량</th>
-                        <th className="text-right py-3 px-4 font-medium">평균 단가</th>
-                        <th className="text-right py-3 px-4 font-medium">투자 금액</th>
-                        <th className="text-right py-3 px-4 font-medium">평가 금액</th>
-                        <th className="text-right py-3 px-4 font-medium">수익률</th>
-                        <th className="text-right py-3 px-4 font-medium">손익</th>
-                        <th className="text-center py-3 px-4 font-medium">구매방식</th>
-                        <th className="w-12"></th>
+                        <th className="text-right py-3 px-4 font-medium">
+                          평가 금액 ({viewCurrency})
+                        </th>
+                        <th className="text-right py-3 px-4 font-medium">손익 / 수익률</th>
+                        <th className="w-12 text-center font-medium">작업</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {positions.map((position) => (
-                        <tr 
-                          key={position.id} 
-                          className="border-b hover:bg-muted/50 cursor-pointer"
-                          onClick={() => navigateToPosition(position)}
-                        >
-                          <td className="py-3 px-4">
-                            <div className="font-semibold">{position.symbol}</div>
-                          </td>
-                          <td className="py-3 px-4 text-right">
-                            {position.shares.toFixed(4)} 주
-                          </td>
-                          <td className="py-3 px-4 text-right">
-                            {formatAmount(position.averagePrice, resolveCurrency(position))}
-                          </td>
-                          <td className="py-3 px-4 text-right">
-                            {formatAmount(position.totalInvested, resolveCurrency(position))}
-                          </td>
-                          <td className="py-3 px-4 text-right font-medium">
-                            {formatAmount(position.totalValue, resolveCurrency(position))}
-                          </td>
-                          <td className={`py-3 px-4 text-right font-semibold ${
-                            position.returnRate >= 0 ? 'text-green-600' : 'text-red-600'
-                          }`}>
-                            {formatPercent(position.returnRate)}
-                          </td>
-                          <td className={`py-3 px-4 text-right ${
-                            position.profitLoss >= 0 ? 'text-green-600' : 'text-red-600'
-                          }`}>
-                            {position.profitLoss >= 0 ? '+' : ''}
-                            {formatAmount(position.profitLoss, resolveCurrency(position))}
-                          </td>
-                          <td className="py-3 px-4 text-center">
-                            <Badge variant="outline" className="text-xs">
-                              {position.purchaseMethod === 'auto' ? '자동' : '일괄'}
-                            </Badge>
-                          </td>
-                          <td className="py-3 px-4">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8"
-                                  onClick={(event) => event.stopPropagation()}
-                                >
-                                  <MoreVertical className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem
-                                  onClick={(event) => {
-                                    event.preventDefault();
-                                    event.stopPropagation();
-                                    handleTransactionClick(position);
-                                  }}
-                                >
-                                  <ArrowUpDown className="mr-2 h-4 w-4" />
-                                  거래 추가
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={(event) => {
-                                    event.preventDefault();
-                                    event.stopPropagation();
-                                    handleEditPosition(position, event);
-                                  }}
-                                >
-                                  <Edit2 className="mr-2 h-4 w-4" />
-                                  거래 수정
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  className="text-destructive"
-                                  onClick={(event) => {
-                                    event.preventDefault();
-                                    event.stopPropagation();
-                                    handleDeletePosition(position, event);
-                                  }}
-                                >
-                                  <Trash2 className="mr-2 h-4 w-4" />
-                                  포지션 삭제
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </td>
-                        </tr>
-                      ))}
+                      {positions.map((position) => {
+                        const positionCurrency = resolveCurrency(position);
+                        const evaluatedValue = convertForView(position.totalValue, positionCurrency);
+                        const convertedProfit = convertForView(
+                          position.profitLoss ?? position.totalValue - position.totalInvested,
+                          positionCurrency
+                        );
+                        const profitLabel = `${convertedProfit >= 0 ? '+' : '-'}${formatCurrency(
+                          Math.abs(convertedProfit),
+                          viewCurrency
+                        )}`;
+
+                        return (
+                          <tr
+                            key={position.id}
+                            className="border-b hover:bg-muted/50 cursor-pointer"
+                            onClick={() => navigateToPosition(position)}
+                          >
+                            <td className="py-3 px-4">
+                              <div className="font-semibold">{position.symbol}</div>
+                              <div className="text-xs text-muted-foreground flex items-center gap-2">
+                                {position.name}
+                                <Badge variant="outline" className="text-[10px]">
+                                  {position.purchaseMethod === 'auto' ? '자동' : '일괄'}
+                                </Badge>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              {position.shares.toFixed(4)} 주
+                            </td>
+                            <td className="py-3 px-4 text-right font-medium">
+                              {formatCurrency(evaluatedValue, viewCurrency)}
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              <div
+                                className={`font-semibold ${
+                                  convertedProfit >= 0 ? 'text-green-600' : 'text-red-600'
+                                }`}
+                              >
+                                {profitLabel}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {formatPercent(position.returnRate)}
+                              </div>
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8"
+                                    onClick={(event) => event.stopPropagation()}
+                                  >
+                                    <MoreVertical className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem
+                                    onClick={(event) => {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      handleTransactionClick(position);
+                                    }}
+                                  >
+                                    <ArrowUpDown className="mr-2 h-4 w-4" />
+                                    거래 추가
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={(event) => {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      handleEditPosition(position, event);
+                                    }}
+                                  >
+                                    <Edit2 className="mr-2 h-4 w-4" />
+                                    거래 수정
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    className="text-destructive"
+                                    onClick={(event) => {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      handleDeletePosition(position, event);
+                                    }}
+                                  >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    포지션 삭제
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

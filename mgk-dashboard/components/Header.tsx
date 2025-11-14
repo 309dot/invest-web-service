@@ -10,13 +10,10 @@ import {
   X,
   TrendingUp,
   LayoutDashboard,
-  Newspaper,
   Settings,
   LogOut,
   User,
-  FileText,
   BarChart3,
-  ArrowLeftRight,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -34,10 +31,7 @@ export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navigation = [
     { name: '대시보드', href: '/', icon: LayoutDashboard },
-    { name: '거래 이력', href: '/transactions', icon: ArrowLeftRight },
-    { name: '뉴스', href: '/news', icon: Newspaper },
     { name: '분석', href: '/portfolio/analysis', icon: BarChart3 },
-    { name: '주간 리포트', href: '/weekly-reports', icon: FileText },
   ];
 
   const handleSignOut = async () => {

@@ -5,6 +5,8 @@ import { formatCurrency } from '@/lib/utils/formatters';
 
 export type DisplayCurrency = 'original' | 'USD' | 'KRW';
 
+const isE2EMode = process.env.NEXT_PUBLIC_E2E === 'true';
+
 interface CurrencyContextValue {
   displayCurrency: DisplayCurrency;
   setDisplayCurrency: (currency: DisplayCurrency) => void;
@@ -26,6 +28,12 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false);
 
   const fetchExchangeRate = async () => {
+    if (isE2EMode) {
+      setExchangeRate(1300);
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       const response = await fetch('/api/exchange-rate');

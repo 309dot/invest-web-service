@@ -2,6 +2,9 @@
  * Notification service helpers
  */
 
+import { addDoc, collection, Timestamp } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+
 export type BalanceAlertType = 'threshold' | 'insufficient';
 
 export interface BalanceAlertPayload {
@@ -96,6 +99,22 @@ export async function sendSellAlert(payload: SellAlertPayload): Promise<void> {
 
   // TODO: Integrate with transactional email service
   console.warn('[Sell Alert]', JSON.stringify(alertMessage, null, 2));
+
+  try {
+    await addDoc(
+      collection(db, `users/${userId}/sellAlerts`),
+      {
+        ...alertMessage,
+        portfolioId,
+        positionId,
+        status: 'pending',
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+      }
+    );
+  } catch (error) {
+    console.error('Failed to persist sell alert notification', error);
+  }
 }
 
 

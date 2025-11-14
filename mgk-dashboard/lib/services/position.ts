@@ -13,6 +13,7 @@ import {
   query,
   where,
   orderBy,
+  limit as firestoreLimit,
   Timestamp,
   writeBatch,
   deleteDoc,
@@ -50,6 +51,30 @@ interface PriceCacheEntry {
   price: number | null;
   source: PriceSource;
   timestamp: string;
+}
+
+async function getCachedPrice(symbol: string): Promise<number | null> {
+  try {
+    const snapshot = await getDocs(
+      query(
+        collection(db, 'priceSnapshots'),
+        where('symbol', '==', symbol),
+        orderBy('createdAt', 'desc'),
+        firestoreLimit(1)
+      )
+    );
+
+    if (!snapshot.empty) {
+      const cached = snapshot.docs[0].data() as { price?: number };
+      if (cached.price && Number.isFinite(cached.price) && cached.price > 0) {
+        return cached.price;
+      }
+    }
+  } catch (error) {
+    console.warn('Cached price lookup failed:', symbol, error);
+  }
+
+  return null;
 }
 
 function normalizeSymbolForAlphaVantage(symbol: string): string {
@@ -119,9 +144,23 @@ async function applyLatestMarketPrices(positions: Position[]): Promise<Position[
     }
 
     if (!price || !Number.isFinite(price) || price <= 0) {
+      const cachedPrice = await getCachedPrice(symbol);
+      if (cachedPrice && Number.isFinite(cachedPrice) && cachedPrice > 0) {
+        price = cachedPrice;
+        source = 'cached';
+      }
+    }
+
+    if (!price || !Number.isFinite(price) || price <= 0) {
       if (sample.currentPrice && sample.currentPrice > 0) {
         price = sample.currentPrice;
         source = 'fallback';
+      } else if (sample.totalValue && sample.shares && sample.shares > 0) {
+        const inferred = sample.totalValue / sample.shares;
+        if (Number.isFinite(inferred) && inferred > 0) {
+          price = inferred;
+          source = 'fallback';
+        }
       } else if (sample.averagePrice && sample.averagePrice > 0) {
         price = sample.averagePrice;
         source = 'fallback';
@@ -255,14 +294,15 @@ function aggregatePositionMetrics(
     currentPrice = lastTradePrice;
   }
 
+  const normalizedInvested = shares > 0 ? shares * averagePrice : 0;
   const totalValue = shares * currentPrice;
-  const returnRate = calculateReturnRate(totalValue, totalInvested);
-  const profitLoss = totalValue - totalInvested;
+  const returnRate = calculateReturnRate(totalValue, normalizedInvested);
+  const profitLoss = totalValue - normalizedInvested;
 
   return {
     shares,
     averagePrice,
-    totalInvested,
+    totalInvested: normalizedInvested,
     currentPrice,
     totalValue,
     returnRate,
@@ -592,8 +632,8 @@ export async function updateSellAlertSettings(
     enabled: boolean;
     targetReturnRate?: number;
     sellRatio?: number;
-    notifyEmail?: string | null;
     triggerOnce?: boolean;
+    accountEmail?: string | null;
   }
 ): Promise<SellAlertConfig> {
   const positionRef = doc(
@@ -609,7 +649,10 @@ export async function updateSellAlertSettings(
   }
 
   const existing = snapshot.data().sellAlert as SellAlertConfig | undefined;
-  const normalized = normalizeSellAlertSettings(existing, settings);
+  const normalized = normalizeSellAlertSettings(existing, {
+    ...settings,
+    notifyEmail: settings.accountEmail ?? existing?.notifyEmail ?? null,
+  });
 
   await updateDoc(positionRef, {
     sellAlert: normalized,

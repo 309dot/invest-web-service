@@ -2,30 +2,31 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { Header } from '@/components/Header';
 import { PortfolioOverview } from '@/components/PortfolioOverview';
 import { BalanceDashboard } from '@/components/BalanceDashboard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import dynamic from "next/dynamic";
 import { deriveDefaultPortfolioId } from '@/lib/utils/portfolio';
-const AIAdvisorCard = dynamic(
-  () => import("@/components/AIAdvisorCard").then((mod) => mod.AIAdvisorCard),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="rounded-md border border-dashed border-muted-foreground/30 bg-muted/40 p-6 text-center text-sm text-muted-foreground">
-        AI 어드바이저 카드를 불러오는 중입니다...
-      </div>
-    ),
-  }
-);
-import { Loader2, Calendar } from 'lucide-react';
+import { BenchmarkComparison } from '@/components/analysis/BenchmarkComparison';
+import { PeriodPerformanceTabs } from '@/components/analysis/PeriodPerformanceTabs';
+import { StockComparisonChart } from '@/components/analysis/StockComparisonChart';
+import { ContributionBreakdown } from '@/components/analysis/ContributionBreakdown';
+import { CorrelationHeatmap } from '@/components/analysis/CorrelationHeatmap';
+import { SmartAlertsPanel } from '@/components/SmartAlertsPanel';
+import { ScenarioAnalysis } from '@/components/ScenarioAnalysis';
+import { BacktestCard } from '@/components/BacktestCard';
+import { PortfolioOptimizerCard } from '@/components/PortfolioOptimizerCard';
+import { TaxOptimizationCard } from '@/components/TaxOptimizationCard';
+import { PersonalizedDashboard } from '@/components/PersonalizedDashboard';
+import { SellAlertBanner } from '@/components/SellAlertBanner';
+import { WeeklyReportModal } from '@/components/WeeklyReportModal';
+import { Loader2 } from 'lucide-react';
 
 export default function Dashboard() {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const isE2EMode = process.env.NEXT_PUBLIC_E2E === 'true';
 
   useEffect(() => {
     if (!loading && !user) {
@@ -62,9 +63,7 @@ export default function Dashboard() {
               실시간 투자 추적 및 AI 기반 분석 시스템
             </p>
             <div className="flex flex-wrap items-center gap-3 pt-2">
-              <Link href="/weekly-reports" className="inline-flex items-center text-sm font-medium text-primary hover:underline">
-                <Calendar className="mr-1 h-4 w-4" /> 주간 리포트 보기
-              </Link>
+              <WeeklyReportModal />
             </div>
           </div>
 
@@ -75,14 +74,55 @@ export default function Dashboard() {
             </TabsList>
 
             <TabsContent value={portfolioId} className="space-y-6">
-              {/* 잔액 대시보드 */}
-              <BalanceDashboard portfolioId={portfolioId} />
+              {isE2EMode ? (
+                <>
+                  {/* 종목 비교 차트 (E2E 핵심 시나리오) */}
+                  <StockComparisonChart portfolioId={portfolioId} />
+                </>
+              ) : (
+                <>
+                  <SellAlertBanner userId={user.uid} portfolioId={portfolioId} />
 
-              {/* Portfolio Overview - 새로운 다중 종목 지원 */}
-              <PortfolioOverview portfolioId={portfolioId} />
+                  {/* 잔액 대시보드 */}
+                  <BalanceDashboard portfolioId={portfolioId} />
 
-              {/* AI Advisor */}
-              <AIAdvisorCard />
+                  {/* 개인화 요약 */}
+                  <PersonalizedDashboard portfolioId={portfolioId} />
+
+                  {/* 스마트 알림 */}
+                  <SmartAlertsPanel portfolioId={portfolioId} />
+
+                  {/* 시나리오 분석 */}
+                  <ScenarioAnalysis portfolioId={portfolioId} />
+
+                  {/* 백테스트 */}
+                  <BacktestCard portfolioId={portfolioId} />
+
+                  {/* 포트폴리오 최적화 */}
+                  <PortfolioOptimizerCard portfolioId={portfolioId} />
+
+                  {/* 세금 최적화 */}
+                  <TaxOptimizationCard portfolioId={portfolioId} />
+
+                  {/* 벤치마크 비교 */}
+                  <BenchmarkComparison portfolioId={portfolioId} />
+
+                  {/* 종목 비교 차트 */}
+                  <StockComparisonChart portfolioId={portfolioId} />
+
+                  {/* 기여도 분석 */}
+                  <ContributionBreakdown portfolioId={portfolioId} />
+
+                  {/* 상관관계 히트맵 */}
+                  <CorrelationHeatmap portfolioId={portfolioId} />
+
+                  {/* 기간별 성과 */}
+                  <PeriodPerformanceTabs portfolioId={portfolioId} />
+
+                  {/* Portfolio Overview - 새로운 다중 종목 지원 */}
+                  <PortfolioOverview portfolioId={portfolioId} />
+                </>
+              )}
             </TabsContent>
           </Tabs>
         </main>

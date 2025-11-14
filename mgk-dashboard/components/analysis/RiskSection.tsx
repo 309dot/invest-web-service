@@ -3,6 +3,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Activity, Gauge, Target, TrendingDown } from 'lucide-react';
 import type { PortfolioAnalysis } from '@/lib/services/portfolio-analysis';
+import { GlossaryPopover } from '@/components/ui/glossary-popover';
 
 interface RiskSectionProps {
   diversificationScore: number;
@@ -32,6 +33,11 @@ export function RiskSection({ diversificationScore, riskMetrics, overallReturnRa
           <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
             <Target className="h-4 w-4" />
             다각화 점수
+            <GlossaryPopover
+              title="다각화 점수"
+              description="보유 자산이 얼마나 여러 섹터와 지역에 분산되어 있는지를 점수화한 지표입니다."
+              example="한 종목 비중이 50% 이상이면 점수가 크게 낮아집니다."
+            />
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -45,6 +51,11 @@ export function RiskSection({ diversificationScore, riskMetrics, overallReturnRa
           <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
             <Activity className="h-4 w-4" />
             변동성
+            <GlossaryPopover
+              title="변동성"
+              description="수익률의 흔들림 정도를 나타냅니다. 값이 클수록 하루 수익이 크게 출렁입니다."
+              example="ETF 10%, 성장주 30% 수준이면 중간 변동성입니다."
+            />
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -58,6 +69,11 @@ export function RiskSection({ diversificationScore, riskMetrics, overallReturnRa
           <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
             <Gauge className="h-4 w-4" />
             샤프 비율
+            <GlossaryPopover
+              title="샤프 비율"
+              description="추가로 감수한 위험 대비 얼마나 많은 초과 수익을 냈는지 보여주는 대표 지표입니다."
+              example="1.0 이상이면 우수, 0 미만이면 위험 대비 수익이 부족합니다."
+            />
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -71,6 +87,11 @@ export function RiskSection({ diversificationScore, riskMetrics, overallReturnRa
           <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
             <TrendingDown className="h-4 w-4" />
             최대 낙폭
+            <GlossaryPopover
+              title="최대 낙폭 (MDD)"
+              description="투자 기간 동안 기록한 가장 큰 하락 폭입니다. 감내 가능한 손실 범위를 확인할 수 있습니다."
+              example="-30%라면 최고점 대비 30%까지 하락했던 적이 있다는 뜻입니다."
+            />
           </CardTitle>
         </CardHeader>
         <CardContent>

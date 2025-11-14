@@ -43,6 +43,20 @@ firestore/
 }
 ```
 
+#### 1-1. users/{userId}/settings/personalization
+
+개인화 대시보드 설정
+
+```typescript
+{
+  riskProfile: 'conservative' | 'balanced' | 'aggressive';
+  investmentGoal: 'growth' | 'income' | 'balanced' | 'capital-preservation';
+  focusAreas: string[];          // 우선 모니터링 영역
+  lastUpdated: string;           // ISO timestamp
+  updatedAt: Timestamp;          // Firestore system timestamp
+}
+```
+
 ### 2. users/{userId}/portfolios/{portfolioId}
 
 사용자별 포트폴리오
@@ -161,7 +175,8 @@ firestore/
   name: string;
   market: 'US' | 'KR' | 'GLOBAL';
   assetType: 'stock' | 'etf' | 'reit' | 'fund';
-  sector?: 'technology' | 'healthcare' | ...;
+  sector?: Sector;                // GICS 11개 섹터
+  sectorBreakdown?: Record<string, number>; // ETF 섹터 비중 (0-1)
   currency: 'USD' | 'KRW';
   exchange?: string;            // NASDAQ, KOSPI
   description?: string;

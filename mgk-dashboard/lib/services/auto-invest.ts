@@ -184,6 +184,8 @@ export async function generateAutoInvestTransactions(
           purchaseUnit: 'amount',
           exchangeRate,
           executedAt: new Date().toISOString(),
+          scheduledDate: targetDate,
+          status: 'completed',
         });
 
         totalShares += shares;

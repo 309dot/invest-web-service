@@ -1,2 +1,13 @@
-{}
+{
+  "crons": [
+    {
+      "path": "/api/internal/auto-invest/cron",
+      "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/internal/auto-invest/cron",
+      "schedule": "0 2 * * *"
+    }
+  ]
+}
 

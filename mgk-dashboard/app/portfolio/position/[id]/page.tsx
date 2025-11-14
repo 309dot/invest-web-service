@@ -26,7 +26,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Loader2, ArrowLeft, Edit2, Save, X, TrendingUp, TrendingDown, Calendar, Trash2, RefreshCw } from 'lucide-react';
+import { Loader2, ArrowLeft, Edit2, Save, X, TrendingUp, TrendingDown, Calendar, Trash2, RefreshCw, ExternalLink } from 'lucide-react';
 import { formatPercent, formatDate, formatInputDate } from '@/lib/utils/formatters';
 import type { AutoInvestFrequency, AutoInvestSchedule, Position, Transaction } from '@/types';
 import { useCurrency } from '@/lib/contexts/CurrencyContext';
@@ -34,6 +34,7 @@ import { deriveDefaultPortfolioId } from '@/lib/utils/portfolio';
 import { AutoInvestScheduleDialog } from '@/components/AutoInvestScheduleDialog';
 import { ReapplyScheduleDialog } from '@/components/ReapplyScheduleDialog';
 import { TransactionTable } from '@/components/TransactionTable';
+import type { PersonalizedNews } from '@/lib/services/news-analysis';
 
 export default function PositionDetailPage() {
   const router = useRouter();
@@ -49,6 +50,18 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
   biweekly: '격주',
   monthly: '매월',
   quarterly: '분기',
+};
+
+const IMPACT_LABEL: Record<'high' | 'medium' | 'low', string> = {
+  high: '높음',
+  medium: '중간',
+  low: '낮음',
+};
+
+const SENTIMENT_STYLE: Record<'positive' | 'negative' | 'neutral', string> = {
+  positive: 'bg-emerald-600 hover:bg-emerald-600',
+  negative: 'bg-red-500 hover:bg-red-500',
+  neutral: 'bg-slate-500 hover:bg-slate-500',
 };
 
   const [position, setPosition] = useState<Position | null>(null);
@@ -80,12 +93,14 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
     enabled: false,
     targetReturnRate: '',
     sellRatio: '100',
-    notifyEmail: '',
     triggerOnce: true,
   });
   const [sellAlertSaving, setSellAlertSaving] = useState(false);
   const [sellAlertError, setSellAlertError] = useState<string | null>(null);
   const [sellAlertSuccess, setSellAlertSuccess] = useState<string | null>(null);
+  const [symbolNews, setSymbolNews] = useState<PersonalizedNews[]>([]);
+  const [newsLoading, setNewsLoading] = useState(false);
+  const [newsError, setNewsError] = useState<string | null>(null);
   
   // 거래 내역 관련 상태
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -163,6 +178,40 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
     []
   );
 
+  const fetchSymbolNews = useCallback(
+    async (uid: string, activePortfolioId: string, symbol: string) => {
+      try {
+        setNewsLoading(true);
+        setNewsError(null);
+        const response = await fetch(
+          `/api/news/personalized?userId=${uid}&portfolioId=${activePortfolioId}`
+        );
+
+        if (!response.ok) {
+          const errorBody = await response.json().catch(() => null);
+          throw new Error(errorBody?.error || '관련 뉴스를 불러오지 못했습니다.');
+        }
+
+        const data = await response.json();
+        const items: PersonalizedNews[] = Array.isArray(data.news) ? data.news : [];
+        const filtered = items.filter(
+          (item) =>
+            Array.isArray(item.affectedPositions) &&
+            item.affectedPositions.some((affected) => affected.symbol === symbol)
+        );
+
+        setSymbolNews(filtered.slice(0, 5));
+      } catch (err) {
+        console.error('Failed to fetch symbol news:', err);
+        setNewsError(err instanceof Error ? err.message : '관련 뉴스를 불러오지 못했습니다.');
+        setSymbolNews([]);
+      } finally {
+        setNewsLoading(false);
+      }
+    },
+    []
+  );
+
   const fetchPosition = useCallback(
     async (uid: string, initialPortfolioId: string) => {
       try {
@@ -206,7 +255,6 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
             found.sellAlert?.sellRatio !== undefined
               ? found.sellAlert.sellRatio.toString()
               : '100',
-          notifyEmail: found.sellAlert?.notifyEmail ?? '',
           triggerOnce: found.sellAlert?.triggerOnce ?? true,
         });
         setSellAlertError(null);
@@ -237,6 +285,23 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
       fetchPosition(user.uid, activePortfolioId);
     }
   }, [user, positionId, portfolioIdParam, fetchPosition, fetchTransactions]);
+
+  useEffect(() => {
+    if (!user || !position) {
+      setSymbolNews([]);
+      return;
+    }
+
+    const symbol = position.symbol;
+    if (!symbol) {
+      setSymbolNews([]);
+      return;
+    }
+
+    const activePortfolioId =
+      portfolioIdState || position.portfolioId || deriveDefaultPortfolioId(user.uid);
+    fetchSymbolNews(user.uid, activePortfolioId, symbol);
+  }, [user, position, portfolioIdState, fetchSymbolNews]);
 
   const handleEdit = () => {
     setEditMode(true);
@@ -335,6 +400,8 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
       const activePortfolioId =
         portfolioIdState || position.portfolioId || deriveDefaultPortfolioId(user.uid);
 
+      const accountEmail = user.email ?? '';
+
       const response = await fetch(
         `/api/positions/${position.id}/sell-alert?userId=${user.uid}&portfolioId=${activePortfolioId}`,
         {
@@ -344,8 +411,8 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
             enabled: sellAlertForm.enabled,
             targetReturnRate: Number.isNaN(targetReturnRate) ? undefined : targetReturnRate,
             sellRatio: Number.isNaN(sellRatio) ? undefined : sellRatio,
-            notifyEmail: sellAlertForm.notifyEmail?.trim() || null,
             triggerOnce: sellAlertForm.triggerOnce,
+            accountEmail: accountEmail || undefined,
           }),
         }
       );
@@ -363,7 +430,6 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
         enabled: data.sellAlert.enabled,
         targetReturnRate: data.sellAlert.targetReturnRate?.toString() ?? '',
         sellRatio: data.sellAlert.sellRatio?.toString() ?? '100',
-        notifyEmail: data.sellAlert.notifyEmail ?? '',
         triggerOnce: data.sellAlert.triggerOnce ?? true,
       }));
       setSellAlertSuccess('매도 알림 설정을 저장했습니다.');
@@ -873,24 +939,6 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="sellAlertEmail">알림 이메일 (선택)</Label>
-                    <Input
-                      id="sellAlertEmail"
-                      type="email"
-                      placeholder="example@email.com"
-                      value={sellAlertForm.notifyEmail}
-                      disabled={!sellAlertForm.enabled}
-                      onChange={(event) => {
-                        setSellAlertForm((prev) => ({
-                          ...prev,
-                          notifyEmail: event.target.value,
-                        }));
-                        setSellAlertSuccess(null);
-                      }}
-                    />
-                  </div>
-
                   <div className="flex items-center gap-2">
                     <input
                       id="sellAlertTriggerOnce"
@@ -909,6 +957,12 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
                     <Label htmlFor="sellAlertTriggerOnce" className="text-sm font-normal">
                       한 번만 알림 (재충족 시 재알림 없음)
                     </Label>
+                  </div>
+
+                  <div className="rounded-md bg-muted/40 p-3 text-xs text-muted-foreground">
+                    알림은 계정 이메일(
+                    {user?.email ? user.email : '등록된 이메일 없음'}
+                    )로 자동 발송됩니다. 이메일은 설정에서 변경해주세요.
                   </div>
 
                   {sellAlertError && (
@@ -943,6 +997,79 @@ const FREQUENCY_LABELS: Record<AutoInvestFrequency, string> = {
                       )}
                     </Button>
                   </div>
+                </CardContent>
+              </Card>
+
+              <Card className="mt-4">
+                <CardHeader>
+                  <CardTitle>보유 종목 뉴스</CardTitle>
+                  <CardDescription>해당 종목과 직접 연결된 최신 뉴스만 골라 보여드립니다.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {newsLoading ? (
+                    <div className="flex items-center justify-center gap-2 py-6 text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span>관련 뉴스를 불러오는 중입니다...</span>
+                    </div>
+                  ) : newsError ? (
+                    <Alert variant="destructive">
+                      <AlertDescription>{newsError}</AlertDescription>
+                    </Alert>
+                  ) : symbolNews.length === 0 ? (
+                    <div className="rounded-md border border-dashed border-muted-foreground/40 bg-muted/10 p-6 text-center text-sm text-muted-foreground">
+                      아직 이 종목과 직접적으로 연관된 뉴스가 없습니다.
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {symbolNews.map((item) => {
+                        const targetImpact = item.affectedPositions?.find(
+                          (affected) => affected.symbol === position.symbol
+                        );
+                        const sentiment: 'positive' | 'negative' | 'neutral' =
+                          item.sentiment ?? 'neutral';
+                        return (
+                          <div
+                            key={`${item.url}-${item.publishedAt}`}
+                            className="rounded-lg border border-primary/10 bg-primary/5 p-4"
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div>
+                                <p className="text-sm font-semibold leading-snug">{item.title}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {item.source} · {formatDate(item.publishedAt, 'yyyy-MM-dd HH:mm')}
+                                </p>
+                              </div>
+                              <Badge className={SENTIMENT_STYLE[sentiment]}>
+                                {sentiment === 'positive' ? '긍정' : sentiment === 'negative' ? '부정' : '중립'}
+                              </Badge>
+                            </div>
+                            <p className="mt-3 text-sm text-muted-foreground">
+                              {item.summary || item.reason}
+                            </p>
+                            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                              <div className="flex flex-wrap items-center gap-2">
+                                {typeof item.personalRelevance === 'number' ? (
+                                  <span>관련성 {item.personalRelevance.toFixed(0)}%</span>
+                                ) : null}
+                                {targetImpact ? (
+                                  <span>
+                                    영향도 {IMPACT_LABEL[targetImpact.estimatedImpact]} ·
+                                    포트폴리오 비중 {targetImpact.portfolioWeight.toFixed(1)}%
+                                  </span>
+                                ) : null}
+                              </div>
+                              <Button asChild variant="link" className="px-0 text-xs">
+                                <a href={item.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1">
+                                  원문 보기
+                                  <ExternalLink className="h-3 w-3" />
+                                </a>
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>

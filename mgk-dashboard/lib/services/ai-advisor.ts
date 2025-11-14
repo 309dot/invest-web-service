@@ -27,6 +27,7 @@ import type {
   Position,
 } from '@/types';
 import type { PortfolioAnalysis } from './portfolio-analysis';
+import { formatPercent } from '@/lib/utils/formatters';
 import type { PersonalizedNews } from './news-analysis';
 
 const DEFAULT_PERIOD_DAYS = Number(process.env.AI_ADVISOR_DEFAULT_PERIOD ?? 7);
@@ -62,12 +63,31 @@ const toISOString = (value: unknown) => {
   return String(value);
 };
 
+const validActions = new Set(['buy', 'sell', 'hold']);
+const validPriorities = new Set(['high', 'medium', 'low']);
+const validUrgency = new Set(['today', 'this_week', 'this_month', 'long_term']);
+const validEffort = new Set(['low', 'medium', 'high']);
+
+const slugify = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')
+    .slice(0, 32) || 'action';
+
 function normalizeRecommendations(value: unknown): AIAdvisorRecommendation[] {
   if (!Array.isArray(value)) {
+    if (typeof value === 'string' && value.trim()) {
+      return [
+        {
+          ticker: 'PORTFOLIO',
+          action: 'hold',
+          reason: value.trim(),
+        },
+      ];
+    }
     return [];
   }
-
-  const validActions = new Set(['buy', 'sell', 'hold']);
 
   return value
     .map((item): AIAdvisorRecommendation | null => {
@@ -124,6 +144,109 @@ function normalizeSignals(value: unknown): AIAdvisorSignal {
   };
 }
 
+function normalizeActionItems(value: unknown): AIAdvisorActionItem[] {
+  if (!value) {
+    return [];
+  }
+
+  const items = Array.isArray(value) ? value : [value];
+
+  return items
+    .map((item, index): AIAdvisorActionItem | null => {
+      if (typeof item === 'string' && item.trim()) {
+        const title = item.trim();
+        return {
+          id: `${slugify(title)}-${index}`,
+          title,
+          summary: title,
+          priority: 'medium',
+          urgency: 'this_week',
+          impact: 'return',
+          relatedTickers: [],
+          steps: [],
+        };
+      }
+
+      if (!item || typeof item !== 'object') {
+        return null;
+      }
+
+      const raw = item as Record<string, unknown>;
+      const title =
+        typeof raw.title === 'string' && raw.title.trim()
+          ? raw.title.trim()
+          : typeof raw.summary === 'string' && raw.summary.trim()
+          ? raw.summary.trim()
+          : 'Action Item';
+      const summary =
+        typeof raw.summary === 'string' && raw.summary.trim()
+          ? raw.summary.trim()
+          : typeof raw.description === 'string' && raw.description.trim()
+          ? raw.description.trim()
+          : title;
+      const priorityRaw =
+        typeof raw.priority === 'string' && raw.priority.trim()
+          ? raw.priority.trim().toLowerCase()
+          : 'medium';
+      const priority = validPriorities.has(priorityRaw)
+        ? (priorityRaw as AIAdvisorActionItem['priority'])
+        : 'medium';
+      const urgencyRaw =
+        typeof raw.urgency === 'string' && raw.urgency.trim()
+          ? raw.urgency.trim().toLowerCase()
+          : 'this_week';
+      const urgency = validUrgency.has(urgencyRaw)
+        ? (urgencyRaw as AIAdvisorActionItem['urgency'])
+        : 'this_week';
+      const impact =
+        typeof raw.impact === 'string' && raw.impact.trim()
+          ? raw.impact.trim().toLowerCase()
+          : 'return';
+      const relatedTickers = Array.isArray(raw.relatedTickers)
+        ? raw.relatedTickers
+            .filter((ticker): ticker is string => typeof ticker === 'string' && ticker.trim())
+            .map((ticker) => ticker.trim().toUpperCase())
+        : undefined;
+      const dueDate =
+        typeof raw.dueDate === 'string' && raw.dueDate.trim()
+          ? raw.dueDate.trim()
+          : typeof raw.due === 'string' && raw.due.trim()
+          ? raw.due.trim()
+          : undefined;
+      const estimatedEffortRaw =
+        typeof raw.estimatedEffort === 'string' && raw.estimatedEffort.trim()
+          ? raw.estimatedEffort.trim().toLowerCase()
+          : undefined;
+      const estimatedEffort = estimatedEffortRaw && validEffort.has(estimatedEffortRaw)
+        ? (estimatedEffortRaw as AIAdvisorActionItem['estimatedEffort'])
+        : undefined;
+      const steps = Array.isArray(raw.steps)
+        ? raw.steps
+            .filter((step): step is string => typeof step === 'string' && step.trim())
+            .map((step) => step.trim())
+        : undefined;
+
+      const idCandidate =
+        typeof raw.id === 'string' && raw.id.trim()
+          ? raw.id.trim()
+          : `${slugify(title)}-${index}`;
+
+      return {
+        id: idCandidate,
+        title,
+        summary,
+        priority,
+        urgency,
+        impact,
+        relatedTickers,
+        dueDate,
+        estimatedEffort,
+        steps,
+      };
+    })
+    .filter((item): item is AIAdvisorActionItem => item !== null);
+}
+
 function normalizeAdvisorResult(raw: any, rawText: string): AIAdvisorResult {
   const weeklySummaryCandidate = typeof raw?.weeklySummary === 'string' ? raw.weeklySummary : undefined;
   const summaryCandidate = typeof raw?.summary === 'string' ? raw.summary : undefined;
@@ -144,6 +267,7 @@ function normalizeAdvisorResult(raw: any, rawText: string): AIAdvisorResult {
     newsHighlights,
     recommendations: normalizeRecommendations(raw?.recommendations),
     signals: normalizeSignals(raw?.signals),
+    actionItems: normalizeActionItems(raw?.actionItems),
     confidenceScore: typeof raw?.confidenceScore === 'number' ? raw.confidenceScore : undefined,
     riskScore: typeof raw?.riskScore === 'number' ? raw.riskScore : undefined,
     rawText,
@@ -160,6 +284,12 @@ function generateFallbackAdvisorResult(payload: AIAdvisorPromptPayload, reason: 
     .map((item) => `${item.title}${item.source ? ` (${item.source})` : ''}`);
 
   const ticker = context.tickers?.[0] ?? 'PORTFOLIO';
+  const today = new Date();
+  const plusDays = (days: number) => {
+    const copy = new Date(today.getTime());
+    copy.setDate(copy.getDate() + days);
+    return copy.toISOString().slice(0, 10);
+  };
 
   const recommendations: AIAdvisorRecommendation[] = [
     {
@@ -183,8 +313,67 @@ function generateFallbackAdvisorResult(payload: AIAdvisorPromptPayload, reason: 
 
   const weeklySummary =
     summary.totalValue && summary.totalInvested
-      ? `최근 ${context.periodDays}일 기준으로 총 투자금은 ${summary.totalInvested.toLocaleString()}원, 평가 금액은 ${summary.totalValue.toLocaleString()}원 수준입니다. 수익률은 ${returnRate.toFixed(2)}% 입니다.`
+      ? `최근 ${context.periodDays}일 기준으로 총 투자금은 ${summary.totalInvested.toLocaleString()}원, 평가 금액은 ${summary.totalValue.toLocaleString()}원 수준입니다. 수익률은 ${formatPercent(returnRate)} 입니다.`
       : '최근 데이터를 기반으로 기본 요약을 제공합니다. 수익률 정보를 확인해주세요.';
+
+  const actionItems: AIAdvisorActionItem[] = [
+    {
+      id: `rebalance-${today.getTime()}`,
+      title: sellSignal ? '방어형 자산으로 리밸런싱 실행' : '핵심 종목 비중 재점검',
+      summary: sellSignal
+        ? '손실이 커지기 전 방어형 섹터와 현금 비중을 확대해 리스크를 줄이세요.'
+        : '목표 비중과 비교하여 과도하게 커진 종목의 비중을 조정하세요.',
+      priority: sellSignal ? 'high' : 'medium',
+      urgency: sellSignal ? 'today' : 'this_week',
+      impact: sellSignal ? 'risk' : 'diversification',
+      relatedTickers: [ticker],
+      dueDate: sellSignal ? plusDays(1) : plusDays(3),
+      estimatedEffort: 'medium',
+      steps: sellSignal
+        ? [
+            '리밸런싱 시뮬레이터에서 안정형 또는 방어형 프리셋을 적용합니다.',
+            '손실 폭이 큰 종목부터 비중을 5% 이상 축소합니다.',
+            '현금 또는 채권 ETF 비중을 최소 10% 확보합니다.',
+          ]
+        : [
+            '섹터 분산 리포트에서 과다 비중 종목을 확인합니다.',
+            '목표 비중 대비 ±5% 이상 차이 나는 종목을 표시합니다.',
+            '자동투자 금액 또는 매수 계획을 조정합니다.',
+          ],
+    },
+    {
+      id: `watchlist-${today.getTime()}`,
+      title: '관심 종목 및 뉴스 모니터링 강화',
+      summary: '주요 뉴스와 실적 일정을 정리하고 영향도가 높은 이벤트를 준비하세요.',
+      priority: 'medium',
+      urgency: 'this_week',
+      impact: 'risk',
+      relatedTickers: context.tickers?.slice(0, 3) ?? [],
+      dueDate: plusDays(7),
+      estimatedEffort: 'low',
+      steps: [
+        '최근 7일 뉴스에서 경고성 키워드를 가진 종목을 체크합니다.',
+        '실적 발표와 배당 일정이 가까운 종목을 캘린더에 기록합니다.',
+        'AI 조언 히스토리에서 중요 알림을 다시 검토합니다.',
+      ],
+    },
+    {
+      id: `plan-${today.getTime()}`,
+      title: '30일 투자 계획과 현금 흐름 점검',
+      summary: '향후 매수/매도 계획과 자동투자 금액을 재조정하여 목표를 명확히 하세요.',
+      priority: 'low',
+      urgency: 'this_month',
+      impact: 'return',
+      relatedTickers: [],
+      dueDate: plusDays(30),
+      estimatedEffort: 'low',
+      steps: [
+        '향후 한 달간 필요한 현금 지출과 투자 여력을 계산합니다.',
+        '자동투자 스케줄 및 금액이 목표 비중과 일치하는지 확인합니다.',
+        'AI 조언에서 제안된 실행 항목의 진행 상황을 업데이트합니다.',
+      ],
+    },
+  ];
 
   return {
     summary: weeklySummary,
@@ -202,6 +391,7 @@ function generateFallbackAdvisorResult(payload: AIAdvisorPromptPayload, reason: 
     },
     confidenceScore: 0.2,
     riskScore: Math.min(Math.max(Math.abs(returnRate) / 100, 0.1), 0.9),
+    actionItems,
     rawText: `Fallback generated locally. Reason: ${reason}`,
   };
 }
@@ -278,6 +468,7 @@ function buildAdvisorPrompt({ context, latestStats }: AIAdvisorPromptPayload) {
     '- 핵심 뉴스: 각 항목을 한 문장으로, 최대 3개',
     '- 위험 신호: 원인과 영향 포함',
     '- 다음 주 권장 전략: 3가지 Bullet 형태',
+    '- 실행 가능한 액션 아이템 3개: 우선순위, 긴급도, 영향도, 마감일, 실행 단계 포함',
     '',
     'JSON 데이터:',
     contextJson,
@@ -288,8 +479,22 @@ function buildAdvisorPrompt({ context, latestStats }: AIAdvisorPromptPayload) {
     '{',
     '  "weeklySummary": "...",',
     '  "newsHighlights": ["..."],',
-    '  "signals": { "sellSignal": false, "reason": "..." },',
-    '  "recommendations": ["...", "...", "..."]',
+    '  "signals": { "sellSignal": false, "reason": "...", "notes": ["..."] },',
+    '  "recommendations": ["...", "...", "..."],',
+    '  "actionItems": [',
+    '    {',
+    '      "id": "string-id",',
+    '      "title": "...",',
+    '      "summary": "...",',
+    '      "priority": "high|medium|low",',
+    '      "urgency": "today|this_week|this_month|long_term",',
+    '      "impact": "return|risk|diversification|cost|income",',
+    '      "relatedTickers": ["..."],',
+    '      "dueDate": "YYYY-MM-DD",',
+    '      "estimatedEffort": "low|medium|high",',
+    '      "steps": ["...", "..."]',
+    '    }',
+    '  ]',
     '}',
   ]
     .filter(Boolean)
@@ -423,6 +628,7 @@ export async function attachAIAdviceToReport(
       newsHighlights: insight.newsHighlights,
       recommendations: insight.recommendations,
       signals: insight.signals,
+      actionItems: insight.actionItems,
       confidenceScore: insight.confidenceScore,
       rawText: insight.rawText,
       generatedAt: insight.generatedAt,
@@ -436,6 +642,7 @@ export async function attachAIAdviceToReport(
       newsHighlights: insight.newsHighlights,
       recommendations: insight.recommendations,
       signals: insight.signals,
+      actionItems: insight.actionItems,
       confidenceScore: insight.confidenceScore ?? null,
       rawText: insight.rawText ?? null,
       generatedAt: insight.generatedAt,

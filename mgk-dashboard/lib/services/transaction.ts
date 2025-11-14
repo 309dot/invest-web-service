@@ -234,6 +234,8 @@ export async function createTransaction(
     purchaseMethod?: Transaction['purchaseMethod'];
     purchaseUnit?: Transaction['purchaseUnit'];
     executedAt?: string;
+    scheduledDate?: string;
+    status?: Transaction['status'];
   }
 ): Promise<string> {
   try {
@@ -309,6 +311,8 @@ export async function createTransaction(
       createdAt: Timestamp.now(),
       currency: resolvedCurrency,
       executedAt,
+      status: transactionData.status ?? 'completed',
+      ...(transactionData.scheduledDate ? { scheduledDate: transactionData.scheduledDate } : {}),
       ...(typeof transactionData.exchangeRate === 'number' && {
         exchangeRate: transactionData.exchangeRate,
       }),

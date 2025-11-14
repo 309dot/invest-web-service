@@ -6,11 +6,12 @@
 
 "use client";
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { formatDate, formatPercent } from '@/lib/utils/formatters';
 import { useCurrency } from '@/lib/contexts/CurrencyContext';
 import { TrendingUp, TrendingDown, Eye, EyeOff } from 'lucide-react';
@@ -39,7 +40,12 @@ export function MultiStockChart({ positions }: MultiStockChartProps) {
     new Set(positions.map(p => p.symbol))
   );
   const [chartType, setChartType] = useState<'price' | 'return'>('return');
+  const [highlightSymbol, setHighlightSymbol] = useState<string | null>(positions[0]?.symbol ?? null);
   const { formatAmount } = useCurrency();
+
+  useEffect(() => {
+    setHighlightSymbol((prev) => prev ?? positions[0]?.symbol ?? null);
+  }, [positions]);
 
   // 차트 데이터 생성 (정규화된 수익률)
   const chartData = useMemo(() => {
@@ -187,6 +193,26 @@ export function MultiStockChart({ positions }: MultiStockChartProps) {
           ))}
         </div>
 
+        <div className="flex flex-wrap items-center gap-2 mt-4 text-xs text-muted-foreground">
+          <span>하이라이트</span>
+          <Select
+            value={highlightSymbol ?? 'none'}
+            onValueChange={(value) => setHighlightSymbol(value === 'none' ? null : value)}
+          >
+            <SelectTrigger className="h-8 w-32">
+              <SelectValue placeholder="종목 선택" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">없음</SelectItem>
+              {positions.map((position) => (
+                <SelectItem key={position.symbol} value={position.symbol}>
+                  {position.symbol}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
         {/* 종목 선택 */}
         <div className="flex flex-wrap gap-2 mt-4">
           <Button
@@ -279,9 +305,12 @@ export function MultiStockChart({ positions }: MultiStockChartProps) {
                     dataKey={position.symbol}
                     name={position.symbol}
                     stroke={color}
-                    strokeWidth={2}
+                    strokeWidth={highlightSymbol === position.symbol ? 3 : 1.5}
+                    opacity={
+                      highlightSymbol && highlightSymbol !== position.symbol ? 0.35 : 1
+                    }
                     dot={false}
-                    activeDot={{ r: 5 }}
+                    activeDot={{ r: highlightSymbol === position.symbol ? 6 : 4 }}
                   />
                 );
               })}

@@ -69,7 +69,12 @@ export async function PUT(
       body.sellRatio !== undefined ? parseFloat(String(body.sellRatio)) : undefined;
     const triggerOnceValue =
       body.triggerOnce !== undefined ? Boolean(body.triggerOnce) : undefined;
-    const notifyEmailValue = body.notifyEmail !== undefined ? String(body.notifyEmail || '').trim() : undefined;
+    const bodyEmail =
+      typeof body.accountEmail === 'string' && body.accountEmail.trim()
+        ? body.accountEmail.trim()
+        : undefined;
+    const accountEmailParam = request.nextUrl.searchParams.get('userEmail') || undefined;
+    const resolvedEmail = bodyEmail || accountEmailParam || undefined;
 
     if (enabled) {
       if (targetReturnRateValue === undefined || Number.isNaN(targetReturnRateValue) || targetReturnRateValue <= 0) {
@@ -102,8 +107,8 @@ export async function PUT(
       enabled,
       targetReturnRate: sanitizedTarget,
       sellRatio: sanitizedRatio,
-      notifyEmail: notifyEmailValue === '' ? null : notifyEmailValue,
       triggerOnce: triggerOnceValue,
+      accountEmail: resolvedEmail ?? null,
     });
 
     return NextResponse.json({ success: true, sellAlert });

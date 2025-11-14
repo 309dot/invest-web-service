@@ -11,12 +11,13 @@ import {setGlobalOptions} from "firebase-functions";
 import {onRequest} from "firebase-functions/https";
 import {collectPriceJob} from "./jobs/collectPrice";
 import {collectNewsJob} from "./jobs/collectNews";
+import {executeAutoInvestJob} from "./jobs/executeAutoInvest";
 import * as logger from "firebase-functions/logger";
 
 setGlobalOptions({maxInstances: 10});
 
 // Export scheduled jobs
-export {collectPriceJob, collectNewsJob};
+export {collectPriceJob, collectNewsJob, executeAutoInvestJob};
 
 export const helloWorld = onRequest((request, response) => {
   logger.info("Health check 호출", {structuredData: true});

@@ -46,9 +46,17 @@ interface BalanceDashboardProps {
   portfolioId: string;
 }
 
+const formatDateKey = (date: Date) => date.toISOString().split('T')[0];
+
 export function BalanceDashboard({ portfolioId }: BalanceDashboardProps) {
   const [balances, setBalances] = useState({ KRW: 0, USD: 0 });
   const [loading, setLoading] = useState(true);
+  const [exchangeInfo, setExchangeInfo] = useState<{
+    rate: number;
+    change: number;
+    previousRate: number;
+  } | null>(null);
+  const [exchangeLoading, setExchangeLoading] = useState(false);
   const [showChargeModal, setShowChargeModal] = useState(false);
   const [chargeLoading, setChargeLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -81,6 +89,50 @@ export function BalanceDashboard({ portfolioId }: BalanceDashboardProps) {
   useEffect(() => {
     fetchBalances();
   }, [portfolioId]);
+
+  useEffect(() => {
+    const fetchExchangeSnapshot = async () => {
+      try {
+        setExchangeLoading(true);
+        const today = new Date();
+        const yesterday = new Date();
+        yesterday.setDate(today.getDate() - 1);
+
+        const todayKey = formatDateKey(today);
+        const yesterdayKey = formatDateKey(yesterday);
+
+        const response = await fetch('/api/exchange-rate/bulk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dates: [todayKey, yesterdayKey] }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch exchange rate info');
+        }
+
+        const data = await response.json();
+        const rates = data.rates || {};
+        const todayRate = Number(rates[todayKey]);
+        const prevRate = Number(rates[yesterdayKey] ?? todayRate);
+
+        if (Number.isFinite(todayRate) && Number.isFinite(prevRate) && prevRate > 0) {
+          const change = ((todayRate - prevRate) / prevRate) * 100;
+          setExchangeInfo({
+            rate: todayRate,
+            change,
+            previousRate: prevRate,
+          });
+        }
+      } catch (error) {
+        console.error('Exchange rate snapshot error:', error);
+      } finally {
+        setExchangeLoading(false);
+      }
+    };
+
+    fetchExchangeSnapshot();
+  }, []);
 
   // 환율 자동 조회
   useEffect(() => {
@@ -250,6 +302,25 @@ export function BalanceDashboard({ portfolioId }: BalanceDashboardProps) {
                 </div>
                 <p className="text-2xl font-bold">
                   {formatAmount(balances.USD, 'USD')}
+                </p>
+                <p className="mt-2 text-xs text-muted-foreground flex items-center gap-2">
+                  {exchangeInfo ? (
+                    <>
+                      환율 {exchangeInfo.rate.toFixed(2)}원/USD
+                      <span
+                        className={`font-semibold ${
+                          exchangeInfo.change >= 0 ? 'text-emerald-600' : 'text-red-600'
+                        }`}
+                      >
+                        {exchangeInfo.change >= 0 ? '+' : ''}
+                        {exchangeInfo.change.toFixed(2)}%
+                      </span>
+                    </>
+                  ) : exchangeLoading ? (
+                    '환율 정보를 불러오는 중입니다...'
+                  ) : (
+                    '환율 정보를 불러오지 못했습니다.'
+                  )}
                 </p>
               </div>
             </div>
