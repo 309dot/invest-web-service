@@ -267,7 +267,15 @@ export function summarizeSmartAlerts(alerts: SmartAlert[]): SmartAlertMeta {
     important: 0,
     info: 0,
   };
-  const sources: Record<SmartAlertSource, number> = {};
+  const sources: Record<SmartAlertSource, number> = {
+    system: 0,
+    portfolio: 0,
+    automation: 0,
+    ai: 0,
+    rebalancing: 0,
+    performance: 0,
+    manual: 0,
+  };
 
   alerts.forEach((alert) => {
     counts[alert.severity] += 1;

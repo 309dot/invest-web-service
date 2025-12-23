@@ -22,6 +22,8 @@ type TimelineOptions = {
   endDate?: string;
 };
 
+type TimelineTransaction = Transaction & Record<string, any>;
+
 type TimelineAccumulator = {
   key: string;
   start: Date;
@@ -49,7 +51,7 @@ type TimelineAccumulator = {
   >;
 };
 
-function resolveTransactionCurrency(transaction: Transaction): 'USD' | 'KRW' {
+function resolveTransactionCurrency(transaction: TimelineTransaction): 'USD' | 'KRW' {
   const raw = transaction.currency;
   if (typeof raw === 'string') {
     const upper = raw.toUpperCase();
@@ -95,13 +97,13 @@ export async function getTransactionTimeline(
       : format(subMonths(new Date(), months), 'yyyy-MM-dd');
   const endDateISO = options.endDate && options.endDate.length >= 8 ? options.endDate : undefined;
 
-  const transactions = await fetchTransactionsServer(userId, portfolioId, {
+  const transactions = (await fetchTransactionsServer(userId, portfolioId, {
     startDate: startDateISO,
     endDate: endDateISO,
     purchaseMethod: options.purchaseMethod,
     type: options.type,
     symbol: options.symbol,
-  });
+  })) as TimelineTransaction[];
 
   const groups = new Map<string, TimelineAccumulator>();
 

@@ -1,12 +1,34 @@
 import { analyzePortfolio } from '@/lib/services/portfolio-analysis';
 import { getPortfolioPositions } from '@/lib/services/position';
 import { generateRebalancingSuggestions } from '@/lib/services/portfolio-analysis';
-import type {
-  OptimizerAction,
-  OptimizerRecommendation,
-  PortfolioOptimizerResponse,
-  Position,
-} from '@/types';
+import type { Position } from '@/types';
+
+type OptimizerAction = {
+  symbol: string;
+  action: 'buy' | 'sell' | 'hold';
+  weightDelta: number;
+  amountBase: number;
+  rationale: string;
+};
+
+type OptimizerRecommendation = {
+  id: string;
+  name: string;
+  summary: string;
+  rationale: string[];
+  targetWeights: Record<string, number>;
+  expectedReturn: number;
+  expectedRisk: number;
+  rebalancing: OptimizerAction[];
+};
+
+type PortfolioOptimizerResponse = {
+  success: boolean;
+  baseCurrency: 'USD' | 'KRW';
+  currentWeights: Record<string, number>;
+  recommendations: OptimizerRecommendation[];
+  generatedAt: string;
+};
 
 interface BuildRecommendationParams {
   id: string;

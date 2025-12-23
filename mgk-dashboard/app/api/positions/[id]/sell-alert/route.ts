@@ -108,7 +108,7 @@ export async function PUT(
       targetReturnRate: sanitizedTarget,
       sellRatio: sanitizedRatio,
       triggerOnce: triggerOnceValue,
-      accountEmail: resolvedEmail ?? null,
+      notifyEmail: resolvedEmail ?? null,
     });
 
     return NextResponse.json({ success: true, sellAlert });

@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BarChart3, Loader2 } from 'lucide-react';
 
 import { useAuth } from '@/lib/contexts/AuthContext';
-import type { PortfolioOptimizerResponse, OptimizerRecommendation } from '@/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -19,6 +18,35 @@ import {
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatAmount, formatPercent } from '@/lib/utils/formatters';
+
+type OptimizerActionType = 'buy' | 'sell' | 'hold';
+
+interface OptimizerRebalancingAction {
+  symbol: string;
+  action: OptimizerActionType;
+  weightDelta: number;
+  amountBase: number;
+  rationale: string;
+}
+
+interface OptimizerRecommendation {
+  id: string;
+  name: string;
+  summary: string;
+  expectedReturn: number;
+  expectedRisk: number;
+  rationale: string[];
+  targetWeights: Record<string, number>;
+  rebalancing: OptimizerRebalancingAction[];
+}
+
+interface PortfolioOptimizerResponse {
+  success: boolean;
+  baseCurrency: 'USD' | 'KRW';
+  currentWeights: Record<string, number>;
+  recommendations: OptimizerRecommendation[];
+  generatedAt: string;
+}
 
 function renderWeightCell(weight?: number) {
   if (weight === undefined) {

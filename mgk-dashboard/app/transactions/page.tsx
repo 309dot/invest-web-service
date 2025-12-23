@@ -345,6 +345,30 @@ export default function TransactionsPage() {
 
   // 종목 목록 추출
   const symbols = Array.from(new Set(transactions.map((t) => t.symbol))).sort();
+  const filteredTransactions = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) {
+      return transactions;
+    }
+    return transactions.filter((transaction) => {
+      const symbol = transaction.symbol?.toLowerCase() ?? '';
+      const memo = transaction.memo?.toLowerCase() ?? '';
+      const type = transaction.type?.toLowerCase() ?? '';
+      const status = resolveTransactionStatus(transaction).toLowerCase();
+      const currency = (transaction.currency ?? '').toString().toLowerCase();
+      const purchaseMethod = (transaction.purchaseMethod ?? '').toString().toLowerCase();
+      const date = transaction.date?.toLowerCase() ?? '';
+      return (
+        symbol.includes(term) ||
+        memo.includes(term) ||
+        type.includes(term) ||
+        status.includes(term) ||
+        currency.includes(term) ||
+        purchaseMethod.includes(term) ||
+        date.includes(term)
+      );
+    });
+  }, [transactions, searchTerm]);
   const groupedTransactions = useMemo(() => {
     const groups = new Map<string, TransactionWithDisplay[]>();
     filteredTransactions.forEach((transaction) => {
@@ -408,30 +432,6 @@ export default function TransactionsPage() {
     [formatAmount]
   );
 
-  const filteredTransactions = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase();
-    if (!term) {
-      return transactions;
-    }
-    return transactions.filter((transaction) => {
-      const symbol = transaction.symbol?.toLowerCase() ?? '';
-      const memo = transaction.memo?.toLowerCase() ?? '';
-      const type = transaction.type?.toLowerCase() ?? '';
-      const status = resolveTransactionStatus(transaction).toLowerCase();
-      const currency = (transaction.currency ?? '').toString().toLowerCase();
-      const purchaseMethod = (transaction.purchaseMethod ?? '').toString().toLowerCase();
-      const date = transaction.date?.toLowerCase() ?? '';
-      return (
-        symbol.includes(term) ||
-        memo.includes(term) ||
-        type.includes(term) ||
-        status.includes(term) ||
-        currency.includes(term) ||
-        purchaseMethod.includes(term) ||
-        date.includes(term)
-      );
-    });
-  }, [transactions, searchTerm]);
 
   const handleExportCsv = useCallback(() => {
     if (!filteredTransactions.length) {
@@ -1123,7 +1123,7 @@ export default function TransactionsPage() {
                                         <div className="flex justify-end gap-2">
                                           <Button
                                             variant="outline"
-                                            size="xs"
+                                            size="sm"
                                             className="h-7"
                                             onClick={() => handleDeleteClick(transaction)}
                                           >

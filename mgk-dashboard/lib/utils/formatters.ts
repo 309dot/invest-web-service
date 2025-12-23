@@ -27,6 +27,19 @@ export function getProfitTextClass(value: number, options: ProfitTextOptions = {
 }
 
 /**
+ * Format amount with currency symbol. Gracefully handles null/undefined values.
+ */
+export function formatAmount(
+  amount: number | null | undefined,
+  currency: 'USD' | 'KRW' = 'USD'
+): string {
+  if (typeof amount !== 'number' || !Number.isFinite(amount)) {
+    return currency === 'KRW' ? '0원' : '$0.00';
+  }
+  return formatCurrency(amount, currency);
+}
+
+/**
  * Format currency amount
  */
 export function formatCurrency(

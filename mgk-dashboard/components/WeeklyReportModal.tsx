@@ -220,7 +220,7 @@ export function WeeklyReportModal({ triggerLabel = '주간 리포트 요약' }: 
 
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-muted/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
               <span>더 자세한 주차별 히스토리가 필요하신가요?</span>
-              <Button asChild variant="outline" size="xs">
+              <Button asChild variant="outline" size="sm" className="h-8 text-xs">
                 <Link href="/weekly-reports" className="inline-flex items-center gap-1">
                   전체 리포트 보기
                 </Link>

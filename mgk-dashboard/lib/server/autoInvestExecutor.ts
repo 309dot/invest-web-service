@@ -27,6 +27,8 @@ type ExecutionLog = {
   balanceAfter?: number;
 };
 
+type AutoInvestScheduleDoc = Record<string, any> & { id: string };
+
 async function ensureSufficientBalance(
   params: {
     userId: string;
@@ -149,10 +151,8 @@ async function createAutoTransaction(params: {
   const totalAmount = scheduleAmount;
   const currency = schedule.currency as 'USD' | 'KRW';
 
-  let balanceImpact: { previousBalance: number; remainingBalance: number } | null = null;
-
-  await db.runTransaction(async (tx) => {
-    balanceImpact = await ensureSufficientBalance(
+  const balanceImpact = await db.runTransaction(async (tx) => {
+    const impact = await ensureSufficientBalance(
       {
         userId,
         portfolioId,
@@ -202,7 +202,7 @@ async function createAutoTransaction(params: {
       ...(typeof exchangeRate === 'number' ? { exchangeRate } : {}),
     });
 
-    tx.update(positionRef, {
+    await tx.update(positionRef, {
       ...computed,
       lastTransactionDate: scheduledDate,
       updatedAt: FieldValue.serverTimestamp(),
@@ -218,19 +218,19 @@ async function createAutoTransaction(params: {
       },
       purchaseMethod: 'auto',
     });
+
+    return impact;
   });
 
   return {
     transactionId: transactionRef.id,
     shares,
     price,
-    balanceImpact: balanceImpact
-      ? {
-          currency,
-          before: balanceImpact.previousBalance,
-          after: balanceImpact.remainingBalance,
-        }
-      : undefined,
+    balanceImpact: {
+      currency,
+      before: balanceImpact.previousBalance,
+      after: balanceImpact.remainingBalance,
+    },
   };
 }
 
@@ -272,7 +272,12 @@ export async function executeAutoInvestForToday(options?: {
         continue;
       }
 
-      const schedule = await loadCurrentSchedule(userId, portfolioId, positionId, autoInvestConfig.currentScheduleId);
+      const schedule = (await loadCurrentSchedule(
+        userId,
+        portfolioId,
+        positionId,
+        autoInvestConfig.currentScheduleId
+      )) as AutoInvestScheduleDoc | null;
       if (!schedule) {
         logs.push({
           userId,
@@ -468,10 +473,6 @@ export async function executeAutoInvestForToday(options?: {
         position,
         schedule,
         scheduleAmount,
-        scheduledDate: nextDueDate,
-        price,
-        shares,
-        exchangeRate: exchangeRate ?? undefined,
         scheduledDate: nextDueDate,
         price,
         shares,

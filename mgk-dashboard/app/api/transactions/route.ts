@@ -25,6 +25,8 @@ import {
   getDisplayNextScheduledTradingDate,
 } from '@/lib/utils/tradingCalendar';
 
+const ALLOWED_STATUSES: Transaction['status'][] = ['pending', 'completed', 'failed', 'cancelled'];
+
 /**
  * POST /api/transactions
  * 새 거래 생성
@@ -83,9 +85,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const allowedStatuses: Transaction['status'][] = ['pending', 'completed', 'failed', 'cancelled'];
     const normalizedStatus: Transaction['status'] = (status ?? 'completed').toLowerCase();
-    if (!allowedStatuses.includes(normalizedStatus)) {
+    if (!ALLOWED_STATUSES.includes(normalizedStatus)) {
       return NextResponse.json(
         { error: 'status 값이 유효하지 않습니다. (pending/completed/failed/cancelled)' },
         { status: 400 }
@@ -174,7 +175,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (statusParam && statusParam !== 'all') {
-      if (!allowedStatuses.includes(statusParam as Transaction['status'])) {
+      if (!ALLOWED_STATUSES.includes(statusParam as Transaction['status'])) {
         return NextResponse.json(
           { error: 'status 파라미터가 유효하지 않습니다. (pending/completed/failed/cancelled)' },
           { status: 400 }

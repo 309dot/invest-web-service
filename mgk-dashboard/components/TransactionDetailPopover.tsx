@@ -21,10 +21,11 @@ type Props = {
   formatAmount: (amount: number, sourceCurrency: 'USD' | 'KRW') => string;
 };
 
-const STATUS_LABEL: Record<'pending' | 'completed' | 'failed', string> = {
+const STATUS_LABEL: Record<'pending' | 'completed' | 'failed' | 'cancelled', string> = {
   pending: '예정',
   completed: '완료',
   failed: '실패',
+  cancelled: '취소',
 };
 
 export function TransactionDetailPopover({
@@ -119,7 +120,7 @@ export function TransactionDetailPopover({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="xs" className="gap-1 text-xs">
+        <Button variant="outline" size="sm" className="gap-1 text-xs h-7 px-2">
           <Info className="h-3.5 w-3.5" />
           상세
         </Button>

@@ -37,11 +37,12 @@ export function TransactionSummaryCards({
     }
 
     const base = stats.combined.baseCurrency;
-    if ((base === 'USD' || base === 'KRW') && stats.byCurrency[base]) {
-      const baseTotals =
-        stats.byCurrency[base].totalBuyAmount + stats.byCurrency[base].totalSellAmount;
+    if (base === 'USD' || base === 'KRW') {
+      const narrowed = base as 'USD' | 'KRW';
+      const currencyStats = stats.byCurrency[narrowed];
+      const baseTotals = currencyStats.totalBuyAmount + currencyStats.totalSellAmount;
       if (baseTotals > 0) {
-        return base;
+        return narrowed;
       }
     }
 

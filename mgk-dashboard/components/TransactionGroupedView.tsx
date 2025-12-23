@@ -23,13 +23,6 @@ type TransactionRecord = Transaction & {
   executedAt?: string;
 };
 
-type TransactionGroupedViewProps = {
-  transactions: TransactionRecord[];
-  resolveTransactionCurrency: (transaction: TransactionRecord) => 'USD' | 'KRW';
-  formatAmount: (amount: number, sourceCurrency: 'USD' | 'KRW') => string;
-  resolveExecutedAt: (transaction: TransactionRecord) => string;
-};
-
 type GroupAccumulator = {
   symbol: string;
   currency: 'USD' | 'KRW';

@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { History, Loader2 } from 'lucide-react';
 
 import { useAuth } from '@/lib/contexts/AuthContext';
-import type { BacktestResponse, BacktestStrategy } from '@/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -20,6 +19,36 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { formatPercent } from '@/lib/utils/formatters';
+
+type BacktestStrategy = 'baseline' | 'equal' | 'growth' | 'defensive' | 'diversified';
+
+interface BacktestSeriesPoint {
+  date: string;
+  baseline: number;
+  scenario: number;
+}
+
+interface BacktestMetricSnapshot {
+  totalReturn: number;
+  annualizedReturn: number;
+  volatility: number;
+  maxDrawdown: number;
+}
+
+interface BacktestResponse {
+  success: boolean;
+  strategy: BacktestStrategy;
+  period: {
+    startDate: string;
+    endDate: string;
+    days: number;
+  };
+  baseline: BacktestMetricSnapshot;
+  scenario: BacktestMetricSnapshot;
+  series: BacktestSeriesPoint[];
+  generatedAt: string;
+  summary?: string;
+}
 
 const STRATEGY_LABELS: Record<BacktestStrategy, string> = {
   baseline: '현재 전략',

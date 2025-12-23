@@ -187,9 +187,16 @@ function buildRiskMetrics(params: {
 }
 
 function buildActions(params: {
-  alerts: ReturnType<typeof getSmartAlerts>;
+  alerts: Awaited<ReturnType<typeof getSmartAlerts>>;
   riskProfile: RiskProfile;
-  latestInsight?: Awaited<ReturnType<typeof listRecentAIInsights>>[number];
+  latestInsight?: Awaited<ReturnType<typeof listRecentAIInsights>>[number] & {
+    actionItems?: Array<{
+      id: string;
+      title: string;
+      summary: string;
+      relatedTickers?: string[];
+    }>;
+  };
 }): PersonalizedAction[] {
   const { alerts, riskProfile, latestInsight } = params;
   const actionItems: PersonalizedAction[] = [];

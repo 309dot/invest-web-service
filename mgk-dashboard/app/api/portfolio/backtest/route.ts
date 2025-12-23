@@ -2,9 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { runBacktest } from '@/lib/server/backtest';
 
+type BacktestStrategy = 'baseline' | 'equal' | 'growth' | 'defensive' | 'diversified';
+
 export const dynamic = 'force-dynamic';
 
-const STRATEGIES = new Set(['baseline', 'equal', 'growth', 'defensive', 'diversified']);
+const STRATEGY_VALUES: BacktestStrategy[] = ['baseline', 'equal', 'growth', 'defensive', 'diversified'];
+const STRATEGIES = new Set<BacktestStrategy>(STRATEGY_VALUES);
+
+function isBacktestStrategy(value: string): value is BacktestStrategy {
+  return STRATEGIES.has(value as BacktestStrategy);
+}
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -28,8 +35,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const selectedStrategy =
-    strategy && STRATEGIES.has(strategy) ? (strategy as ReturnType<typeof runBacktest>['strategy']) : undefined;
+  const selectedStrategy = strategy && isBacktestStrategy(strategy) ? strategy : undefined;
 
   try {
     const result = await runBacktest({

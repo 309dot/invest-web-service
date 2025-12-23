@@ -19,6 +19,8 @@ export type TransactionType = 'buy' | 'sell' | 'dividend';
 // 시장 구분
 export type Market = 'US' | 'KR' | 'GLOBAL';
 
+export type SupportedCurrency = 'USD' | 'KRW';
+
 // 자산 유형
 export type AssetType = 'stock' | 'etf' | 'reit' | 'fund';
 

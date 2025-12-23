@@ -57,7 +57,7 @@ function addSectorSlice(
 }
 
 function resolvePositionSector(position: Position): Sector {
-  const raw = (position as Record<string, unknown>)?.sector;
+  const raw = (position as unknown as Record<string, unknown>)?.sector;
   if (typeof raw === 'string') {
     return normalizeSector(raw);
   }

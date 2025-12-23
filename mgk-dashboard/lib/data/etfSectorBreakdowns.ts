@@ -237,8 +237,25 @@ function normalizeEtfKey(value?: string | null): string | null {
   return compact;
 }
 
+function createEmptySectorWeights(): Record<Sector, number> {
+  return {
+    'communication-services': 0,
+    'consumer-discretionary': 0,
+    'consumer-staples': 0,
+    energy: 0,
+    financials: 0,
+    'health-care': 0,
+    industrials: 0,
+    'information-technology': 0,
+    materials: 0,
+    'real-estate': 0,
+    utilities: 0,
+    other: 0,
+  };
+}
+
 function normalizeWeights(weights: EtfSectorDefinition['weights']): Record<Sector, number> {
-  const normalized: Record<Sector, number> = {} as Record<Sector, number>;
+  const normalized: Partial<Record<Sector, number>> = {};
   let total = 0;
 
   Object.entries(weights ?? {}).forEach(([rawSector, rawWeight]) => {
@@ -253,10 +270,10 @@ function normalizeWeights(weights: EtfSectorDefinition['weights']): Record<Secto
   });
 
   if (total <= 0) {
-    return {};
+    return createEmptySectorWeights();
   }
 
-  const result: Record<Sector, number> = {} as Record<Sector, number>;
+  const result = createEmptySectorWeights();
   Object.entries(normalized).forEach(([sector, value]) => {
     result[sector as Sector] = value / total;
   });

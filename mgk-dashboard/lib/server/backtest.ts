@@ -1,7 +1,41 @@
 import { subDays, parseISO, isValid } from 'date-fns';
 
 import { getDocumentsByDateRange } from '@/lib/firestore';
-import type { BacktestResponse, BacktestStrategy, DailyPurchase } from '@/types';
+import type { DailyPurchase } from '@/types';
+
+type BacktestStrategy = 'baseline' | 'equal' | 'growth' | 'defensive' | 'diversified';
+
+type BacktestSeriesEntry = {
+  date: string;
+  baseline: number;
+  scenario: number;
+};
+
+interface BacktestSnapshot {
+  totalReturn: number;
+  annualizedReturn: number;
+  volatility: number;
+  maxDrawdown: number;
+}
+
+interface BacktestResponse {
+  success: boolean;
+  strategy: BacktestStrategy;
+  period: {
+    startDate: string;
+    endDate: string;
+    days: number;
+  };
+  baseline: BacktestSnapshot;
+  scenario: BacktestSnapshot;
+  series: BacktestSeriesEntry[];
+  generatedAt: string;
+}
+
+type DailyPurchaseDoc = DailyPurchase & {
+  userId?: string;
+  portfolioId?: string;
+};
 
 function calculateDailyReturns(entries: DailyPurchase[]): Array<{ date: string; return: number }> {
   const returns: Array<{ date: string; return: number }> = [];
@@ -115,7 +149,7 @@ export async function runBacktest(options: {
   const start = startDate.toISOString().slice(0, 10);
   const end = endDate.toISOString().slice(0, 10);
 
-  const entries = await getDocumentsByDateRange<DailyPurchase>('dailyPurchases', 'date', start, end);
+  const entries = await getDocumentsByDateRange<DailyPurchaseDoc>('dailyPurchases', 'date', start, end);
   const filtered = entries
     .filter((entry) => entry.portfolioId === portfolioId && entry.userId === userId)
     .sort((a, b) => {

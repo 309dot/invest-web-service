@@ -84,7 +84,7 @@ function formatMaybeNumber(value: number | null | undefined, formatter: (val: nu
   return formatter(value);
 }
 
-type RechartsTooltipPayload = NonNullable<TooltipProps['payload']>[number];
+type RechartsTooltipPayload = NonNullable<TooltipProps<number, string>['payload']>[number];
 
 interface StockComparisonChartProps {
   portfolioId: string;

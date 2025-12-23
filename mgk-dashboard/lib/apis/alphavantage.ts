@@ -170,7 +170,7 @@ export async function getCurrentPrice(symbol: string): Promise<PriceData> {
       const cachedAt = new Date();
       const expireAt = new Date(cachedAt.getTime() + 10 * 60 * 1000); // 10분 TTL
 
-      const payload: PriceCacheEntry = {
+      const payload = {
         cacheKey: buildPriceCacheKey(symbol, market, resolution),
         symbol,
         market,
@@ -186,7 +186,7 @@ export async function getCurrentPrice(symbol: string): Promise<PriceData> {
         sourceTimestamp: Timestamp.fromDate(priceData.timestamp),
         cachedAt: Timestamp.fromDate(cachedAt),
         expireAt: Timestamp.fromDate(expireAt),
-      };
+      } as unknown as PriceCacheEntry;
 
       await priceCacheDoc.set(payload, { merge: true });
     } catch (error) {

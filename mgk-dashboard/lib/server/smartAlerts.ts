@@ -14,6 +14,15 @@ import type {
   SmartAlertResponse,
 } from '@/types';
 
+type InsightWithActions = Awaited<ReturnType<typeof listRecentAIInsights>>[number] & {
+  actionItems?: Array<{
+    id: string;
+    title: string;
+    summary: string;
+    relatedTickers?: string[];
+  }>;
+};
+
 function evaluateEmergencyAlerts(positions: Position[]): SmartAlert[] {
   const alerts: SmartAlert[] = [];
 
@@ -223,7 +232,8 @@ export async function getSmartAlerts(params: {
   const positions = await getPortfolioPositions(userId, portfolioId);
   const analysis = await analyzePortfolio(userId, portfolioId);
   const insights = await listRecentAIInsights(1);
-  const [latestInsight] = insights;
+  const [latestInsightRaw] = insights;
+  const latestInsight = latestInsightRaw as InsightWithActions | undefined;
 
   const rebalancing = generateRebalancingSuggestions(positions, {
     targetAllocation: undefined,
@@ -236,7 +246,7 @@ export async function getSmartAlerts(params: {
     ...evaluateImportantAlerts({
       positions,
       rebalancing,
-      riskMetrics: analysis.riskMetrics ?? {},
+      riskMetrics: ((analysis.riskMetrics ?? {}) as unknown) as Record<string, number>,
     }),
     ...evaluateInfoAlerts({
       portfolioReturnRate: analysis.overallReturnRate,

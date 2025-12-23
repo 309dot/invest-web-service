@@ -112,7 +112,11 @@ export async function PUT(
       transactionId
     );
 
-    const updateData: Partial<Transaction> = {
+    type TransactionUpdate = Partial<Omit<Transaction, 'scheduledDate'>> & {
+      scheduledDate?: string | null;
+    };
+
+    const updateData: TransactionUpdate = {
       updatedAt: Timestamp.now(),
     };
 

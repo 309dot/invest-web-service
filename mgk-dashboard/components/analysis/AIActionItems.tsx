@@ -96,13 +96,15 @@ export function AIActionItems({ diagnosis, loading = false, error = null }: AIAc
     });
 
     const weaknessHints =
-      diagnosis.weaknesses?.map((weakness, index) => ({
-        id: `weakness-${index}`,
-        title: weakness,
-        detail: weakness,
-        priority: 'medium' as ActionPriority,
-        category: 'maintenance' as const,
-      })) ?? [];
+      diagnosis.weaknesses?.map(
+        (weakness, index): ActionItem => ({
+          id: `weakness-${index}`,
+          title: weakness,
+          detail: weakness,
+          priority: 'medium',
+          category: 'maintenance',
+        })
+      ) ?? [];
 
     return [...items, ...weaknessHints].slice(0, 8);
   }, [diagnosis]);

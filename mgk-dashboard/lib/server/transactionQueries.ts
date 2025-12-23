@@ -16,6 +16,8 @@ type TransactionRecord = {
   [key: string]: any;
 };
 
+type AutoInvestScheduleDoc = Record<string, any> & { id: string };
+
 type TransactionFilters = {
   symbol?: string;
   type?: 'buy' | 'sell' | 'dividend';
@@ -112,7 +114,11 @@ export async function calculateTransactionStatsServer(
   portfolioId: string,
   filters: TransactionFilters = {}
 ) {
-  const transactions = await fetchTransactionsServer(userId, portfolioId, filters);
+  const transactions = (await fetchTransactionsServer(
+    userId,
+    portfolioId,
+    filters
+  )) as TransactionRecord[];
   const db = getFirestoreAdmin();
   const positionsSnapshot = await db
     .collection('users')
@@ -249,12 +255,12 @@ export async function buildUpcomingAutoInvests(
       continue;
     }
 
-    const schedule = await loadCurrentSchedule(
+    const schedule = (await loadCurrentSchedule(
       userId,
       portfolioId,
       docSnapshot.id,
       autoInvestConfig.currentScheduleId
-    );
+    )) as AutoInvestScheduleDoc | null;
 
     if (!schedule) {
       continue;

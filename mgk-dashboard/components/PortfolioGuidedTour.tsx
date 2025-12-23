@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ComponentType } from 'react';
 import Joyride, { CallBackProps, STATUS, Step } from 'react-joyride';
+
+const JoyrideComponent = Joyride as unknown as ComponentType<any>;
 
 const TOUR_STORAGE_KEY = 'portfolio-analysis-tour';
 
@@ -46,7 +48,7 @@ export function PortfolioGuidedTour() {
 
   const handleCallback = (data: CallBackProps) => {
     const { status } = data;
-    if ([STATUS.FINISHED, STATUS.SKIPPED].includes(status)) {
+    if (status === STATUS.FINISHED || status === STATUS.SKIPPED) {
       setRun(false);
       if (typeof window !== 'undefined') {
         window.localStorage.setItem(TOUR_STORAGE_KEY, 'done');
@@ -59,7 +61,7 @@ export function PortfolioGuidedTour() {
   }
 
   return (
-    <Joyride
+    <JoyrideComponent
       steps={steps}
       run={run}
       continuous

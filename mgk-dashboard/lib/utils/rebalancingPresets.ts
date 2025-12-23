@@ -1,7 +1,15 @@
-import type { Position, RebalancingPreset } from '@/types';
+import type { Position } from '@/types';
 import { assertCurrency, convertWithRate } from '@/lib/currency';
 
 type BaseCurrency = 'USD' | 'KRW';
+
+type RebalancingPreset = {
+  id: string;
+  name: string;
+  description: string;
+  weights: Record<string, number>;
+  meta?: Record<string, unknown>;
+};
 
 const DEFENSIVE_SECTORS = new Set([
   'consumer-staples',
