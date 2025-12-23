@@ -1,5 +1,30 @@
 import { format, formatDistanceToNow, parseISO } from 'date-fns';
 import { ko } from 'date-fns/locale';
+import { roundPercentage } from './calculations';
+
+export const PROFIT_TEXT_POSITIVE = 'text-emerald-500 dark:text-emerald-400';
+export const PROFIT_TEXT_NEGATIVE = 'text-rose-500 dark:text-rose-400';
+export const PROFIT_TEXT_NEUTRAL = 'text-muted-foreground';
+
+type ProfitTextOptions = {
+  zeroAsNeutral?: boolean;
+  emphasize?: boolean;
+};
+
+export function getProfitTextClass(value: number, options: ProfitTextOptions = {}): string {
+  const { zeroAsNeutral = false, emphasize = false } = options;
+  const emphasis = emphasize ? 'font-semibold ' : '';
+
+  if (value > 0 || (!zeroAsNeutral && value === 0)) {
+    return `${emphasis}${PROFIT_TEXT_POSITIVE}`;
+  }
+
+  if (value < 0) {
+    return `${emphasis}${PROFIT_TEXT_NEGATIVE}`;
+  }
+
+  return `${emphasis}${PROFIT_TEXT_NEUTRAL}`;
+}
 
 /**
  * Format currency amount
@@ -25,10 +50,6 @@ export function formatCurrency(
   return `${sign}$${formatted}`;
 }
 
-export function formatAmount(amount: number, currency: 'USD' | 'KRW' = 'USD'): string {
-  return formatCurrency(amount, currency);
-}
-
 /**
  * Format percentage
  */
@@ -37,17 +58,9 @@ export function formatPercent(value: number, decimals: number = 2): string {
     return '0.00%';
   }
 
-  const absolute = Math.abs(value);
-  const multiplier = 10 ** decimals;
-  let rounded = Math.round(absolute * multiplier) / multiplier;
-
-  if (rounded === 0 && absolute > 0) {
-    rounded = 1 / multiplier;
-  }
-
-  const signedValue = value >= 0 ? rounded : -rounded;
-  const formatted = signedValue.toFixed(decimals);
-  const sign = value >= 0 ? '+' : '';
+  const rounded = roundPercentage(value, decimals);
+  const formatted = Math.abs(rounded).toFixed(decimals);
+  const sign = rounded > 0 ? '+' : rounded < 0 ? '-' : '';
   return `${sign}${formatted}%`;
 }
 

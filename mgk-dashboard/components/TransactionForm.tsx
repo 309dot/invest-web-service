@@ -22,7 +22,7 @@ import { RadioGroup, RadioGroupItem } from './ui/radio-group';
 import { Alert, AlertDescription } from './ui/alert';
 import { Loader2, AlertCircle, TrendingUp, TrendingDown, Calculator } from 'lucide-react';
 import type { Position } from '@/types';
-import { formatInputDate, formatInputTime } from '@/lib/utils/formatters';
+import { formatInputDate, formatInputTime, PROFIT_TEXT_NEGATIVE, PROFIT_TEXT_POSITIVE } from '@/lib/utils/formatters';
 import {
   adjustToNextTradingDay,
   determineMarketFromContext,
@@ -371,14 +371,14 @@ export function TransactionForm({
                 <div className="flex items-center space-x-2">
                   <RadioGroupItem value="buy" id="buy" />
                   <Label htmlFor="buy" className="font-normal cursor-pointer flex items-center gap-2">
-                    <TrendingUp className="h-4 w-4 text-green-500" />
+                    <TrendingUp className={`h-4 w-4 ${PROFIT_TEXT_POSITIVE}`} />
                     매수
                   </Label>
                 </div>
                 <div className="flex items-center space-x-2">
                   <RadioGroupItem value="sell" id="sell" />
                   <Label htmlFor="sell" className="font-normal cursor-pointer flex items-center gap-2">
-                    <TrendingDown className="h-4 w-4 text-red-500" />
+                    <TrendingDown className={`h-4 w-4 ${PROFIT_TEXT_NEGATIVE}`} />
                     매도
                   </Label>
                 </div>

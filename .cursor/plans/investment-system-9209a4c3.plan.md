@@ -1,4 +1,117 @@
-<!-- 9209a4c3-27ee-4f08-8bf7-aa45923794ca ee93813e-c731-4764-abcc-d237bdc14c12 -->
+---
+name: 투자 시스템 개선 및 자동화 구현
+overview: ""
+todos:
+  - id: 552bb8b6-6abe-4393-a0f4-f42cc64c14b1
+    content: Firebase Cloud Function으로 자동 투자 실행 스케줄러 생성 (매일 9시, 11시 실행)
+    status: pending
+  - id: eab70f09-8dd4-4172-a7ea-4267c11c7c59
+    content: 자동 투자 거래 생성 로직 수정 - 오늘 거래만 생성, 잔액 차감, 상태 관리
+    status: pending
+  - id: cad8d919-8730-4904-8c01-86f774d58226
+    content: Transaction 타입에 status 필드 추가 (pending/completed/failed)
+    status: pending
+  - id: 4a36fb6b-3d05-4d6d-b7c1-50135f79a168
+    content: 거래 이력 페이지에 오늘 예정 거래 표시 (pending 상태)
+    status: pending
+  - id: 16cbad80-f0b7-45f1-84b4-82e266f1c835
+    content: 손익 계산 로직 수정 - 총 투자금 기준 계산으로 변경
+    status: pending
+  - id: d22a8851-f705-43ba-b866-0822a676596a
+    content: 반올림 로직 개선 - 음수가 0으로 반올림되지 않도록 수정
+    status: pending
+  - id: f4dba3d4-fe9c-4d36-b49b-2095e3c796d8
+    content: 시세 API 실패 시 캐싱된 가격 사용 로직 구현
+    status: pending
+  - id: 83c6ee00-ecc7-4626-84cc-a82146eb32c0
+    content: 손익 UI 컴포넌트 수정 - 음수는 빨간색으로 명확히 표시
+    status: pending
+  - id: d497de51-b05f-40ab-aa68-c95dd40352dc
+    content: 섹터 정보 정확히 표시 - GICS 11개 섹터 기준, ETF 내부 구성 분석
+    status: pending
+  - id: fb152d5c-849e-448f-acbc-c46608217554
+    content: 벤치마크 비교 컴포넌트 추가 - KOSPI, S&P500, 60/40 포트폴리오
+    status: pending
+  - id: 18f1fbaa-8379-4d2f-82b5-a674c17204c2
+    content: 기간별 성과 탭 추가 - 1일/1주/1개월/3개월/YTD/1년/전체
+    status: pending
+  - id: 6ad60807-18f4-4015-8e96-316285a26f6d
+    content: 리밸런싱 목표 비중 프리셋 제공 - 균등/현재/AI추천/안정형/공격형
+    status: pending
+  - id: 082e6e08-7dc9-44a2-8234-3dbeb516f93a
+    content: AI 조언 구체화 - 우선순위별 실행 가능한 액션 아이템
+    status: pending
+  - id: fe9600a9-de51-44ef-bf25-3b0ee1fd60f8
+    content: 리밸런싱 실행 계획 상세화 - 매도/매수 상세, 수수료/세금, 분할 실행
+    status: pending
+  - id: 76ab7ec6-baeb-4aaf-8431-d2811d42efab
+    content: 종목 비교 인터랙티브 차트 구현
+    status: pending
+  - id: a058644f-827f-4747-a2ec-ff7933ba782b
+    content: 수익 기여도 분해 분석 - 비중 기여 vs 성과 기여
+    status: pending
+  - id: 2fe3e00f-2e67-44a7-82b0-267c3d69553f
+    content: 상관관계 히트맵 구현 - 종목 간 상관관계 매트릭스
+    status: pending
+  - id: f24aecca-14b6-419d-a779-f9947c843017
+    content: 스마트 알림 시스템 - 긴급/중요/정보 우선순위별 알림
+    status: pending
+  - id: 60ac10b1-58dc-4d2f-abfe-f6314f631ae9
+    content: 개인화 대시보드 - 투자 성향별 맞춤형 UI
+    status: pending
+  - id: 5dd04aff-2c8c-4915-8bd9-a4ecf71564ed
+    content: 시나리오 분석 도구 - 만약 시뮬레이션
+    status: pending
+  - id: 1b7f343a-25e4-4343-81fa-f86aaa5c0377
+    content: 세금 최적화 도구 - 손익 상황 분석 및 전략 제안
+    status: pending
+  - id: b5bd0387-9839-4347-8e91-6a4fd1af4512
+    content: 백테스팅 엔진 - 과거 데이터로 전략 검증
+    status: pending
+  - id: af804e0f-3903-4afb-9ffe-0a78fed78c66
+    content: 포트폴리오 최적화 알고리즘 - MPT 기반 효율적 프론티어
+    status: pending
+  - id: aef5b71c-fc13-4872-a278-f84579dbbc51
+    content: 거래 이력 요약 카드 컴포넌트 구현
+    status: pending
+  - id: 4966a02a-9121-4a0b-babb-5873f7ad8cc8
+    content: 종목별 그룹 뷰 - Accordion으로 그룹화
+    status: pending
+  - id: 1c6f4147-0ad4-4fe6-ab59-970b64625945
+    content: 자동투자/수동거래 구분 탭 구현
+    status: pending
+  - id: f953a919-89f2-4a37-9c56-17ba8bee5ed6
+    content: 거래 요약 타임라인 뷰 - 주간/월간 요약
+    status: pending
+  - id: 1e6bfb1a-a04b-4baf-abd6-5c7855783acb
+    content: 금액/단가 표시 단순화
+    status: pending
+  - id: 8f9315b4-cacc-4aa7-9b82-fd097b086c51
+    content: 정보 계층화 - 클릭 시 Popover로 상세 정보
+    status: pending
+  - id: 405e883d-1ac3-4123-883f-ea49e1e41f46
+    content: 거래 이력 추가 기능 - 검색/CSV 내보내기/주간 집계/필터 유지
+    status: pending
+  - id: 18a95646-7206-4ce4-8604-96195bd8988c
+    content: 자동 투자 테스트 작성 - 스케줄러/잔액/거래 생성 검증
+    status: pending
+  - id: 08f6bc0e-8b0f-4c7e-9b12-25949ae73d19
+    content: 손익 계산 정확도 테스트 - QA 체크리스트 모든 케이스
+    status: pending
+  - id: e1f2038a-6cfe-4fb1-ab83-947aa2a6bd81
+    content: E2E 테스트 - Playwright로 전체 플로우 검증
+    status: pending
+  - id: 17a3b48b-003b-42c5-9ffc-141e4c2d6f85
+    content: 개발 히스토리 로그 작성 - 2025-11-11_system-improvements.md
+    status: pending
+  - id: 3f0fe253-31c2-4690-9822-779317e62170
+    content: QA 체크리스트 작성 - 자동투자/포트폴리오분석/거래UI
+    status: pending
+  - id: 0bc97eb4-c147-44cb-b54d-ab4ad6b55aec
+    content: README 업데이트 - 새로운 기능 섹션 추가
+    status: pending
+---
+
 # 투자 시스템 개선 및 자동화 구현
 
 ## Part 1: 자동 투자 실행 스케줄러 구현
@@ -442,42 +555,3 @@ Playwright로 전체 플로우 테스트:
 - 자동 투자 스케줄러
 - 포트폴리오 분석 기능
 - 거래 이력 개선사항
-
-### To-dos
-
-- [ ] Firebase Cloud Function으로 자동 투자 실행 스케줄러 생성 (매일 9시, 11시 실행)
-- [ ] 자동 투자 거래 생성 로직 수정 - 오늘 거래만 생성, 잔액 차감, 상태 관리
-- [ ] Transaction 타입에 status 필드 추가 (pending/completed/failed)
-- [ ] 거래 이력 페이지에 오늘 예정 거래 표시 (pending 상태)
-- [ ] 손익 계산 로직 수정 - 총 투자금 기준 계산으로 변경
-- [ ] 반올림 로직 개선 - 음수가 0으로 반올림되지 않도록 수정
-- [ ] 시세 API 실패 시 캐싱된 가격 사용 로직 구현
-- [ ] 손익 UI 컴포넌트 수정 - 음수는 빨간색으로 명확히 표시
-- [ ] 섹터 정보 정확히 표시 - GICS 11개 섹터 기준, ETF 내부 구성 분석
-- [ ] 벤치마크 비교 컴포넌트 추가 - KOSPI, S&P500, 60/40 포트폴리오
-- [ ] 기간별 성과 탭 추가 - 1일/1주/1개월/3개월/YTD/1년/전체
-- [ ] 리밸런싱 목표 비중 프리셋 제공 - 균등/현재/AI추천/안정형/공격형
-- [ ] AI 조언 구체화 - 우선순위별 실행 가능한 액션 아이템
-- [ ] 리밸런싱 실행 계획 상세화 - 매도/매수 상세, 수수료/세금, 분할 실행
-- [ ] 종목 비교 인터랙티브 차트 구현
-- [ ] 수익 기여도 분해 분석 - 비중 기여 vs 성과 기여
-- [ ] 상관관계 히트맵 구현 - 종목 간 상관관계 매트릭스
-- [ ] 스마트 알림 시스템 - 긴급/중요/정보 우선순위별 알림
-- [ ] 개인화 대시보드 - 투자 성향별 맞춤형 UI
-- [ ] 시나리오 분석 도구 - 만약 시뮬레이션
-- [ ] 세금 최적화 도구 - 손익 상황 분석 및 전략 제안
-- [ ] 백테스팅 엔진 - 과거 데이터로 전략 검증
-- [ ] 포트폴리오 최적화 알고리즘 - MPT 기반 효율적 프론티어
-- [ ] 거래 이력 요약 카드 컴포넌트 구현
-- [ ] 종목별 그룹 뷰 - Accordion으로 그룹화
-- [ ] 자동투자/수동거래 구분 탭 구현
-- [ ] 거래 요약 타임라인 뷰 - 주간/월간 요약
-- [ ] 금액/단가 표시 단순화
-- [ ] 정보 계층화 - 클릭 시 Popover로 상세 정보
-- [ ] 거래 이력 추가 기능 - 검색/CSV 내보내기/주간 집계/필터 유지
-- [ ] 자동 투자 테스트 작성 - 스케줄러/잔액/거래 생성 검증
-- [ ] 손익 계산 정확도 테스트 - QA 체크리스트 모든 케이스
-- [ ] E2E 테스트 - Playwright로 전체 플로우 검증
-- [ ] 개발 히스토리 로그 작성 - 2025-11-11_system-improvements.md
-- [ ] QA 체크리스트 작성 - 자동투자/포트폴리오분석/거래UI
-- [ ] README 업데이트 - 새로운 기능 섹션 추가

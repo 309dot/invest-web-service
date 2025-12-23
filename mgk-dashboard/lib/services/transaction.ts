@@ -72,6 +72,26 @@ async function normalizeTransactions(
       transaction.currency = resolvedCurrency;
     }
 
+    const inferredStatus: Transaction["status"] =
+      transaction.status ??
+      (transaction.pending === true ? "pending" : "completed");
+
+    if (transaction.status !== inferredStatus) {
+      updatePayload.status = inferredStatus;
+      transaction.status = inferredStatus;
+    }
+
+    const shouldBePending = inferredStatus === "pending";
+    if (transaction.pending !== shouldBePending) {
+      updatePayload.pending = shouldBePending;
+      transaction.pending = shouldBePending;
+    }
+
+    if (!transaction.scheduledDate && shouldBePending && transaction.date) {
+      updatePayload.scheduledDate = transaction.date;
+      transaction.scheduledDate = transaction.date;
+    }
+
     if (transaction.date) {
       let normalizedDate = transaction.date;
 
@@ -234,8 +254,9 @@ export async function createTransaction(
     purchaseMethod?: Transaction['purchaseMethod'];
     purchaseUnit?: Transaction['purchaseUnit'];
     executedAt?: string;
-    scheduledDate?: string;
     status?: Transaction['status'];
+    scheduledDate?: string;
+    pending?: boolean;
   }
 ): Promise<string> {
   try {
@@ -292,6 +313,15 @@ export async function createTransaction(
       });
     }
 
+    const status = transactionData.status ?? 'completed';
+    const pending = typeof transactionData.pending === 'boolean' ? transactionData.pending : status === 'pending';
+    const scheduledDate =
+      typeof transactionData.scheduledDate === 'string' && transactionData.scheduledDate.trim().length > 0
+        ? transactionData.scheduledDate
+        : status === 'pending'
+        ? normalizedDate
+        : undefined;
+
     const transaction: Omit<Transaction, 'id'> = {
       portfolioId,
       positionId,
@@ -311,8 +341,9 @@ export async function createTransaction(
       createdAt: Timestamp.now(),
       currency: resolvedCurrency,
       executedAt,
-      status: transactionData.status ?? 'completed',
-      ...(transactionData.scheduledDate ? { scheduledDate: transactionData.scheduledDate } : {}),
+      status,
+      pending,
+      ...(scheduledDate ? { scheduledDate } : {}),
       ...(typeof transactionData.exchangeRate === 'number' && {
         exchangeRate: transactionData.exchangeRate,
       }),
@@ -388,9 +419,11 @@ export async function getPortfolioTransactions(
   options?: {
     symbol?: string;
     type?: Transaction['type'];
+    status?: Transaction['status'];
     limit?: number;
     startDate?: string;
     endDate?: string;
+    purchaseMethod?: Transaction['purchaseMethod'];
   }
 ): Promise<Transaction[]> {
   try {
@@ -407,6 +440,9 @@ export async function getPortfolioTransactions(
     }
     if (options?.type) {
       q = query(q, where('type', '==', options.type));
+    }
+    if (options?.status) {
+      q = query(q, where('status', '==', options.status));
     }
     if (options?.startDate) {
       q = query(q, where('date', '>=', options.startDate));
@@ -438,7 +474,12 @@ export async function getPortfolioTransactions(
 
     await normalizeTransactions(userId, portfolioId, transactions, positionMap);
 
-    return transactions.map((tx) => {
+    const filteredTransactions =
+      options?.purchaseMethod && (options.purchaseMethod === 'auto' || options.purchaseMethod === 'manual')
+        ? transactions.filter((tx) => (tx.purchaseMethod ?? 'manual') === options.purchaseMethod)
+        : transactions;
+
+    return filteredTransactions.map((tx) => {
       const position = tx.positionId ? positionMap.get(tx.positionId) : undefined;
       const market = determineMarketFromContext(
         (position?.market as any) || undefined,
@@ -575,9 +616,10 @@ export async function deleteTransaction(
 export async function calculateTransactionStats(
   userId: string,
   portfolioId: string,
-  period?: {
-    startDate: string;
-    endDate: string;
+  filter?: {
+    startDate?: string;
+    endDate?: string;
+    purchaseMethod?: Transaction['purchaseMethod'];
   }
 ): Promise<{
   transactionCount: number;
@@ -618,8 +660,12 @@ export async function calculateTransactionStats(
   };
 }> {
   try {
-    const options = period
-      ? { startDate: period.startDate, endDate: period.endDate }
+    const options = filter
+      ? {
+          startDate: filter.startDate,
+          endDate: filter.endDate,
+          purchaseMethod: filter.purchaseMethod,
+        }
       : undefined;
 
     const transactions = await getPortfolioTransactions(userId, portfolioId, options);

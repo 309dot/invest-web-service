@@ -13,7 +13,6 @@ import {
   query,
   where,
   orderBy,
-  limit as firestoreLimit,
   Timestamp,
   writeBatch,
   deleteDoc,
@@ -45,36 +44,63 @@ const formatDateString = (date: Date): string => {
 
 const FLOAT_TOLERANCE = 1e-6;
 
+function isExecutedTransaction(transaction: Transaction): boolean {
+  if (transaction.pending === true) {
+    return false;
+  }
+  if (transaction.status && transaction.status !== 'completed') {
+    return false;
+  }
+  return true;
+}
+
+function resolveBuyCost(transaction: Transaction): number {
+  if (transaction.type !== 'buy') {
+    return 0;
+  }
+
+  const totalAmount = Number(transaction.totalAmount);
+  if (Number.isFinite(totalAmount) && totalAmount > 0) {
+    return totalAmount;
+  }
+
+  const amount = Number(transaction.amount ?? 0);
+  const price = Number(transaction.price ?? 0);
+  const shares = Number(transaction.shares ?? 0);
+  const fee = Number(transaction.fee ?? 0);
+  const tax = Number(transaction.tax ?? 0);
+
+  const gross = amount > 0 ? amount : price * shares;
+  const adjustedFee = Number.isFinite(fee) ? Math.max(fee, 0) : 0;
+  const adjustedTax = Number.isFinite(tax) ? Math.max(tax, 0) : 0;
+
+  return Math.max(gross, 0) + adjustedFee + adjustedTax;
+}
+
+function resolveInvestedValue(position: Pick<Position, 'totalInvested' | 'averagePrice' | 'shares'>): number {
+  const invested = Number(position.totalInvested ?? 0);
+  if (Number.isFinite(invested) && invested > FLOAT_TOLERANCE) {
+    return invested;
+  }
+
+  const averagePrice = Number(position.averagePrice ?? 0);
+  const shares = Number(position.shares ?? 0);
+  if (Number.isFinite(averagePrice) && Number.isFinite(shares) && shares > FLOAT_TOLERANCE) {
+    const fallback = averagePrice * shares;
+    if (Number.isFinite(fallback) && fallback > FLOAT_TOLERANCE) {
+      return fallback;
+    }
+  }
+
+  return 0;
+}
+
 type PriceSource = 'realtime' | 'historical' | 'fallback' | 'cached';
 
 interface PriceCacheEntry {
   price: number | null;
   source: PriceSource;
   timestamp: string;
-}
-
-async function getCachedPrice(symbol: string): Promise<number | null> {
-  try {
-    const snapshot = await getDocs(
-      query(
-        collection(db, 'priceSnapshots'),
-        where('symbol', '==', symbol),
-        orderBy('createdAt', 'desc'),
-        firestoreLimit(1)
-      )
-    );
-
-    if (!snapshot.empty) {
-      const cached = snapshot.docs[0].data() as { price?: number };
-      if (cached.price && Number.isFinite(cached.price) && cached.price > 0) {
-        return cached.price;
-      }
-    }
-  } catch (error) {
-    console.warn('Cached price lookup failed:', symbol, error);
-  }
-
-  return null;
 }
 
 function normalizeSymbolForAlphaVantage(symbol: string): string {
@@ -102,6 +128,7 @@ async function applyLatestMarketPrices(positions: Position[]): Promise<Position[
     const isKorean = sample.currency === 'KRW' || /^[0-9]{4,6}$/.test(symbol);
     let price: number | null = null;
     let source: PriceSource = 'cached';
+    let priceTimestamp = new Date().toISOString();
 
     try {
       if (isKorean) {
@@ -114,7 +141,11 @@ async function applyLatestMarketPrices(positions: Position[]): Promise<Position[
         const currentPrice = await getCurrentPrice(alphaSymbol);
         if (Number.isFinite(currentPrice?.price)) {
           price = currentPrice!.price;
-          source = 'realtime';
+          source = currentPrice.source === 'cached' ? 'cached' : 'realtime';
+          priceTimestamp =
+            currentPrice.metadata?.cachedAt ??
+            currentPrice.timestamp?.toISOString?.() ??
+            new Date().toISOString();
         } else {
           price = null;
         }
@@ -144,23 +175,9 @@ async function applyLatestMarketPrices(positions: Position[]): Promise<Position[
     }
 
     if (!price || !Number.isFinite(price) || price <= 0) {
-      const cachedPrice = await getCachedPrice(symbol);
-      if (cachedPrice && Number.isFinite(cachedPrice) && cachedPrice > 0) {
-        price = cachedPrice;
-        source = 'cached';
-      }
-    }
-
-    if (!price || !Number.isFinite(price) || price <= 0) {
       if (sample.currentPrice && sample.currentPrice > 0) {
         price = sample.currentPrice;
         source = 'fallback';
-      } else if (sample.totalValue && sample.shares && sample.shares > 0) {
-        const inferred = sample.totalValue / sample.shares;
-        if (Number.isFinite(inferred) && inferred > 0) {
-          price = inferred;
-          source = 'fallback';
-        }
       } else if (sample.averagePrice && sample.averagePrice > 0) {
         price = sample.averagePrice;
         source = 'fallback';
@@ -173,7 +190,7 @@ async function applyLatestMarketPrices(positions: Position[]): Promise<Position[
     priceCache.set(key, {
       price,
       source,
-      timestamp: new Date().toISOString(),
+      timestamp: priceTimestamp,
     });
   }
 
@@ -181,17 +198,20 @@ async function applyLatestMarketPrices(positions: Position[]): Promise<Position[
     .map((position) => {
       const key = `${position.symbol}_${position.currency ?? 'USD'}`;
       const cachedEntry = priceCache.get(key);
-      const currentPrice = cachedEntry && cachedEntry.price && cachedEntry.price > 0
-        ? cachedEntry.price
-        : position.currentPrice;
+      const currentPrice =
+        cachedEntry && cachedEntry.price && cachedEntry.price > 0
+          ? cachedEntry.price
+          : position.currentPrice;
+      const invested = resolveInvestedValue(position);
       const totalValue = position.shares * currentPrice;
-      const returnRate = calculateReturnRate(totalValue, position.totalInvested);
-      const profitLoss = totalValue - position.totalInvested;
+      const returnRate = calculateReturnRate(totalValue, invested);
+      const profitLoss = totalValue - invested;
 
       return {
         ...position,
         currentPrice,
         totalValue,
+        totalInvested: invested,
         returnRate,
         profitLoss,
         priceSource: cachedEntry?.source ?? 'cached',
@@ -255,26 +275,35 @@ function aggregatePositionMetrics(
   let lastTradePrice = 0;
   let firstPurchaseDate: string | null = null;
   let lastTransactionDate: string | null = null;
+  let executedCount = 0;
 
   transactions.forEach((tx) => {
-    const price = tx.price || 0;
-    const quantity = tx.shares || 0;
+    if (!isExecutedTransaction(tx)) {
+      return;
+    }
+
+    executedCount += 1;
+
+    const price = Number(tx.price ?? 0);
+    const quantity = Number(tx.shares ?? 0);
 
     if (price > 0) {
       lastTradePrice = price;
     }
 
     if (tx.type === 'buy') {
-      const cost = quantity * price;
+      const cost = resolveBuyCost(tx);
+      const positiveShares = quantity > 0 ? quantity : 0;
       totalInvested += cost;
-      shares += quantity;
+      shares += positiveShares;
       averagePrice = shares > 0 ? totalInvested / shares : 0;
     } else if (tx.type === 'sell') {
-      shares -= quantity;
+      const sellShares = quantity > 0 ? quantity : 0;
+      shares -= sellShares;
       if (shares < 0) {
         shares = 0;
       }
-      const costBasis = averagePrice * quantity;
+      const costBasis = averagePrice * sellShares;
       totalInvested = Math.max(0, totalInvested - costBasis);
       if (shares === 0) {
         averagePrice = 0;
@@ -290,24 +319,29 @@ function aggregatePositionMetrics(
     lastTransactionDate = tx.date;
   });
 
+  if (shares <= FLOAT_TOLERANCE) {
+    shares = 0;
+    totalInvested = 0;
+    averagePrice = 0;
+  }
+
   if ((!Number.isFinite(currentPrice) || currentPrice <= 0) && lastTradePrice > 0) {
     currentPrice = lastTradePrice;
   }
 
-  const normalizedInvested = shares > 0 ? shares * averagePrice : 0;
   const totalValue = shares * currentPrice;
-  const returnRate = calculateReturnRate(totalValue, normalizedInvested);
-  const profitLoss = totalValue - normalizedInvested;
+  const returnRate = calculateReturnRate(totalValue, totalInvested);
+  const profitLoss = totalValue - totalInvested;
 
   return {
     shares,
     averagePrice,
-    totalInvested: normalizedInvested,
+    totalInvested,
     currentPrice,
     totalValue,
     returnRate,
     profitLoss,
-    transactionCount: transactions.length,
+    transactionCount: executedCount,
     firstPurchaseDate: firstPurchaseDate || existingPosition?.firstPurchaseDate || formatDateString(new Date()),
     lastTransactionDate:
       lastTransactionDate ||
@@ -632,8 +666,8 @@ export async function updateSellAlertSettings(
     enabled: boolean;
     targetReturnRate?: number;
     sellRatio?: number;
+    notifyEmail?: string | null;
     triggerOnce?: boolean;
-    accountEmail?: string | null;
   }
 ): Promise<SellAlertConfig> {
   const positionRef = doc(
@@ -649,10 +683,7 @@ export async function updateSellAlertSettings(
   }
 
   const existing = snapshot.data().sellAlert as SellAlertConfig | undefined;
-  const normalized = normalizeSellAlertSettings(existing, {
-    ...settings,
-    notifyEmail: settings.accountEmail ?? existing?.notifyEmail ?? null,
-  });
+  const normalized = normalizeSellAlertSettings(existing, settings);
 
   await updateDoc(positionRef, {
     sellAlert: normalized,
@@ -868,9 +899,10 @@ export async function updatePositionPrices(
       const currentPrice = priceData.get(position.symbol);
       if (!currentPrice) continue;
 
+      const invested = resolveInvestedValue(position);
       const newTotalValue = position.shares * currentPrice;
-      const newReturnRate = calculateReturnRate(newTotalValue, position.totalInvested);
-      const newProfitLoss = newTotalValue - position.totalInvested;
+      const newReturnRate = calculateReturnRate(newTotalValue, invested);
+      const newProfitLoss = newTotalValue - invested;
 
       const positionRef = doc(
         db,
@@ -881,6 +913,7 @@ export async function updatePositionPrices(
       batch.update(positionRef, {
         currentPrice,
         totalValue: newTotalValue,
+        totalInvested: invested,
         returnRate: newReturnRate,
         profitLoss: newProfitLoss,
         updatedAt: Timestamp.now(),

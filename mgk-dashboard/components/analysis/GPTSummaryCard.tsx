@@ -51,77 +51,75 @@ export function GPTSummaryCard({ diagnosis, loading, error, onRetry }: GPTSummar
 
         {!loading && !error && diagnosis ? (
           <div className="space-y-6">
-            <section className="space-y-3 rounded-md border border-primary/20 bg-primary/5 p-4">
-              <h3 className="text-sm font-semibold text-primary">이번 주 이야기</h3>
+            <section className="space-y-2">
+              <h3 className="text-sm font-semibold text-primary">포트폴리오 진단</h3>
               <p className="text-sm leading-relaxed text-muted-foreground whitespace-pre-line">
                 {diagnosis.diagnosis}
               </p>
-              <div className="flex flex-wrap gap-2">
-                {diagnosis.strengths?.map((item, index) => (
-                  <Badge key={`strength-chip-${index}`} variant="secondary" className="bg-emerald-100 text-emerald-700">
-                    👍 {item}
-                  </Badge>
-                ))}
-                {diagnosis.weaknesses?.map((item, index) => (
-                  <Badge key={`weakness-chip-${index}`} variant="destructive" className="bg-amber-100 text-amber-800">
-                    ⚠️ {item}
-                  </Badge>
-                ))}
-              </div>
             </section>
 
-            {diagnosis.strategies?.length ? (
-              <section className="space-y-2">
-                <h3 className="text-sm font-semibold text-primary">우선순위 액션 플랜</h3>
-                <ol className="space-y-2">
-                  {diagnosis.strategies.slice(0, 3).map((item, index) => (
-                    <li
-                      key={`strategy-${index}`}
-                      className="flex items-start gap-3 rounded-md border border-muted-foreground/20 bg-muted/30 p-3 text-sm text-muted-foreground"
-                    >
-                      <span className="text-primary font-semibold">{index + 1}</span>
-                      <span>{item}</span>
-                    </li>
-                  ))}
-                </ol>
-              </section>
-            ) : null}
+            <div className="grid gap-4 md:grid-cols-2">
+              {diagnosis.strengths?.length ? (
+                <section className="space-y-2 rounded-md border border-emerald-200 bg-emerald-50 p-3">
+                  <h3 className="text-sm font-semibold text-emerald-700">강점</h3>
+                  <ul className="space-y-1 text-sm text-emerald-700">
+                    {diagnosis.strengths.map((item, index) => (
+                      <li key={`strength-${index}`}>• {item}</li>
+                    ))}
+                  </ul>
+                </section>
+              ) : null}
+
+              {diagnosis.weaknesses?.length ? (
+                <section className="space-y-2 rounded-md border border-amber-200 bg-amber-50 p-3">
+                  <h3 className="text-sm font-semibold text-amber-700">약점</h3>
+                  <ul className="space-y-1 text-sm text-amber-700">
+                    {diagnosis.weaknesses.map((item, index) => (
+                      <li key={`weakness-${index}`}>• {item}</li>
+                    ))}
+                  </ul>
+                </section>
+              ) : null}
+            </div>
 
             {diagnosis.stockEvaluations?.length ? (
               <section className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-semibold text-primary">종목 체크포인트</h3>
-                  <Badge variant="secondary">총 {diagnosis.stockEvaluations.length}건</Badge>
+                  <h3 className="text-sm font-semibold text-primary">종목별 평가</h3>
+                  <Badge variant="secondary">상위 {diagnosis.stockEvaluations.length}개</Badge>
                 </div>
                 <div className="grid gap-3 md:grid-cols-2">
                   {diagnosis.stockEvaluations.map((stock, index) => (
-                    <div key={`${stock.symbol}-${index}`} className="rounded-md border p-3 text-sm text-muted-foreground">
+                    <div key={`${stock.symbol}-${index}`} className="rounded-md border p-3">
                       <div className="flex items-center gap-2">
-                        <span className="font-semibold text-foreground">{stock.symbol}</span>
-                        <Badge
-                          variant={
-                            stock.recommendation === 'buy'
-                              ? 'default'
-                              : stock.recommendation === 'sell'
-                              ? 'destructive'
-                              : 'outline'
-                          }
-                        >
+                        <span className="font-semibold">{stock.symbol}</span>
+                        <Badge variant={stock.recommendation === 'buy' ? 'default' : stock.recommendation === 'sell' ? 'destructive' : 'outline'}>
                           {stock.recommendation === 'buy' ? '매수' : stock.recommendation === 'sell' ? '매도' : '유지'}
                         </Badge>
                       </div>
-                      <p className="mt-2 font-medium text-foreground">{stock.evaluation}</p>
-                      <p className="mt-1 text-xs">{stock.reason}</p>
+                      <p className="mt-2 text-sm text-muted-foreground">{stock.evaluation}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{stock.reason}</p>
                     </div>
                   ))}
                 </div>
               </section>
             ) : null}
 
+            {diagnosis.strategies?.length ? (
+              <section className="space-y-2">
+                <h3 className="text-sm font-semibold text-primary">향후 전략</h3>
+                <ul className="space-y-1 text-sm text-muted-foreground">
+                  {diagnosis.strategies.map((item, index) => (
+                    <li key={`strategy-${index}`}>#{index + 1} {item}</li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+
             {diagnosis.rebalancingSuggestion ? (
               <section className="space-y-2">
                 <h3 className="text-sm font-semibold text-primary">리밸런싱 제안</h3>
-                <p className="rounded-md border border-dashed border-primary/30 bg-primary/5 p-4 text-sm text-muted-foreground whitespace-pre-line">
+                <p className="text-sm text-muted-foreground whitespace-pre-line">
                   {diagnosis.rebalancingSuggestion}
                 </p>
               </section>

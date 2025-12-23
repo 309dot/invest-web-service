@@ -1,5 +1,7 @@
 import axios from 'axios';
-import { PriceData } from '@/types';
+import type { PriceData, PriceCacheEntry, PriceCacheResolution } from '@/types';
+import { getFirestoreAdmin } from '@/lib/server/firebaseAdmin';
+import { Timestamp } from 'firebase-admin/firestore';
 
 const ALPHA_VANTAGE_API_KEY =
   process.env.ALPHA_VANTAGE_API_KEY ||
@@ -20,6 +22,7 @@ const cache = new Map<string, { data: any; timestamp: number }>();
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 const FX_SERIES_CACHE_DURATION = 12 * 60 * 60 * 1000; // 12 hours
 const KOREAN_SYMBOL_PATTERN = /^[0-9]{4,6}$/;
+const PRICE_CACHE_COLLECTION = 'priceCache';
 
 function isKoreanMarketSymbol(symbol: string): boolean {
   const upper = symbol.toUpperCase();
@@ -32,6 +35,83 @@ function buildKoreanSymbolCandidates(symbol: string): string[] {
     return [upper];
   }
   return [`${symbol}.KS`, `${symbol}.KQ`];
+}
+
+function resolveMarket(symbol: string): 'US' | 'KR' | 'GLOBAL' {
+  return isKoreanMarketSymbol(symbol) ? 'KR' : 'US';
+}
+
+function buildPriceCacheKey(symbol: string, market: 'US' | 'KR' | 'GLOBAL', resolution: PriceCacheResolution) {
+  return `${symbol}:${market}:${resolution}`;
+}
+
+function timestampToDate(ts: any): Date | null {
+  if (!ts) {
+    return null;
+  }
+  if (typeof ts.toDate === 'function') {
+    return ts.toDate();
+  }
+  if (typeof ts.seconds === 'number') {
+    return new Date(ts.seconds * 1000);
+  }
+  return null;
+}
+
+function isCacheEntryValid(entry: PriceCacheEntry | null): entry is PriceCacheEntry {
+  if (!entry) return false;
+  const expireDate = timestampToDate((entry as any).expireAt);
+  if (!expireDate) return false;
+  return expireDate.getTime() >= Date.now();
+}
+
+function priceCacheEntryToPriceData(entry: PriceCacheEntry): PriceData {
+  const sourceDate =
+    timestampToDate((entry as any).sourceTimestamp) ?? timestampToDate((entry as any).cachedAt) ?? new Date();
+  const previousClose = entry.previousClose ?? entry.open ?? entry.price;
+  const change = entry.price - (previousClose ?? entry.price);
+  const changePercent =
+    previousClose && previousClose !== 0 ? (change / previousClose) * 100 : 0;
+
+  const cachedAtIso =
+    timestampToDate((entry as any).cachedAt)?.toISOString() ??
+    (typeof (entry as any).cachedAt === 'string' ? (entry as any).cachedAt : undefined);
+
+  return {
+    symbol: entry.symbol,
+    price: entry.price,
+    change,
+    changePercent,
+    timestamp: sourceDate,
+    source: 'cached',
+    metadata: {
+      cacheKey: entry.cacheKey,
+      cachedAt: cachedAtIso,
+    },
+  };
+}
+
+async function loadPriceCache(
+  symbol: string,
+  market: 'US' | 'KR' | 'GLOBAL',
+  resolution: PriceCacheResolution
+): Promise<PriceCacheEntry | null> {
+  try {
+    const cacheKey = buildPriceCacheKey(symbol, market, resolution);
+    const firestore = getFirestoreAdmin();
+    const snapshot = await firestore.collection(PRICE_CACHE_COLLECTION).doc(cacheKey).get();
+    if (!snapshot.exists) {
+      return null;
+    }
+    const data = snapshot.data() as PriceCacheEntry;
+    if (!isCacheEntryValid(data)) {
+      return null;
+    }
+    return data;
+  } catch (error) {
+    console.error('[priceCache] Failed to load cache', { symbol, market, resolution, error });
+    return null;
+  }
 }
 
 function formatDateKST(timestampSeconds: number): string {
@@ -74,19 +154,67 @@ export async function getCurrentPrice(symbol: string): Promise<PriceData> {
       change: parseFloat(quote['09. change']),
       changePercent: parseFloat(quote['10. change percent'].replace('%', '')),
       timestamp: new Date(),
+      source: 'live',
     };
 
     // Cache the result
     cache.set(cacheKey, { data: priceData, timestamp: Date.now() });
 
+    const market = resolveMarket(symbol);
+    const resolution: PriceCacheResolution = 'intraday';
+    try {
+      const firestore = getFirestoreAdmin();
+      const priceCacheDoc = firestore
+        .collection(PRICE_CACHE_COLLECTION)
+        .doc(buildPriceCacheKey(symbol, market, resolution));
+      const cachedAt = new Date();
+      const expireAt = new Date(cachedAt.getTime() + 10 * 60 * 1000); // 10분 TTL
+
+      const payload: PriceCacheEntry = {
+        cacheKey: buildPriceCacheKey(symbol, market, resolution),
+        symbol,
+        market,
+        currency: market === 'KR' ? 'KRW' : 'USD',
+        resolution,
+        price: priceData.price,
+        open: priceData.price,
+        high: priceData.price,
+        low: priceData.price,
+        previousClose: priceData.price - priceData.change,
+        volume: undefined,
+        source: 'alphavantage',
+        sourceTimestamp: Timestamp.fromDate(priceData.timestamp),
+        cachedAt: Timestamp.fromDate(cachedAt),
+        expireAt: Timestamp.fromDate(expireAt),
+      };
+
+      await priceCacheDoc.set(payload, { merge: true });
+    } catch (error) {
+      console.error('[priceCache] Failed to persist latest price', { symbol, error });
+    }
+
     return priceData;
   } catch (error) {
     console.error('Error fetching price from Alpha Vantage:', error);
 
+    const market = resolveMarket(symbol);
+    const cacheEntry = await loadPriceCache(symbol, market, 'intraday');
+    if (cacheEntry) {
+      console.warn('[priceCache] Falling back to Firestore cache for current price', {
+        symbol,
+        market,
+        cachedAt: timestampToDate((cacheEntry as any).cachedAt)?.toISOString(),
+      });
+      return priceCacheEntryToPriceData(cacheEntry);
+    }
+
     // If API fails, try to return cached data even if expired
     if (cached) {
       console.warn('Returning expired cache data due to API error');
-      return cached.data;
+      return {
+        ...cached.data,
+        source: cached.data.source === 'cached' ? 'cached' : 'stale',
+      };
     }
 
     throw new Error('Failed to fetch stock price');

@@ -1,13 +1,38 @@
 import { DailyPurchase } from '@/types';
 
+export function roundPercentage(value: number, precision = 2): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  const factor = Math.pow(10, precision);
+  const epsilonAdjusted = value + (value >= 0 ? Number.EPSILON : -Number.EPSILON);
+  const rounded = Math.round(epsilonAdjusted * factor) / factor;
+
+  if (rounded === 0 && Math.abs(value) > 0) {
+    const minimum = 1 / factor;
+    return value < 0 ? -minimum : minimum;
+  }
+
+  return rounded;
+}
+
 /**
  * Calculate return rate percentage
  */
-export function calculateReturnRate(currentValue: number, investedAmount: number): number {
+export function calculateReturnRate(
+  currentValue: number,
+  investedAmount: number,
+  options: { precision?: number } = {}
+): number {
   if (!Number.isFinite(currentValue) || !Number.isFinite(investedAmount) || investedAmount <= 0) {
     return 0;
   }
-  return ((currentValue - investedAmount) / investedAmount) * 100;
+
+  const precision = Number.isFinite(options.precision) ? Math.max(0, options.precision!) : 4;
+  const raw = ((currentValue - investedAmount) / investedAmount) * 100;
+
+  return roundPercentage(raw, precision);
 }
 
 /**

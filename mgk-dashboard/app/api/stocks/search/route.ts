@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import type { Stock, Sector } from '@/types';
+import type { Stock } from '@/types';
 import { Timestamp } from 'firebase/firestore';
 import { searchKoreanStocks as searchYahooKR } from '@/lib/apis/yahoo-finance';
+import { normalizeSector as normalizeSectorValue } from '@/lib/utils/sectors';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,42 +39,6 @@ interface GoogleFinanceMatch {
   type?: string;
   sector?: string;
   f?: string;
-}
-
-const SECTOR_MAP: Record<string, Sector> = {
-  technology: 'technology',
-  tech: 'technology',
-  healthcare: 'healthcare',
-  health: 'healthcare',
-  financial: 'financial',
-  finance: 'financial',
-  consumer: 'consumer',
-  industrial: 'industrial',
-  industry: 'industrial',
-  energy: 'energy',
-  materials: 'materials',
-  material: 'materials',
-  utilities: 'utilities',
-  utility: 'utilities',
-  'real-estate': 'real-estate',
-  'realestate': 'real-estate',
-  'real-estate-services': 'real-estate',
-  communication: 'communication',
-  telecom: 'communication',
-  telecommunications: 'communication',
-  other: 'other',
-};
-
-function normalizeKey(value: string): string {
-  return value.toLowerCase().replace(/[^a-z]+/g, '-');
-}
-
-function normalizeSector(value?: string): Sector {
-  if (!value) {
-    return 'other';
-  }
-  const key = normalizeKey(value);
-  return SECTOR_MAP[key] ?? 'other';
 }
 
 function normalizeAssetType(value?: string): Stock['assetType'] {
@@ -216,7 +181,7 @@ async function searchGoogleFinanceKR(keyword: string): Promise<Omit<Stock, 'id'>
         name,
         market: 'KR' as Stock['market'],
         assetType,
-        sector: normalizeSector(match.sector),
+        sector: normalizeSectorValue(match.sector),
         currency: 'KRW' as const,
         exchange,
         description: match.f || `${name} (${symbol})`,
@@ -245,7 +210,7 @@ async function searchKoreanStocks(keyword: string): Promise<Omit<Stock, 'id'>[]>
       name: result.name,
       market: 'KR' as Stock['market'],
       assetType: normalizeAssetType(result.assetType),
-      sector: normalizeSector(result.sector),
+      sector: normalizeSectorValue(result.sector),
       currency: 'KRW' as const,
       exchange: result.exchange,
       description: `${result.name} (${result.symbol})`,
@@ -272,7 +237,7 @@ function getPopularStocks(): Omit<Stock, 'id'>[] {
       name: 'Apple Inc.',
       market: 'US',
       assetType: 'stock',
-      sector: 'technology',
+      sector: 'information-technology',
       currency: 'USD',
       exchange: 'NASDAQ',
       description: 'Apple Inc. - 아이폰, 맥, 아이패드 제조사',
@@ -284,7 +249,7 @@ function getPopularStocks(): Omit<Stock, 'id'>[] {
       name: 'Microsoft Corporation',
       market: 'US',
       assetType: 'stock',
-      sector: 'technology',
+      sector: 'information-technology',
       currency: 'USD',
       exchange: 'NASDAQ',
       description: 'Microsoft Corporation - 소프트웨어 및 클라우드 서비스',
@@ -296,7 +261,7 @@ function getPopularStocks(): Omit<Stock, 'id'>[] {
       name: 'Alphabet Inc.',
       market: 'US',
       assetType: 'stock',
-      sector: 'technology',
+      sector: 'information-technology',
       currency: 'USD',
       exchange: 'NASDAQ',
       description: 'Alphabet Inc. - Google 모회사',
@@ -308,7 +273,7 @@ function getPopularStocks(): Omit<Stock, 'id'>[] {
       name: 'Tesla Inc.',
       market: 'US',
       assetType: 'stock',
-      sector: 'consumer',
+      sector: 'consumer-discretionary',
       currency: 'USD',
       exchange: 'NASDAQ',
       description: 'Tesla Inc. - 전기차 및 에너지 솔루션',
@@ -320,7 +285,7 @@ function getPopularStocks(): Omit<Stock, 'id'>[] {
       name: 'NVIDIA Corporation',
       market: 'US',
       assetType: 'stock',
-      sector: 'technology',
+      sector: 'information-technology',
       currency: 'USD',
       exchange: 'NASDAQ',
       description: 'NVIDIA Corporation - GPU 및 AI 칩 제조사',
@@ -344,7 +309,7 @@ function getPopularStocks(): Omit<Stock, 'id'>[] {
       name: 'Invesco QQQ Trust',
       market: 'US',
       assetType: 'etf',
-      sector: 'technology',
+      sector: 'information-technology',
       currency: 'USD',
       exchange: 'NASDAQ',
       description: 'Invesco QQQ Trust - 나스닥 100 지수 추종 ETF',
@@ -356,7 +321,7 @@ function getPopularStocks(): Omit<Stock, 'id'>[] {
       name: '삼성전자',
       market: 'KR',
       assetType: 'stock',
-      sector: 'technology',
+      sector: 'information-technology',
       currency: 'KRW',
       exchange: 'KOSPI',
       description: '삼성전자 - 대한민국 대표 전자 기업',

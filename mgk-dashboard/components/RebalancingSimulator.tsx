@@ -6,21 +6,14 @@
 
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Badge } from './ui/badge';
 import { Alert, AlertDescription } from './ui/alert';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from './ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown-menu';
 import {
   Calculator,
   RefreshCw,
@@ -28,13 +21,13 @@ import {
   AlertCircle,
   TrendingUp,
   TrendingDown,
-  ListFilter,
+  Sparkles,
+  SlidersHorizontal,
 } from 'lucide-react';
-import type { Position, RebalancingPreset } from '@/types';
+import type { Position } from '@/types';
 import { useCurrency } from '@/lib/contexts/CurrencyContext';
 import { assertCurrency, convertWithRate } from '@/lib/currency';
-import { buildRebalancingPresets } from '@/lib/utils/rebalancingPresets';
-import { formatPercent } from '@/lib/utils/formatters';
+import { getProfitTextClass, PROFIT_TEXT_NEGATIVE, PROFIT_TEXT_POSITIVE } from '@/lib/utils/formatters';
 
 interface RebalancingSimulatorProps {
   positions: Position[];
@@ -43,70 +36,45 @@ interface RebalancingSimulatorProps {
   exchangeRate?: number | null;
 }
 
+type PresetId = 'equal' | 'current' | 'conservative' | 'aggressive' | 'ai';
+
+interface RebalancePreset {
+  id: PresetId;
+  label: string;
+  description: string;
+  badge?: string;
+}
+
+const PRESETS: RebalancePreset[] = [
+  { id: 'equal', label: '균등 분산', description: '모든 종목을 동일한 비중으로 유지합니다.' },
+  { id: 'current', label: '현재 유지', description: '현재 비중을 그대로 유지합니다.' },
+  { id: 'conservative', label: '안정형', description: '대형주와 ETF 비중을 높여 변동성을 낮춥니다.' },
+  { id: 'aggressive', label: '공격형', description: '성장주 비중을 높여 수익률을 추구합니다.' },
+  { id: 'ai', label: 'AI 추천', description: '포지션 데이터를 기반으로 AI가 제안합니다.', badge: 'Beta' },
+];
+
 interface TargetWeight {
   symbol: string;
   currency: 'USD' | 'KRW';
   currentWeight: number;
   targetWeight: number;
   currentValueLocal: number;
-  currentValueBase: number;
   targetValueLocal: number;
-  targetValueBase: number;
   differenceLocal: number;
-  differenceBase: number;
   action: 'buy' | 'sell' | 'hold';
+  estimatedFeeLocal: number;
+  estimatedTaxLocal: number;
+  netImpactLocal: number;
+  suggestedTranches: number;
 }
-
-interface RebalancingPlanLeg {
-  symbol: string;
-  action: 'buy' | 'sell';
-  currency: 'USD' | 'KRW';
-  amountLocal: number;
-  amountBase: number;
-  feeLocal: number;
-  feeBase: number;
-  slippageLocal: number;
-  slippageBase: number;
-  weightChange: number;
-  note?: string;
-}
-
-interface RebalancingScheduleOption {
-  id: 'single' | 'split';
-  label: string;
-  description: string;
-  steps: string[];
-}
-
-interface RebalancingExecutionPlan {
-  totals: {
-    totalBuyBase: number;
-    totalSellBase: number;
-    grossTradeBase: number;
-    estimatedFeesBase: number;
-    estimatedSlippageBase: number;
-    netFlowBase: number;
-    tradeRatio: number;
-  };
-  buys: RebalancingPlanLeg[];
-  sells: RebalancingPlanLeg[];
-  schedule: {
-    recommended: RebalancingScheduleOption['id'];
-    options: RebalancingScheduleOption[];
-    notes: string[];
-  };
-}
-
-const ESTIMATED_FEE_RATE = 0.0012;
-const ESTIMATED_SLIPPAGE_RATE = 0.0005;
-const MIN_TRADE_THRESHOLD = 1;
 
 export function RebalancingSimulator({ positions, totalValue, baseCurrency, exchangeRate }: RebalancingSimulatorProps) {
   const [targetWeights, setTargetWeights] = useState<Record<string, string>>({});
   const [simulationResult, setSimulationResult] = useState<TargetWeight[]>([]);
   const [showResult, setShowResult] = useState(false);
-  const [selectedPreset, setSelectedPreset] = useState<string>('current');
-  const [executionPlan, setExecutionPlan] = useState<RebalancingExecutionPlan | null>(null);
+  const [activePreset, setActivePreset] = useState<PresetId | null>(null);
+  const [presetNote, setPresetNote] = useState<string | null>(null);
+
   const { formatAmount } = useCurrency();
 
   const toBase = useCallback(
@@ -139,240 +107,133 @@ export function RebalancingSimulator({ positions, totalValue, baseCurrency, exch
     [baseCurrency, exchangeRate]
   );
 
-  const presets = useMemo<RebalancingPreset[]>(() => {
-    return buildRebalancingPresets({
-      positions,
-      baseCurrency,
-      exchangeRate,
-    });
-  }, [positions, baseCurrency, exchangeRate]);
-
-  const positionMap = useMemo(() => {
-    const map = new Map<string, Position>();
-    positions.forEach((position) => {
-      map.set(position.symbol, position);
-    });
-    return map;
-  }, [positions]);
-
-  const formatBaseAmount = useCallback(
-    (value: number, options?: { withSign?: boolean }) => {
-      const formatted = formatAmount(Math.abs(value), baseCurrency);
-      if (options?.withSign) {
-        if (Math.abs(value) < 1e-2) {
-          return formatted;
-        }
-        return value >= 0 ? `+${formatted}` : `-${formatted}`;
-      }
-      return formatted;
-    },
-    [formatAmount, baseCurrency]
-  );
-
-  const buildExecutionPlan = useCallback(
-    (weights: TargetWeight[]): RebalancingExecutionPlan | null => {
-      if (!weights.length) {
-        return null;
-      }
-
-      const actionable = weights.filter((item) => Math.abs(item.differenceBase) > MIN_TRADE_THRESHOLD);
-      if (!actionable.length) {
-        return null;
-      }
-
-      const legs: RebalancingPlanLeg[] = actionable.map((item) => {
-        const action = item.differenceBase >= 0 ? 'buy' : 'sell';
-        const amountBase = Math.abs(item.differenceBase);
-        const amountLocal = Math.abs(item.differenceLocal);
-        const feeBase = amountBase * ESTIMATED_FEE_RATE;
-        const slippageBase = amountBase * ESTIMATED_SLIPPAGE_RATE;
-        const feeLocal = amountLocal * ESTIMATED_FEE_RATE;
-        const slippageLocal = amountLocal * ESTIMATED_SLIPPAGE_RATE;
-        const position = positionMap.get(item.symbol);
-        let note: string | undefined;
-
-        if (position) {
-          if (action === 'sell') {
-            note =
-              position.profitLoss >= 0
-                ? '이익 일부를 실현하고 비중을 줄입니다.'
-                : '손실을 제한하고 절세 효과를 고려합니다.';
-          } else {
-            note =
-              position.returnRate >= 0
-                ? '추세가 좋은 종목의 비중을 확대합니다.'
-                : '저평가 구간에서 분할 매수를 진행합니다.';
-          }
-        }
-
-        return {
-          symbol: item.symbol,
-          action,
-          currency: item.currency,
-          amountLocal,
-          amountBase,
-          feeLocal,
-          feeBase,
-          slippageLocal,
-          slippageBase,
-          weightChange: item.targetWeight - item.currentWeight,
-          note,
-        };
-      });
-
-      const sells = legs.filter((leg) => leg.action === 'sell');
-      const buys = legs.filter((leg) => leg.action === 'buy');
-
-      const totalSellBase = sells.reduce((sum, leg) => sum + leg.amountBase, 0);
-      const totalBuyBase = buys.reduce((sum, leg) => sum + leg.amountBase, 0);
-      const grossTradeBase = totalSellBase + totalBuyBase;
-      const estimatedFeesBase = legs.reduce((sum, leg) => sum + leg.feeBase, 0);
-      const estimatedSlippageBase = legs.reduce((sum, leg) => sum + leg.slippageBase, 0);
-      const netFlowBase = totalSellBase - totalBuyBase - estimatedFeesBase - estimatedSlippageBase;
-      const tradeRatio = totalValue > 0 ? grossTradeBase / totalValue : 0;
-
-      const formatLegList = (entries: RebalancingPlanLeg[]) =>
-        entries
-          .map(
-            (entry) =>
-              `${entry.symbol} (${formatBaseAmount(entry.amountBase)} | ${formatPercent(entry.weightChange)})`
-          )
-          .join(', ');
-
-      const chunkLegs = (entries: RebalancingPlanLeg[], parts: number) => {
-        if (!entries.length) {
-          return Array.from({ length: parts }, () => [] as RebalancingPlanLeg[]);
-        }
-        const chunkSize = Math.ceil(entries.length / parts);
-        return Array.from({ length: parts }, (_, index) =>
-          entries.slice(index * chunkSize, (index + 1) * chunkSize)
-        );
-      };
-
-      const sellsChunks = chunkLegs(sells, 3);
-      const buysChunks = chunkLegs(buys, 3);
-
-      const singleOption: RebalancingScheduleOption = {
-        id: 'single',
-        label: '한 번에 실행',
-        description:
-          tradeRatio <= 0.05
-            ? '거래 규모가 비교적 작아 한 번에 실행해도 부담이 적습니다.'
-            : '시장 유동성이 충분한 시점에 한 번에 실행해 빠르게 리밸런싱하세요.',
-        steps: [
-          `매도: ${formatLegList(sells) || '없음'}`,
-          `매수: ${formatLegList(buys) || '없음'}`,
-          '체결 후 목표 비중에 맞게 재확인합니다.',
-        ],
-      };
-
-      const splitOption: RebalancingScheduleOption = {
-        id: 'split',
-        label: '3회 분할 실행',
-        description: '변동성을 분산하고 슬리피지를 줄이기 위해 1~3주에 걸쳐 단계적으로 실행합니다.',
-        steps: [
-          `1주차: 매도 ${formatLegList(sellsChunks[0]) || '없음'} / 매수 ${
-            formatLegList(buysChunks[0]) || '없음'
-          }`,
-          `2주차: 매도 ${formatLegList(sellsChunks[1]) || '없음'} / 매수 ${
-            formatLegList(buysChunks[1]) || '없음'
-          }`,
-          `3주차: 매도 ${formatLegList(sellsChunks[2]) || '없음'} / 매수 ${
-            formatLegList(buysChunks[2]) || '없음'
-          }`,
-        ],
-      };
-
-      const recommended =
-        tradeRatio > 0.08 || grossTradeBase > totalValue * 0.05 ? 'split' : 'single';
-
-      const notes: string[] = [];
-      notes.push(`총 거래 규모는 포트폴리오 평가액의 ${formatPercent(tradeRatio * 100)} 수준입니다.`);
-      if (Math.abs(netFlowBase) > MIN_TRADE_THRESHOLD) {
-        notes.push(
-          netFlowBase >= 0
-            ? `거래 후 현금이 ${formatBaseAmount(netFlowBase, { withSign: true })} 만큼 증가합니다.`
-            : `거래 후 현금이 ${formatBaseAmount(netFlowBase, { withSign: true })} 만큼 감소합니다.`
-        );
-      } else {
-        notes.push('매도 대금과 매수 금액이 유사하여 현금 변동은 크지 않습니다.');
-      }
-
-      if (estimatedFeesBase > MIN_TRADE_THRESHOLD) {
-        notes.push(
-          `예상 수수료와 슬리피지는 총 ${formatBaseAmount(
-            estimatedFeesBase + estimatedSlippageBase
-          )} 정도입니다.`
-        );
-      }
-
-      return {
-        totals: {
-          totalBuyBase,
-          totalSellBase,
-          grossTradeBase,
-          estimatedFeesBase,
-          estimatedSlippageBase,
-          netFlowBase,
-          tradeRatio,
-        },
-        buys,
-        sells,
-        schedule: {
-          recommended,
-          options: [singleOption, splitOption],
-          notes,
-        },
-      };
-    },
-    [formatBaseAmount, positionMap, totalValue]
-  );
-
-  useEffect(() => {
-    if (!presets.length) {
-      setTargetWeights({});
-      return;
-    }
-
-    if (selectedPreset === 'custom') {
-      return;
-    }
-
-    const preset =
-      presets.find((item) => item.id === selectedPreset) ??
-      presets.find((item) => item.id === 'current') ??
-      presets[0];
-
-    if (!preset) {
-      return;
-    }
-
-    setTargetWeights(convertWeightsToState(preset.weights, positions.map((p) => p.symbol)));
-    if (preset.id !== selectedPreset) {
-      setSelectedPreset(preset.id);
-    }
-  }, [presets, selectedPreset, positions]);
-
-  const applyPreset = useCallback(
-    (presetId: string) => {
-      setSelectedPreset(presetId);
-      setShowResult(false);
-      setSimulationResult([]);
-      setExecutionPlan(null);
-    },
-    []
-  );
-
   // 초기 가중치 설정
+  useEffect(() => {
+    const weights: Record<string, string> = {};
+    positions.forEach((position) => {
+      const currency = assertCurrency(position.currency, position.market === 'KR' ? 'KRW' : 'USD');
+      const baseValue = toBase(position.totalValue, currency);
+      const currentWeight = totalValue > 0 ? (baseValue / totalValue) * 100 : 0;
+      weights[position.symbol] = currentWeight.toFixed(1);
+    });
+    setTargetWeights(weights);
+  }, [positions, totalValue, toBase]);
+
   // 균등 분배 설정
-  const handleEqualDistribution = useCallback(() => {
-    applyPreset('equal');
-  }, [applyPreset]);
+  const handleEqualDistribution = () => {
+    const equalWeight = positions.length > 0 ? (100 / positions.length).toFixed(1) : '0';
+    const weights: Record<string, string> = {};
+    positions.forEach((position) => {
+      weights[position.symbol] = equalWeight;
+    });
+    setTargetWeights(weights);
+    setActivePreset('equal');
+    setPresetNote('모든 종목을 동일한 비중으로 유지하도록 설정되었습니다.');
+  };
 
   // 현재 비중 유지
-  const handleKeepCurrent = useCallback(() => {
-    applyPreset('current');
-  }, [applyPreset]);
+  const handleKeepCurrent = () => {
+    const weights: Record<string, string> = {};
+    positions.forEach((position) => {
+      const currency = assertCurrency(position.currency, position.market === 'KR' ? 'KRW' : 'USD');
+      const baseValue = toBase(position.totalValue, currency);
+      const currentWeight = totalValue > 0 ? (baseValue / totalValue) * 100 : 0;
+      weights[position.symbol] = currentWeight.toFixed(1);
+    });
+    setTargetWeights(weights);
+    setActivePreset('current');
+    setPresetNote('현재 보유 비중을 기준으로 리밸런싱을 실행합니다.');
+  };
+
+  const handlePresetApply = (preset: PresetId) => {
+    if (preset === 'equal') {
+      handleEqualDistribution();
+      return;
+    }
+    if (preset === 'current') {
+      handleKeepCurrent();
+      return;
+    }
+
+    const weights: Record<string, string> = {};
+    const sortedByWeight = [...positions].sort((a, b) => {
+      const currencyA = assertCurrency(a.currency, a.market === 'KR' ? 'KRW' : 'USD');
+      const currencyB = assertCurrency(b.currency, b.market === 'KR' ? 'KRW' : 'USD');
+      const valueA = toBase(a.totalValue, currencyA);
+      const valueB = toBase(b.totalValue, currencyB);
+      return valueB - valueA;
+    });
+
+    if (preset === 'conservative') {
+      sortedByWeight.forEach((position) => {
+        const currency = assertCurrency(position.currency, position.market === 'KR' ? 'KRW' : 'USD');
+        const currentWeight = totalValue > 0 ? (toBase(position.totalValue, currency) / totalValue) * 100 : 0;
+        const isETF = position.assetType === 'etf';
+        const isLargeCap = currentWeight >= 10;
+        let target = currentWeight;
+
+        if (isETF) {
+          target = Math.min(currentWeight + 5, currentWeight * 1.3);
+        } else if (isLargeCap) {
+          target = currentWeight + 3;
+        } else {
+          target = currentWeight * 0.7;
+        }
+        weights[position.symbol] = target.toFixed(1);
+      });
+      setPresetNote('안정형 포트폴리오: 대형주와 ETF 비중을 높이고 성장주의 비중을 낮춰 변동성을 줄입니다.');
+    } else if (preset === 'aggressive') {
+      sortedByWeight.forEach((position, index) => {
+        const currency = assertCurrency(position.currency, position.market === 'KR' ? 'KRW' : 'USD');
+        const currentWeight = totalValue > 0 ? (toBase(position.totalValue, currency) / totalValue) * 100 : 0;
+        const isGrowthStock = position.returnRate > 0 || index < Math.ceil(sortedByWeight.length / 2);
+        let target = currentWeight;
+        if (isGrowthStock) {
+          target = currentWeight * 1.25 + 1;
+        } else {
+          target = currentWeight * 0.6;
+        }
+        weights[position.symbol] = target.toFixed(1);
+      });
+      setPresetNote('공격형 포트폴리오: 성장주와 성과가 좋은 종목 비중을 높여 수익률을 추구합니다.');
+    } else if (preset === 'ai') {
+      sortedByWeight.forEach((position, index) => {
+        const currency = assertCurrency(position.currency, position.market === 'KR' ? 'KRW' : 'USD');
+        const currentWeight = totalValue > 0 ? (toBase(position.totalValue, currency) / totalValue) * 100 : 0;
+        const growthScore = normalizeGrowthScore(position.returnRate);
+        const stabilityScore = normalizeStabilityScore(position.returnRate, position.profitLoss);
+        const weightHint = (growthScore * 0.6 + stabilityScore * 0.4) * 100;
+        const rankingBonus = Math.max(sortedByWeight.length - index, 1);
+
+        const target = (currentWeight * 0.4) + (weightHint * 0.35) + rankingBonus;
+        weights[position.symbol] = Math.max(target, 0).toFixed(1);
+      });
+      setPresetNote('AI 추천 포트폴리오: 수익률과 안정성을 고려해 자동으로 목표 비중을 설정했습니다.');
+    }
+
+    normalizeWeights(weights);
+    setTargetWeights(weights);
+    setActivePreset(preset);
+  };
+
+  function normalizeWeights(weights: Record<string, string>) {
+    const total = Object.values(weights).reduce((sum, value) => sum + parseFloat(value || '0'), 0);
+    if (total <= 0) {
+      return;
+    }
+    const scale = 100 / total;
+    Object.entries(weights).forEach(([symbol, value]) => {
+      weights[symbol] = (parseFloat(value || '0') * scale).toFixed(1);
+    });
+  }
+
+  const presetLabel = useMemo(() => {
+    if (!activePreset) {
+      return '프리셋 선택';
+    }
+    const preset = PRESETS.find((item) => item.id === activePreset);
+    return preset ? preset.label : '프리셋 선택';
+  }, [activePreset]);
 
   // 가중치 변경
   const handleWeightChange = (symbol: string, value: string) => {
@@ -380,10 +241,6 @@ export function RebalancingSimulator({ positions, totalValue, baseCurrency, exch
       ...targetWeights,
       [symbol]: value,
     });
-    setSelectedPreset('custom');
-    setShowResult(false);
-    setSimulationResult([]);
-    setExecutionPlan(null);
   };
 
   // 시뮬레이션 실행
@@ -406,18 +263,27 @@ export function RebalancingSimulator({ positions, totalValue, baseCurrency, exch
         action = differenceBase > 0 ? 'buy' : 'sell';
       }
 
+      const differenceLocal = fromBase(differenceBase, currency);
+      const feeRate = action === 'buy' ? 0.0015 : 0.002;
+      const taxRate = action === 'sell' ? 0.003 : 0;
+      const estimatedFeeLocal = Math.abs(differenceLocal) * feeRate;
+      const estimatedTaxLocal = Math.max(0, differenceLocal < 0 ? Math.abs(differenceLocal) * taxRate : 0);
+      const netImpactLocal = differenceLocal - estimatedFeeLocal - estimatedTaxLocal;
+      const suggestedTranches = Math.abs(differenceLocal) > 1000 ? 3 : 1;
+
       results.push({
         symbol: position.symbol,
         currency,
         currentWeight,
         targetWeight,
         currentValueLocal: position.totalValue,
-        currentValueBase: baseValue,
         targetValueLocal: fromBase(targetValueBase, currency),
-        targetValueBase,
-        differenceLocal: fromBase(differenceBase, currency),
-        differenceBase,
+        differenceLocal,
         action,
+        estimatedFeeLocal,
+        estimatedTaxLocal,
+        netImpactLocal,
+        suggestedTranches,
       });
     });
 
@@ -428,7 +294,6 @@ export function RebalancingSimulator({ positions, totalValue, baseCurrency, exch
     }
 
     setSimulationResult(results);
-    setExecutionPlan(buildExecutionPlan(results));
     setShowResult(true);
   };
 
@@ -436,11 +301,9 @@ export function RebalancingSimulator({ positions, totalValue, baseCurrency, exch
   const handleReset = () => {
     setShowResult(false);
     setSimulationResult([]);
-    if (selectedPreset === 'custom') {
-      applyPreset('current');
-    } else {
-      applyPreset(selectedPreset);
-    }
+    handleKeepCurrent();
+    setPresetNote(null);
+    setActivePreset('current');
   };
 
   const totalTargetWeight = Object.values(targetWeights).reduce(
@@ -449,11 +312,6 @@ export function RebalancingSimulator({ positions, totalValue, baseCurrency, exch
   );
 
   const isValidTotal = Math.abs(totalTargetWeight - 100) < 0.1;
-
-  const activePreset =
-    selectedPreset === 'custom'
-      ? null
-      : presets.find((preset) => preset.id === selectedPreset) ?? null;
 
   return (
     <Card>
@@ -464,13 +322,35 @@ export function RebalancingSimulator({ positions, totalValue, baseCurrency, exch
             <CardTitle>리밸런싱 시뮬레이터</CardTitle>
           </div>
           <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleEqualDistribution}
-            >
-              균등 분배
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="flex items-center gap-2">
+                  <SlidersHorizontal className="h-4 w-4" />
+                  {presetLabel}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64">
+                <DropdownMenuLabel>목표 비중 프리셋</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {PRESETS.map((preset) => (
+                  <DropdownMenuItem
+                    key={preset.id}
+                    className="flex flex-col items-start gap-1"
+                    onClick={() => handlePresetApply(preset.id)}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{preset.label}</span>
+                      {preset.badge ? (
+                        <Badge variant="outline" className="text-[10px] uppercase">
+                          {preset.badge}
+                        </Badge>
+                      ) : null}
+                    </div>
+                    <p className="text-xs text-muted-foreground">{preset.description}</p>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button
               variant="outline"
               size="sm"
@@ -478,61 +358,11 @@ export function RebalancingSimulator({ positions, totalValue, baseCurrency, exch
             >
               현재 유지
             </Button>
-            {presets.length > 0 && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm">
-                    <ListFilter className="mr-2 h-4 w-4" />
-                    프리셋
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-64">
-                  <DropdownMenuLabel>프리셋 불러오기</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  {presets.map((preset) => (
-                    <DropdownMenuItem
-                      key={preset.id}
-                      onSelect={(event) => {
-                        event.preventDefault();
-                        applyPreset(preset.id);
-                      }}
-                      className={preset.id === selectedPreset ? 'bg-muted' : ''}
-                    >
-                      <div className="flex flex-col gap-1">
-                        <span className="text-sm font-semibold">{preset.name}</span>
-                        <span className="text-xs text-muted-foreground">{preset.description}</span>
-                      </div>
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
           </div>
         </div>
         <CardDescription>
-          목표 비중을 입력하면 필요한 매수·매도 금액과 실행 순서를 자동으로 제안합니다. 변동성이 큰 시기에는
-          분할 실행 옵션을 활용해 리스크를 나눠보세요.
+          목표 비중을 설정하고 리밸런싱을 시뮬레이션합니다.
         </CardDescription>
-        <ul className="mt-3 grid gap-2 text-xs text-muted-foreground md:grid-cols-3">
-          <li className="rounded-md bg-muted/40 p-3">
-            <p className="font-semibold text-foreground">1. 비중 확인</p>
-            <p>현재 비중과 목표 비중의 차이를 확인합니다.</p>
-          </li>
-          <li className="rounded-md bg-muted/40 p-3">
-            <p className="font-semibold text-foreground">2. 실행 금액 계산</p>
-            <p>각 종목별 필요한 매수·매도 금액을 시뮬레이션합니다.</p>
-          </li>
-          <li className="rounded-md bg-muted/40 p-3">
-            <p className="font-semibold text-foreground">3. 체크리스트 확인</p>
-            <p>한 번에 실행할지, 분할할지 결정하고 수수료/현금 흐름을 점검합니다.</p>
-          </li>
-        </ul>
-        {activePreset && (
-          <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
-            <Badge variant="secondary">{activePreset.name}</Badge>
-            <span>{activePreset.description}</span>
-          </div>
-        )}
       </CardHeader>
       <CardContent className="space-y-6">
         {/* 목표 비중 입력 */}
@@ -552,6 +382,13 @@ export function RebalancingSimulator({ positions, totalValue, baseCurrency, exch
               </AlertDescription>
             </Alert>
           )}
+
+          {presetNote ? (
+            <Alert>
+              <Sparkles className="h-4 w-4" />
+              <AlertDescription>{presetNote}</AlertDescription>
+            </Alert>
+          ) : null}
 
           <div className="grid gap-3">
             {positions.map((position) => {
@@ -609,7 +446,7 @@ export function RebalancingSimulator({ positions, totalValue, baseCurrency, exch
         {showResult && simulationResult.length > 0 && (
           <div className="space-y-4 pt-4 border-t">
             <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-green-500" />
+              <CheckCircle2 className={`h-5 w-5 ${PROFIT_TEXT_POSITIVE}`} />
               <h3 className="font-semibold text-lg">시뮬레이션 결과</h3>
             </div>
 
@@ -649,12 +486,18 @@ export function RebalancingSimulator({ positions, totalValue, baseCurrency, exch
                           {result.action === 'buy' ? '매수' : result.action === 'sell' ? '매도' : '유지'}
                         </Badge>
                       </td>
-                      <td className={`py-2 px-2 text-right font-semibold ${
-                        result.differenceLocal > 0 ? 'text-green-600' : 
-                        result.differenceLocal < 0 ? 'text-red-600' : 
-                        'text-muted-foreground'
-                      }`}>
+                      <td className={`py-2 px-2 text-right font-semibold ${getProfitTextClass(result.differenceLocal, { zeroAsNeutral: true })}`}>
                         {result.differenceLocal >= 0 ? '+' : ''}{formatAmount(result.differenceLocal, result.currency)}
+                      </td>
+                      <td className="py-2 px-2 text-right text-xs text-muted-foreground">
+                        수수료 {formatAmount(result.estimatedFeeLocal, result.currency)}<br />
+                        {result.estimatedTaxLocal > 0 ? `세금 ${formatAmount(result.estimatedTaxLocal, result.currency)}` : '세금 없음'}
+                      </td>
+                      <td className={`py-2 px-2 text-right font-semibold ${getProfitTextClass(result.netImpactLocal, { zeroAsNeutral: true })}`}>
+                        {result.netImpactLocal >= 0 ? '+' : ''}{formatAmount(result.netImpactLocal, result.currency)}
+                      </td>
+                      <td className="py-2 px-2 text-center text-sm text-muted-foreground">
+                        {result.suggestedTranches === 1 ? '1회 실행' : `${result.suggestedTranches}회 분할`}
                       </td>
                     </tr>
                   ))}
@@ -699,13 +542,29 @@ export function RebalancingSimulator({ positions, totalValue, baseCurrency, exch
                       </div>
                       <div className="flex justify-between pt-2 border-t">
                         <span className="font-semibold">차이</span>
-                        <span className={`font-semibold ${
-                          result.differenceLocal > 0 ? 'text-green-600' : 
-                          result.differenceLocal < 0 ? 'text-red-600' : 
-                          'text-muted-foreground'
-                        }`}>
+                        <span className={`font-semibold ${getProfitTextClass(result.differenceLocal, { zeroAsNeutral: true })}`}>
                           {result.differenceLocal >= 0 ? '+' : ''}{formatAmount(result.differenceLocal, result.currency)}
                         </span>
+                      </div>
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>예상 수수료</span>
+                        <span>{formatAmount(result.estimatedFeeLocal, result.currency)}</span>
+                      </div>
+                      {result.estimatedTaxLocal > 0 ? (
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span>예상 세금</span>
+                          <span>{formatAmount(result.estimatedTaxLocal, result.currency)}</span>
+                        </div>
+                      ) : null}
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>실제 적용 금액</span>
+                        <span className={`font-semibold ${getProfitTextClass(result.netImpactLocal, { zeroAsNeutral: true })}`}>
+                          {result.netImpactLocal >= 0 ? '+' : ''}{formatAmount(result.netImpactLocal, result.currency)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>실행 추천</span>
+                        <span>{result.suggestedTranches === 1 ? '단일 실행' : `${result.suggestedTranches}회 분할`}</span>
                       </div>
                     </div>
                   </CardContent>
@@ -719,13 +578,13 @@ export function RebalancingSimulator({ positions, totalValue, baseCurrency, exch
               <div className="space-y-1 text-sm">
                 <div className="flex justify-between">
                   <span>매수 필요</span>
-                  <span className="font-medium text-green-600">
+                  <span className={`font-medium ${PROFIT_TEXT_POSITIVE}`}>
                     {simulationResult.filter(r => r.action === 'buy').length}개 종목
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span>매도 필요</span>
-                  <span className="font-medium text-red-600">
+                  <span className={`font-medium ${PROFIT_TEXT_NEGATIVE}`}>
                     {simulationResult.filter(r => r.action === 'sell').length}개 종목
                   </span>
                 </div>
@@ -735,167 +594,39 @@ export function RebalancingSimulator({ positions, totalValue, baseCurrency, exch
                     {simulationResult.filter(r => r.action === 'hold').length}개 종목
                   </span>
                 </div>
+                <div className="flex justify-between pt-2 border-t">
+                  <span>예상 총 수수료</span>
+                  <span className="font-medium text-muted-foreground">
+                    {formatAmount(
+                      simulationResult.reduce((sum, item) => sum + item.estimatedFeeLocal, 0),
+                      baseCurrency
+                    )}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>예상 총 세금</span>
+                  <span className="font-medium text-muted-foreground">
+                    {formatAmount(
+                      simulationResult.reduce((sum, item) => sum + item.estimatedTaxLocal, 0),
+                      baseCurrency
+                    )}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>실행 후 순증감</span>
+                  <span className={`font-medium ${getProfitTextClass(
+                    simulationResult.reduce((sum, item) => sum + item.netImpactLocal, 0),
+                    { zeroAsNeutral: true }
+                  )}`}>
+                    {simulationResult.reduce((sum, item) => sum + item.netImpactLocal, 0) >= 0 ? '+' : ''}
+                    {formatAmount(
+                      simulationResult.reduce((sum, item) => sum + item.netImpactLocal, 0),
+                      baseCurrency
+                    )}
+                  </span>
+                </div>
               </div>
             </div>
-
-            {executionPlan ? (
-              <div className="space-y-4 rounded-lg border border-primary/10 bg-background/70 p-4">
-                <div className="space-y-2">
-                  <h4 className="text-base font-semibold text-primary">리밸런싱 실행 계획</h4>
-                  <p className="text-xs text-muted-foreground">
-                    자동 계산된 예상 비용과 단계별 실행 전략을 확인하고 필요 시 수동 조정하세요.
-                  </p>
-                </div>
-
-                <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-                  <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3">
-                    <p className="text-xs text-muted-foreground">총 매도</p>
-                    <p className="text-sm font-semibold text-destructive">
-                      {formatBaseAmount(executionPlan.totals.totalSellBase)}
-                    </p>
-                  </div>
-                  <div className="rounded-md border border-emerald-200 bg-emerald-50/60 p-3">
-                    <p className="text-xs text-muted-foreground">총 매수</p>
-                    <p className="text-sm font-semibold text-emerald-600">
-                      {formatBaseAmount(executionPlan.totals.totalBuyBase)}
-                    </p>
-                  </div>
-                  <div className="rounded-md border border-primary/30 bg-primary/5 p-3">
-                    <p className="text-xs text-muted-foreground">예상 수수료·슬리피지</p>
-                    <p className="text-sm font-semibold text-primary">
-                      {formatBaseAmount(
-                        executionPlan.totals.estimatedFeesBase + executionPlan.totals.estimatedSlippageBase
-                      )}
-                    </p>
-                  </div>
-                  <div className="rounded-md border border-muted p-3">
-                    <p className="text-xs text-muted-foreground">순현금 변동</p>
-                    <p
-                      className={`text-sm font-semibold ${
-                        executionPlan.totals.netFlowBase >= 0 ? 'text-emerald-600' : 'text-destructive'
-                      }`}
-                    >
-                      {formatBaseAmount(executionPlan.totals.netFlowBase, { withSign: true })}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-3 rounded-md border border-destructive/20 bg-destructive/5 p-4">
-                    <h5 className="text-sm font-semibold text-destructive">매도 계획</h5>
-                    {executionPlan.sells.length ? (
-                      executionPlan.sells.map((leg) => (
-                        <div
-                          key={`sell-${leg.symbol}`}
-                          className="space-y-2 rounded-md border border-destructive/30 bg-background/80 p-3"
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="font-medium">{leg.symbol}</span>
-                            <Badge variant="destructive">매도</Badge>
-                          </div>
-                          <div className="grid grid-cols-2 gap-1 text-xs text-muted-foreground">
-                            <span>거래 금액</span>
-                            <span className="text-right font-medium text-foreground">
-                              {formatAmount(leg.amountLocal, leg.currency)}
-                            </span>
-                            <span>예상 비용</span>
-                            <span className="text-right">
-                              {formatAmount(leg.feeLocal + leg.slippageLocal, leg.currency)}
-                            </span>
-                            <span>비중 변화</span>
-                            <span className="text-right font-medium text-foreground">
-                              {formatPercent(leg.weightChange)}
-                            </span>
-                          </div>
-                          {leg.note ? (
-                            <p className="text-xs text-muted-foreground">💡 {leg.note}</p>
-                          ) : null}
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-xs text-muted-foreground">매도 대상 종목이 없습니다.</p>
-                    )}
-                  </div>
-
-                  <div className="space-y-3 rounded-md border border-emerald-200 bg-emerald-50/70 p-4">
-                    <h5 className="text-sm font-semibold text-emerald-700">매수 계획</h5>
-                    {executionPlan.buys.length ? (
-                      executionPlan.buys.map((leg) => (
-                        <div
-                          key={`buy-${leg.symbol}`}
-                          className="space-y-2 rounded-md border border-emerald-200 bg-background/80 p-3"
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="font-medium">{leg.symbol}</span>
-                            <Badge className="bg-emerald-600 hover:bg-emerald-600">매수</Badge>
-                          </div>
-                          <div className="grid grid-cols-2 gap-1 text-xs text-muted-foreground">
-                            <span>거래 금액</span>
-                            <span className="text-right font-medium text-foreground">
-                              {formatAmount(leg.amountLocal, leg.currency)}
-                            </span>
-                            <span>예상 비용</span>
-                            <span className="text-right">
-                              {formatAmount(leg.feeLocal + leg.slippageLocal, leg.currency)}
-                            </span>
-                            <span>비중 변화</span>
-                            <span className="text-right font-medium text-foreground">
-                              {formatPercent(leg.weightChange)}
-                            </span>
-                          </div>
-                          {leg.note ? (
-                            <p className="text-xs text-muted-foreground">💡 {leg.note}</p>
-                          ) : null}
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-xs text-muted-foreground">매수 대상 종목이 없습니다.</p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="space-y-3 rounded-md border border-primary/15 bg-primary/5 p-4">
-                  <div className="flex items-center justify-between">
-                    <h5 className="text-sm font-semibold text-primary">실행 스케줄 제안</h5>
-                    <Badge variant="outline" className="border-primary/40 text-primary text-xs">
-                      추천: {executionPlan.schedule.recommended === 'split' ? '3회 분할' : '한 번에 실행'}
-                    </Badge>
-                  </div>
-                  <div className="grid gap-3 md:grid-cols-2">
-                    {executionPlan.schedule.options.map((option) => (
-                      <div
-                        key={option.id}
-                        className={`space-y-2 rounded-md border p-3 ${
-                          option.id === executionPlan.schedule.recommended
-                            ? 'border-primary bg-background'
-                            : 'border-muted'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium">{option.label}</span>
-                          {option.id === executionPlan.schedule.recommended ? (
-                            <Badge className="bg-primary text-primary-foreground text-xs">추천</Badge>
-                          ) : null}
-                        </div>
-                        <p className="text-xs text-muted-foreground leading-relaxed">{option.description}</p>
-                        <ul className="space-y-1 pt-1 text-xs text-muted-foreground">
-                          {option.steps.map((step, index) => (
-                            <li key={`${option.id}-step-${index}`}>• {step}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    ))}
-                  </div>
-                  {executionPlan.schedule.notes.length ? (
-                    <ul className="space-y-1 text-xs text-muted-foreground">
-                      {executionPlan.schedule.notes.map((note, index) => (
-                        <li key={`plan-note-${index}`}>- {note}</li>
-                      ))}
-                    </ul>
-                  ) : null}
-                </div>
-              </div>
-            ) : null}
           </div>
         )}
       </CardContent>
@@ -903,30 +634,21 @@ export function RebalancingSimulator({ positions, totalValue, baseCurrency, exch
   );
 }
 
-function convertWeightsToState(
-  weights: Record<string, number>,
-  orderedSymbols: string[]
-): Record<string, string> {
-  if (!orderedSymbols.length) {
-    return {};
+function normalizeGrowthScore(returnRate: number): number {
+  if (!Number.isFinite(returnRate)) {
+    return 0.5;
   }
-
-  const result: Record<string, string> = {};
-  let running = 0;
-
-  orderedSymbols.forEach((symbol, index) => {
-    const raw = weights[symbol] ?? 0;
-    let rounded = parseFloat(raw.toFixed(1));
-
-    if (index === orderedSymbols.length - 1) {
-      rounded = parseFloat((100 - running).toFixed(1));
-    }
-
-    rounded = Math.max(0, parseFloat(rounded.toFixed(1)));
-    running = parseFloat((running + rounded).toFixed(1));
-    result[symbol] = rounded.toFixed(1);
-  });
-
-  return result;
+  const clamped = Math.max(Math.min(returnRate, 60), -30);
+  return (clamped + 30) / 90;
 }
+
+function normalizeStabilityScore(returnRate: number, profitLoss: number): number {
+  if (!Number.isFinite(returnRate) || !Number.isFinite(profitLoss)) {
+    return 0.5;
+  }
+  const returnScore = 1 - Math.abs(returnRate) / 100;
+  const profitScore = profitLoss >= 0 ? 0.6 : 0.2;
+  return Math.max(0, Math.min(1, returnScore * 0.7 + profitScore * 0.3));
+}
+
 

@@ -39,7 +39,7 @@ import {
   TrendingUp,
   DollarSign,
 } from 'lucide-react';
-import { formatInputDate } from '@/lib/utils/formatters';
+import { formatInputDate, getProfitTextClass, PROFIT_TEXT_NEGATIVE, PROFIT_TEXT_POSITIVE } from '@/lib/utils/formatters';
 import { useCurrency } from '@/lib/contexts/CurrencyContext';
 
 interface BalanceDashboardProps {
@@ -298,7 +298,7 @@ export function BalanceDashboard({ portfolioId }: BalanceDashboardProps) {
               <div className="p-4 border rounded-lg">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm text-muted-foreground">달러 (USD)</span>
-                  <DollarSign className="h-4 w-4 text-green-500" />
+                  <DollarSign className={`h-4 w-4 ${PROFIT_TEXT_POSITIVE}`} />
                 </div>
                 <p className="text-2xl font-bold">
                   {formatAmount(balances.USD, 'USD')}
@@ -307,11 +307,7 @@ export function BalanceDashboard({ portfolioId }: BalanceDashboardProps) {
                   {exchangeInfo ? (
                     <>
                       환율 {exchangeInfo.rate.toFixed(2)}원/USD
-                      <span
-                        className={`font-semibold ${
-                          exchangeInfo.change >= 0 ? 'text-emerald-600' : 'text-red-600'
-                        }`}
-                      >
+                      <span className={`font-semibold ${getProfitTextClass(exchangeInfo.change, { zeroAsNeutral: true })}`}>
                         {exchangeInfo.change >= 0 ? '+' : ''}
                         {exchangeInfo.change.toFixed(2)}%
                       </span>
@@ -362,14 +358,14 @@ export function BalanceDashboard({ portfolioId }: BalanceDashboardProps) {
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="deposit" id="deposit" />
                     <Label htmlFor="deposit" className="font-normal cursor-pointer flex items-center gap-2">
-                      <Plus className="h-4 w-4 text-green-500" />
+                      <Plus className={`h-4 w-4 ${PROFIT_TEXT_POSITIVE}`} />
                       충전 (입금)
                     </Label>
                   </div>
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="withdrawal" id="withdrawal" />
                     <Label htmlFor="withdrawal" className="font-normal cursor-pointer flex items-center gap-2">
-                      <Minus className="h-4 w-4 text-red-500" />
+                      <Minus className={`h-4 w-4 ${PROFIT_TEXT_NEGATIVE}`} />
                       출금
                     </Label>
                   </div>

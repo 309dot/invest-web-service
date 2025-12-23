@@ -1,7 +1,7 @@
 "use client";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { formatPercent } from '@/lib/utils/formatters';
+import { formatPercent, getProfitTextClass } from '@/lib/utils/formatters';
 import {
   PieChart,
   Pie,
@@ -79,7 +79,7 @@ export function AllocationPieChart({
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="font-medium">{item.percentage.toFixed(1)}%</span>
-                    <span className={item.returnRate >= 0 ? 'text-green-600' : 'text-red-600'}>
+                    <span className={getProfitTextClass(item.returnRate, { zeroAsNeutral: true })}>
                       {formatPercent(item.returnRate)}
                     </span>
                   </div>

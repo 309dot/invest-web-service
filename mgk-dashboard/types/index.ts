@@ -1,5 +1,4 @@
 import { Timestamp } from 'firebase/firestore';
-import type { SupportedCurrency } from '@/lib/currency';
 
 // ============================================
 // 다중 종목 포트폴리오 시스템 타입
@@ -23,7 +22,7 @@ export type Market = 'US' | 'KR' | 'GLOBAL';
 // 자산 유형
 export type AssetType = 'stock' | 'etf' | 'reit' | 'fund';
 
-// 섹터 (GICS 11개 섹터)
+// 섹터 (GICS 11개 분류 기준)
 export type Sector =
   | 'communication-services'
   | 'consumer-discretionary'
@@ -45,8 +44,7 @@ export interface Stock {
   name: string; // 종목명
   market: Market; // 시장
   assetType: AssetType; // 자산 유형
-  sector?: Sector; // 섹터 (GICS)
-  sectorBreakdown?: Record<Sector, number>; // ETF 등 섹터 비중 (0-1 사이)
+  sector?: Sector; // 섹터
   currency: 'USD' | 'KRW'; // 거래 통화
   exchange?: string; // 거래소 (예: NASDAQ, KOSPI)
   description?: string; // 종목 설명
@@ -124,39 +122,114 @@ export interface SellAlertConfig {
   lastTriggeredAt?: string | null;
 }
 
-// 거래 이력 (매수/매도 기록)
-export interface Transaction {
-  id?: string;
-  portfolioId: string; // 포트폴리오 ID
-  positionId: string; // 포지션 ID
-  stockId: string; // 종목 ID
-  symbol: string; // 티커 심볼
-  // 거래 정보
-  type: TransactionType; // 거래 유형
-  date: string; // 거래일 (YYYY-MM-DD)
-  price: number; // 거래 가격 (현지 통화)
-  shares: number; // 거래 주식 수
-  amount: number; // 거래 금액 (현지 통화)
-  fee: number; // 수수료 (현지 통화)
-  tax?: number; // 세금 (현지 통화)
-  totalAmount: number; // 총 금액 (수수료 포함)
+// 개인화 설정/대시보드
+export type RiskProfile = 'conservative' | 'balanced' | 'aggressive';
+
+export type InvestmentGoal = 'growth' | 'income' | 'balanced' | 'capital-preservation';
+
+export interface PersonalizationSettings {
+  riskProfile: RiskProfile;
+  investmentGoal: InvestmentGoal;
+  focusAreas: string[];
+  lastUpdated: string;
+}
+
+export type MarketMode = 'bullish' | 'bearish' | 'neutral';
+
+export type PersonalizedMetricType = 'currency' | 'percent' | 'score';
+
+export type PersonalizedMetricEmphasis = 'positive' | 'negative' | 'neutral';
+
+export interface PersonalizedHeroMetric {
+  id: string;
+  label: string;
+  value: number;
+  type: PersonalizedMetricType;
   currency?: 'USD' | 'KRW';
-  displayDate?: string; // 사용자 표시용 일자 (KST 기준)
-  executedAt?: string; // 거래 실행 시간 (ISO)
-  // 환율 정보 (한국 주식의 경우)
-  exchangeRate?: number; // USD/KRW 환율
-  krwAmount?: number; // 원화 환산 금액
-  // 구매 방식
-  purchaseMethod: PurchaseMethod; // 자동/수동
-  purchaseUnit: PurchaseUnit; // 주/금액 단위
-  // 메모
-  memo?: string;
-  // 메타데이터
-  createdAt: Timestamp;
-  updatedAt?: Timestamp;
-  status?: 'pending' | 'completed' | 'failed';
-  scheduledDate?: string;
-  failureReason?: string;
+  change?: number | null;
+  emphasis?: PersonalizedMetricEmphasis;
+}
+
+export interface PersonalizedMetric {
+  id: string;
+  label: string;
+  value: number;
+  type: PersonalizedMetricType;
+  currency?: 'USD' | 'KRW';
+  description?: string | null;
+  emphasis?: PersonalizedMetricEmphasis;
+}
+
+export type PersonalizedActionSource = 'alert' | 'ai' | 'system' | 'insight' | 'widget';
+
+export interface PersonalizedAction {
+  id: string;
+  title: string;
+  summary: string;
+  severity: SmartAlertSeverity;
+  source: PersonalizedActionSource;
+  createdAt: string;
+  relatedSymbol?: string;
+}
+
+export interface PersonalizedDashboardResponse {
+  success: boolean;
+  settings: PersonalizationSettings;
+  marketMode: MarketMode;
+  baseCurrency: 'USD' | 'KRW';
+  hero: {
+    headline: string;
+    subheading: string;
+    mood: 'positive' | 'negative' | 'neutral';
+    metrics: PersonalizedHeroMetric[];
+  };
+  metrics: PersonalizedMetric[];
+  actions: PersonalizedAction[];
+  recommendedWidgets: string[];
+  updatedAt: string;
+}
+
+// 시나리오 분석
+export type ScenarioPreset = 'bullish' | 'bearish' | 'volatile' | 'custom';
+
+export interface ScenarioConfig {
+  preset: ScenarioPreset;
+  marketShiftPct: number;
+  usdShiftPct: number;
+  additionalContribution: number;
+  notes?: string | null;
+}
+
+export interface ScenarioPositionProjection {
+  symbol: string;
+  name?: string;
+  currency: 'USD' | 'KRW';
+  shares: number;
+  currentPrice: number;
+  projectedPrice: number;
+  currentValue: number;
+  projectedValue: number;
+  projectedProfitLoss: number;
+  projectedReturnRate: number;
+}
+
+export interface ScenarioAnalysisResult {
+  currentTotalValue: number;
+  projectedTotalValue: number;
+  projectedReturnRate: number;
+  projectedProfitLoss: number;
+  additionalContribution: number;
+  marketShiftPct: number;
+  usdShiftPct: number;
+  positions: ScenarioPositionProjection[];
+}
+
+export interface ScenarioAnalysisResponse {
+  success: boolean;
+  config: ScenarioConfig;
+  result: ScenarioAnalysisResult;
+  generatedAt: string;
+  meta?: Record<string, unknown>;
 }
 
 export interface TransactionCurrencyStats {
@@ -176,14 +249,20 @@ export interface TransactionCombinedStats {
 
 export interface TransactionStats {
   transactionCount: number;
-  byCurrency: Record<'USD' | 'KRW', TransactionCurrencyStats>;
+  byCurrency: {
+    USD: TransactionCurrencyStats;
+    KRW: TransactionCurrencyStats;
+  };
   combined: {
     baseCurrency: SupportedCurrency;
     totalBuyAmount: number;
     totalSellAmount: number;
     netAmount: number;
   };
-  converted: Record<'USD' | 'KRW', TransactionCombinedStats>;
+  converted: {
+    USD: TransactionCombinedStats;
+    KRW: TransactionCombinedStats;
+  };
   exchangeRate?: {
     base: 'USD';
     quote: 'KRW';
@@ -237,6 +316,80 @@ export interface TransactionTimelineResponse {
   };
 }
 
+export interface TaxOptimizationConfig {
+  targetHarvestAmount: number;
+  estimatedTaxRate: number;
+}
+
+export type TaxOptimizationAction = 'harvest-loss' | 'offset-gain' | 'monitor';
+
+export interface TaxOptimizationPosition {
+  symbol: string;
+  name?: string;
+  currency: 'USD' | 'KRW';
+  shares: number;
+  averagePrice: number;
+  currentPrice: number;
+  totalValue: number;
+  profitLoss: number;
+  returnRate: number;
+  harvestAmount: number;
+  action: TaxOptimizationAction;
+}
+
+export interface TaxOptimizationSummary {
+  totalUnrealizedGain: number;
+  totalUnrealizedLoss: number;
+  netUnrealized: number;
+  harvestTarget: number;
+  harvestAchieved: number;
+  estimatedTaxSavings: number;
+}
+
+export interface TaxOptimizationResponse {
+  success: boolean;
+  config: TaxOptimizationConfig;
+  summary: TaxOptimizationSummary;
+  candidates: TaxOptimizationPosition[];
+  generatedAt: string;
+  meta?: Record<string, unknown>;
+}
+
+// 거래 이력 (매수/매도 기록)
+export interface Transaction {
+  id?: string;
+  portfolioId: string; // 포트폴리오 ID
+  positionId: string; // 포지션 ID
+  stockId: string; // 종목 ID
+  symbol: string; // 티커 심볼
+  // 거래 정보
+  type: TransactionType; // 거래 유형
+  date: string; // 거래일 (YYYY-MM-DD)
+  price: number; // 거래 가격 (현지 통화)
+  shares: number; // 거래 주식 수
+  amount: number; // 거래 금액 (현지 통화)
+  fee: number; // 수수료 (현지 통화)
+  tax?: number; // 세금 (현지 통화)
+  totalAmount: number; // 총 금액 (수수료 포함)
+  currency?: 'USD' | 'KRW';
+  displayDate?: string; // 사용자 표시용 일자 (KST 기준)
+  executedAt?: string; // 거래 실행 시간 (ISO)
+  // 환율 정보 (한국 주식의 경우)
+  exchangeRate?: number; // USD/KRW 환율
+  krwAmount?: number; // 원화 환산 금액
+  // 구매 방식
+  purchaseMethod: PurchaseMethod; // 자동/수동
+  purchaseUnit: PurchaseUnit; // 주/금액 단위
+  // 메모
+  memo?: string;
+  status?: 'pending' | 'completed' | 'failed' | 'cancelled';
+  // 메타데이터
+  createdAt: Timestamp;
+  updatedAt?: Timestamp;
+  scheduledDate?: string;
+  pending?: boolean;
+}
+
 export interface AutoInvestSchedule {
   id?: string;
   userId: string;
@@ -260,35 +413,19 @@ export interface PortfolioAnalysis {
   totalValue: number; // 총 평가액
   totalInvested: number; // 총 투자금
   overallReturnRate: number; // 전체 수익률 (%)
-  baseCurrency: 'USD' | 'KRW';
-  exchangeRate: {
-    base: 'USD';
-    quote: 'KRW';
-    rate: number;
-    source: 'cache' | 'live' | 'fallback';
-  };
-  currencyTotals: Record<'USD' | 'KRW', {
-    originalValue: number;
-    originalInvested: number;
-    convertedValue: number;
-    convertedInvested: number;
-    count: number;
-  }>;
   // 섹터별 분산
   sectorAllocation: {
     sector: Sector;
     value: number; // 평가액
     percentage: number; // 비중 (%)
     returnRate: number; // 수익률
-    count: number;
   }[];
   // 지역별 분산
   regionAllocation: {
-    region: Market;
+    market: Market;
     value: number;
     percentage: number;
     returnRate: number;
-    count: number;
   }[];
   // 자산 유형별 분산
   assetAllocation: {
@@ -296,56 +433,59 @@ export interface PortfolioAnalysis {
     value: number;
     percentage: number;
     returnRate: number;
-    count: number;
   }[];
   // 리스크 분석
   riskMetrics: {
     volatility: number; // 변동성
     sharpeRatio: number; // 샤프 비율
     maxDrawdown: number; // 최대 낙폭
-    concentration: number;
+    beta?: number; // 베타 (시장 대비)
   };
   // 수익률 기여도 (상위 5개)
   topContributors: {
     symbol: string;
-    contribution: number; // 기여도
-    weight: number; // 포트폴리오 내 비중
+    contribution: number; // 기여도 (%)
     returnRate: number;
   }[];
   // 리밸런싱 제안
-  rebalancingSuggestions: {
+  rebalancingSuggestions?: {
     symbol: string;
-    currency: 'USD' | 'KRW';
-    currentWeight: number;
-    targetWeight: number;
+    currentPercentage: number;
+    targetPercentage: number;
     action: 'buy' | 'sell' | 'hold';
-    amount: number;
-    baseAmount: number;
-    reason: string;
+    amount?: number;
   }[];
-  benchmarkComparison: Array<{
-    id: 'KOSPI' | 'SNP_500' | 'GLOBAL_60_40';
-    name: string;
-    symbol: string;
-    returnRate: number | null;
-    since: string;
-    currency: 'USD' | 'KRW';
-    source: 'yahoo' | 'cache' | 'fallback';
-    lastPrice: number | null;
-    note?: string;
-  }>;
-  diversificationScore: number;
-  timestamp: string;
+  generatedAt: Timestamp;
 }
 
-export type PortfolioPerformancePeriodId =
-  | '1D'
-  | '1W'
-  | '1M'
-  | '3M'
-  | 'YTD'
-  | '1Y'
-  | 'ALL';
+export type PriceCacheResolution = 'intraday' | 'daily';
+
+export interface PriceCacheEntry {
+  cacheKey: string; // symbol:market:resolution
+  symbol: string;
+  market: 'US' | 'KR' | 'GLOBAL';
+  currency: 'USD' | 'KRW';
+  resolution: PriceCacheResolution;
+  price: number;
+  open?: number;
+  high?: number;
+  low?: number;
+  previousClose?: number;
+  volume?: number;
+  source: 'alphavantage' | 'yahoo' | 'fallback';
+  sourceTimestamp: Timestamp | Date;
+  cachedAt: Timestamp | Date;
+  expireAt: Timestamp | Date;
+  metadata?: {
+    exchange?: string;
+    timezone?: string;
+    decimals?: number;
+    remarks?: string;
+  };
+}
+
+// 기간별 포트폴리오 성과
+export type PortfolioPerformancePeriodId = '1D' | '1W' | '1M' | '3M' | 'YTD' | '1Y' | 'ALL';
 
 export interface PortfolioPerformancePeriod {
   id: PortfolioPerformancePeriodId;
@@ -362,22 +502,18 @@ export interface PortfolioPerformancePeriod {
   startInvested: number | null;
   endInvested: number | null;
   investedChange: number | null;
-  source: 'dailyPurchases' | 'calculated' | 'insufficient-data';
+  source: string;
+  cumulativeGain: number | null;
+  cumulativeLoss: number | null;
+  bestDayReturn: number | null;
+  worstDayReturn: number | null;
+  volatility: number | null;
+  sharpeRatio: number | null;
+  maxDrawdown: number | null;
   note?: string;
 }
 
-export interface RebalancingPreset {
-  id: string;
-  name: string;
-  description: string;
-  weights: Record<string, number>;
-  meta?: {
-    category?: 'balanced' | 'defensive' | 'aggressive' | 'ai' | 'custom';
-    riskLevel?: 'low' | 'medium' | 'high';
-    focus?: string;
-  };
-}
-
+// 종목 비교 분석
 export type StockComparisonPeriod = '1m' | '3m' | '6m' | '1y';
 
 export interface StockComparisonPoint {
@@ -402,10 +538,9 @@ export interface StockComparisonMetrics {
 export interface StockComparisonSeries {
   symbol: string;
   name: string;
-  currency: SupportedCurrency;
-  market: Position['market'] | 'BENCHMARK';
+  currency: 'USD' | 'KRW';
+  market: Market | 'BENCHMARK';
   isBenchmark: boolean;
-  logoUrl?: string | null;
   basePrice: number | null;
   latestPrice: number | null;
   latestReturnPct: number | null;
@@ -416,18 +551,26 @@ export interface StockComparisonSeries {
 export interface StockComparisonResponse {
   success: boolean;
   period: StockComparisonPeriod;
-  baseCurrency: SupportedCurrency;
+  baseCurrency: 'USD' | 'KRW';
   includeBenchmarks: boolean;
   series: StockComparisonSeries[];
-  generatedAt: string;
-  meta?: Record<string, unknown>;
+  generatedAt: string | null;
+  meta?: {
+    totalRequested?: number;
+    totalReturned?: number;
+    fxRate?: number | null;
+    periodLabel?: string;
+    minTradingDays?: number;
+  };
 }
+
+export type ContributionTag = 'core' | 'supporting' | 'reducing' | 'watch';
 
 export interface ContributionBreakdownEntry {
   symbol: string;
   name: string;
-  market: Position['market'];
-  currency: SupportedCurrency;
+  market: Market;
+  currency: 'USD' | 'KRW';
   weightPct: number;
   returnPct: number;
   contributionPct: number;
@@ -439,263 +582,97 @@ export interface ContributionBreakdownEntry {
   transactions: number;
   isTopContributor: boolean;
   isLagging: boolean;
-  tag?: 'core' | 'supporting' | 'reducing' | 'watch';
+  tag?: ContributionTag;
+}
+
+export interface ContributionBreakdownTotals {
+  totalContributionValue: number;
+  totalContributionPct: number;
+  totalInvested: number;
+  totalValue: number;
 }
 
 export interface ContributionBreakdownResponse {
   success: boolean;
   period: StockComparisonPeriod;
-  baseCurrency: SupportedCurrency;
+  baseCurrency: 'USD' | 'KRW';
   entries: ContributionBreakdownEntry[];
-  totals: {
-    totalContributionValue: number;
-    totalContributionPct: number;
-    totalInvested: number;
-    totalValue: number;
-  };
+  totals: ContributionBreakdownTotals;
   generatedAt: string;
-  meta?: Record<string, unknown>;
+  meta?: {
+    fxRate?: number | null;
+    positionCount?: number;
+    periodLabel?: string;
+    summary?: string;
+  };
 }
 
 export interface CorrelationSymbol {
   symbol: string;
   name: string;
-  currency: SupportedCurrency;
-  isBenchmark: boolean;
+  currency: 'USD' | 'KRW';
+  isBenchmark?: boolean;
 }
 
 export interface CorrelationMatrixResponse {
   success: boolean;
   period: StockComparisonPeriod;
-  baseCurrency: SupportedCurrency;
+  baseCurrency: 'USD' | 'KRW';
   symbols: CorrelationSymbol[];
-  matrix: (number | null)[][];
-  generatedAt: string;
-  meta?: Record<string, unknown>;
+  matrix: Array<Array<number | null>>;
+  generatedAt: string | null;
+  meta?: {
+    dateCount?: number;
+    includeBenchmarks?: boolean;
+    totalSeries?: number;
+    coverageRatio?: number;
+    missingPairs?: number;
+  };
 }
 
 export type SmartAlertSeverity = 'emergency' | 'important' | 'info';
+
+export type SmartAlertSource =
+  | 'system'
+  | 'portfolio'
+  | 'automation'
+  | 'ai'
+  | 'rebalancing'
+  | 'performance'
+  | 'manual';
 
 export interface SmartAlert {
   id: string;
   severity: SmartAlertSeverity;
   title: string;
   description: string;
-  createdAt: string;
   symbol?: string;
   tags?: string[];
   recommendedAction?: string;
   data?: Record<string, unknown>;
+  source?: SmartAlertSource;
+  priorityScore: number;
+  createdAt: string;
+  updatedAt?: string;
+  expiresAt?: string | null;
+  acknowledgable?: boolean;
+  acknowledgedAt?: string | null;
+  groupKey?: string;
+  dedupeKey?: string;
+}
+
+export interface SmartAlertMeta {
+  counts: Record<SmartAlertSeverity, number>;
+  highestSeverity?: SmartAlertSeverity | null;
+  sources?: Record<SmartAlertSource, number>;
 }
 
 export interface SmartAlertResponse {
   success: boolean;
-  baseCurrency: SupportedCurrency;
+  baseCurrency?: SupportedCurrency;
   alerts: SmartAlert[];
   generatedAt: string;
-  meta?: {
-    counts: Record<SmartAlertSeverity, number>;
-  };
-}
-
-export type RiskProfile = 'conservative' | 'balanced' | 'aggressive';
-
-export type InvestmentGoal = 'growth' | 'income' | 'balanced' | 'capital-preservation';
-
-export interface PersonalizationSettings {
-  riskProfile: RiskProfile;
-  investmentGoal: InvestmentGoal;
-  focusAreas: string[];
-  lastUpdated: string;
-}
-
-export type MarketMode = 'bullish' | 'bearish' | 'neutral';
-
-export interface PersonalizedHeroMetric {
-  id: string;
-  label: string;
-  value: number;
-  type: 'currency' | 'percent' | 'score';
-  change?: number | null;
-  currency?: SupportedCurrency;
-}
-
-export interface PersonalizedHero {
-  headline: string;
-  subheading: string;
-  mood: 'positive' | 'negative' | 'neutral';
-  metrics: PersonalizedHeroMetric[];
-}
-
-export interface PersonalizedMetric {
-  id: string;
-  label: string;
-  value: number;
-  type: 'currency' | 'percent' | 'score';
-  currency?: SupportedCurrency;
-  description?: string;
-  change?: number | null;
-  emphasis?: 'positive' | 'negative' | 'neutral';
-}
-
-export interface PersonalizedAction {
-  id: string;
-  title: string;
-  summary: string;
-  severity: SmartAlertSeverity;
-  source: 'alert' | 'ai' | 'system';
-  createdAt: string;
-  relatedSymbol?: string;
-}
-
-export interface PersonalizedDashboardResponse {
-  success: boolean;
-  settings: PersonalizationSettings;
-  marketMode: MarketMode;
-  baseCurrency: SupportedCurrency;
-  hero: PersonalizedHero;
-  metrics: PersonalizedMetric[];
-  actions: PersonalizedAction[];
-  recommendedWidgets: string[];
-  updatedAt: string;
-}
-
-export type ScenarioPreset = 'bullish' | 'bearish' | 'volatile' | 'custom';
-
-export interface ScenarioConfig {
-  preset: ScenarioPreset;
-  marketShiftPct: number;
-  usdShiftPct: number;
-  additionalContribution: number;
-  notes?: string;
-}
-
-export interface ScenarioPositionProjection {
-  symbol: string;
-  name?: string;
-  currency: SupportedCurrency;
-  shares: number;
-  currentPrice: number;
-  projectedPrice: number;
-  currentValue: number;
-  projectedValue: number;
-  projectedProfitLoss: number;
-  projectedReturnRate: number;
-}
-
-export interface ScenarioAnalysisResult {
-  currentTotalValue: number;
-  projectedTotalValue: number;
-  projectedReturnRate: number;
-  projectedProfitLoss: number;
-  additionalContribution: number;
-  marketShiftPct: number;
-  usdShiftPct: number;
-  positions: ScenarioPositionProjection[];
-}
-
-export interface ScenarioAnalysisResponse {
-  success: boolean;
-  config: ScenarioConfig;
-  result: ScenarioAnalysisResult;
-  generatedAt: string;
-}
-
-export interface TaxOptimizationConfig {
-  targetHarvestAmount: number;
-  estimatedTaxRate: number;
-}
-
-export interface TaxOptimizationPosition {
-  symbol: string;
-  name?: string;
-  currency: SupportedCurrency;
-  shares: number;
-  averagePrice: number;
-  currentPrice: number;
-  totalValue: number;
-  profitLoss: number;
-  returnRate: number;
-  harvestAmount: number;
-  action: 'harvest-loss' | 'offset-gain' | 'monitor';
-}
-
-export interface TaxOptimizationSummary {
-  totalUnrealizedGain: number;
-  totalUnrealizedLoss: number;
-  netUnrealized: number;
-  harvestTarget: number;
-  harvestAchieved: number;
-  estimatedTaxSavings: number;
-}
-
-export interface TaxOptimizationResponse {
-  success: boolean;
-  config: TaxOptimizationConfig;
-  summary: TaxOptimizationSummary;
-  candidates: TaxOptimizationPosition[];
-  generatedAt: string;
-}
-
-export interface OptimizerAction {
-  symbol: string;
-  action: 'buy' | 'sell' | 'hold';
-  weightDelta: number;
-  amountBase: number;
-  rationale: string;
-}
-
-export interface OptimizerRecommendation {
-  id: string;
-  name: string;
-  summary: string;
-  rationale: string[];
-  targetWeights: Record<string, number>;
-  expectedReturn: number;
-  expectedRisk: number;
-  rebalancing: OptimizerAction[];
-}
-
-export interface PortfolioOptimizerResponse {
-  success: boolean;
-  baseCurrency: SupportedCurrency;
-  currentWeights: Record<string, number>;
-  recommendations: OptimizerRecommendation[];
-  generatedAt: string;
-}
-
-export type BacktestStrategy = 'baseline' | 'equal' | 'growth' | 'defensive' | 'diversified';
-
-export interface BacktestRequest {
-  periodDays?: number;
-  strategy?: BacktestStrategy;
-}
-
-export interface BacktestMetrics {
-  totalReturn: number;
-  annualizedReturn: number;
-  volatility: number;
-  maxDrawdown: number;
-}
-
-export interface BacktestSeriesPoint {
-  date: string;
-  baseline: number;
-  scenario: number;
-}
-
-export interface BacktestResponse {
-  success: boolean;
-  strategy: BacktestStrategy;
-  period: {
-    startDate: string;
-    endDate: string;
-    days: number;
-  };
-  baseline: BacktestMetrics;
-  scenario: BacktestMetrics;
-  series: BacktestSeriesPoint[];
-  generatedAt: string;
+  meta?: SmartAlertMeta;
 }
 
 // ============================================
@@ -821,6 +798,11 @@ export interface PriceData {
   change: number;
   changePercent: number;
   timestamp: Date;
+  source: 'live' | 'cached' | 'stale';
+  metadata?: {
+    cacheKey?: string;
+    cachedAt?: string;
+  };
 }
 
 // Exchange Rate Data from API
@@ -921,26 +903,12 @@ export interface AIAdvisorSignal {
   notes?: string[];
 }
 
-export interface AIAdvisorActionItem {
-  id: string;
-  title: string;
-  summary: string;
-  priority: 'high' | 'medium' | 'low';
-  urgency: 'today' | 'this_week' | 'this_month' | 'long_term';
-  impact: 'return' | 'risk' | 'diversification' | 'cost' | 'income' | string;
-  relatedTickers?: string[];
-  dueDate?: string;
-  estimatedEffort?: 'low' | 'medium' | 'high';
-  steps?: string[];
-}
-
 export interface AIAdvisorResult {
   summary?: string;
   weeklySummary: string;
   newsHighlights: string[];
   recommendations: AIAdvisorRecommendation[];
   signals: AIAdvisorSignal;
-  actionItems: AIAdvisorActionItem[];
   confidenceScore?: number;
   riskScore?: number;
   rawText?: string;

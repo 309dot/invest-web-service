@@ -51,13 +51,34 @@ const PERIOD_CONFIGS: Array<{
   },
 ];
 
-export async function getPortfolioPerformancePeriods(): Promise<PortfolioPerformancePeriod[]> {
-  const rawRecords = await getDocumentsWithLimit<DailyPurchase>(
-    'dailyPurchases',
-    MAX_DAILY_RECORDS,
-    'date',
-    'asc'
-  ).catch(() => []);
+interface PerformanceFetchOptions {
+  userId?: string | null;
+  portfolioId?: string | null;
+}
+
+export async function getPortfolioPerformancePeriods(
+  options: PerformanceFetchOptions = {}
+): Promise<PortfolioPerformancePeriod[]> {
+  const { userId, portfolioId } = options;
+  let rawRecords: DailyPurchase[] = [];
+
+  if (userId && portfolioId) {
+    rawRecords = await getDocumentsWithLimit<DailyPurchase>(
+      `users/${userId}/portfolios/${portfolioId}/dailySnapshots`,
+      MAX_DAILY_RECORDS,
+      'date',
+      'asc'
+    ).catch(() => []);
+  }
+
+  if (!rawRecords.length) {
+    rawRecords = await getDocumentsWithLimit<DailyPurchase>(
+      'dailyPurchases',
+      MAX_DAILY_RECORDS,
+      'date',
+      'asc'
+    ).catch(() => []);
+  }
 
   if (!rawRecords.length) {
     return [];
@@ -164,6 +185,16 @@ function buildPerformancePeriod(
   const investedChange =
     startInvested !== null && endInvested !== null ? roundNumber(endInvested - startInvested) : null;
 
+  const {
+    cumulativeGain,
+    cumulativeLoss,
+    bestDayReturn,
+    worstDayReturn,
+    volatility,
+    sharpeRatio,
+    maxDrawdown,
+  } = calculatePerformanceStatistics(samples);
+
   return {
     id,
     label,
@@ -180,6 +211,13 @@ function buildPerformancePeriod(
     endInvested,
     investedChange,
     source: samples.length > 0 ? 'dailyPurchases' : 'insufficient-data',
+    cumulativeGain,
+    cumulativeLoss,
+    bestDayReturn,
+    worstDayReturn,
+    volatility,
+    sharpeRatio,
+    maxDrawdown,
     note: samples.length < 2 ? '데이터 표본이 충분하지 않습니다.' : undefined,
   };
 }
@@ -193,5 +231,126 @@ function sanitizeNumber(value: unknown): number | null {
 
 function roundNumber(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+function calculatePerformanceStatistics(samples: ExtendedDailyPurchase[]) {
+  if (samples.length < 2) {
+    return {
+      cumulativeGain: null,
+      cumulativeLoss: null,
+      bestDayReturn: null,
+      worstDayReturn: null,
+      volatility: null,
+      sharpeRatio: null,
+      maxDrawdown: null,
+    };
+  }
+
+  const validValues = samples
+    .map((entry) => sanitizeNumber(entry.totalValue))
+    .filter((value): value is number => value !== null);
+
+  if (validValues.length < 2) {
+    return {
+      cumulativeGain: null,
+      cumulativeLoss: null,
+      bestDayReturn: null,
+      worstDayReturn: null,
+      volatility: null,
+      sharpeRatio: null,
+      maxDrawdown: null,
+    };
+  }
+
+  let lastValue: number | null = null;
+  let peakValue: number | null = null;
+  let minDrawdown: number | null = null;
+  let cumulativeGain = 0;
+  let cumulativeLoss = 0;
+  let bestDay: number | null = null;
+  let worstDay: number | null = null;
+  const dailyReturns: number[] = [];
+
+  samples.forEach((entry) => {
+    const currentValue = sanitizeNumber(entry.totalValue);
+    if (currentValue === null) {
+      return;
+    }
+
+    if (lastValue !== null) {
+      const diff = currentValue - lastValue;
+      if (diff >= 0) {
+        cumulativeGain += diff;
+      } else {
+        cumulativeLoss += diff;
+      }
+
+      if (lastValue > 0) {
+        const returnPercent = ((currentValue - lastValue) / lastValue) * 100;
+        if (Number.isFinite(returnPercent)) {
+          dailyReturns.push(returnPercent);
+          bestDay = bestDay === null ? returnPercent : Math.max(bestDay, returnPercent);
+          worstDay = worstDay === null ? returnPercent : Math.min(worstDay, returnPercent);
+        }
+      }
+    }
+
+    if (peakValue === null || currentValue > peakValue) {
+      peakValue = currentValue;
+    }
+    if (peakValue && peakValue > 0) {
+      const drawdown = ((currentValue - peakValue) / peakValue) * 100;
+      minDrawdown = minDrawdown === null ? drawdown : Math.min(minDrawdown, drawdown);
+    }
+
+    lastValue = currentValue;
+  });
+
+  const volatility =
+    dailyReturns.length > 1 ? roundNumber(calculateStandardDeviation(dailyReturns)) : null;
+  const sharpeRatio =
+    dailyReturns.length > 1 ? roundNumber(calculateSharpeRatio(dailyReturns)) : null;
+
+  return {
+    cumulativeGain: roundNumber(cumulativeGain),
+    cumulativeLoss: roundNumber(cumulativeLoss),
+    bestDayReturn: bestDay !== null ? roundNumber(bestDay) : null,
+    worstDayReturn: worstDay !== null ? roundNumber(worstDay) : null,
+    volatility,
+    sharpeRatio,
+    maxDrawdown: minDrawdown !== null ? roundNumber(minDrawdown) : null,
+  };
+}
+
+function calculateStandardDeviation(values: number[]): number {
+  if (!values.length) {
+    return 0;
+  }
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const variance =
+    values.reduce((sum, value) => sum + Math.pow(value - mean, 2), 0) / values.length;
+  return Math.sqrt(variance);
+}
+
+function calculateSharpeRatio(dailyReturnPercents: number[]): number {
+  if (!dailyReturnPercents.length) {
+    return 0;
+  }
+  const dailyReturns = dailyReturnPercents.map((value) => value / 100);
+  const mean = dailyReturns.reduce((sum, value) => sum + value, 0) / dailyReturns.length;
+  const variance =
+    dailyReturns.reduce((sum, value) => sum + Math.pow(value - mean, 2), 0) / dailyReturns.length;
+  const std = Math.sqrt(variance);
+
+  if (std === 0) {
+    return 0;
+  }
+
+  const annualizedReturn = mean * 365;
+  const annualizedVolatility = std * Math.sqrt(365);
+  if (annualizedVolatility === 0) {
+    return 0;
+  }
+  return annualizedReturn / annualizedVolatility;
 }
 

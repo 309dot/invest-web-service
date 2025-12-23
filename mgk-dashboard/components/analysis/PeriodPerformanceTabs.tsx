@@ -13,6 +13,7 @@ import { isValid, parseISO } from 'date-fns';
 
 interface PeriodPerformanceTabsProps {
   portfolioId: string;
+  initialPeriods?: PortfolioPerformancePeriod[];
 }
 
 type FetchState = 'idle' | 'loading' | 'error' | 'success';
@@ -27,11 +28,15 @@ const PERIOD_ORDER: PortfolioPerformancePeriod['id'][] = [
   'ALL',
 ];
 
-export function PeriodPerformanceTabs({ portfolioId }: PeriodPerformanceTabsProps) {
+export function PeriodPerformanceTabs({ portfolioId, initialPeriods }: PeriodPerformanceTabsProps) {
   const { user } = useAuth();
   const { formatAmount } = useCurrency();
-  const [periods, setPeriods] = useState<PortfolioPerformancePeriod[]>([]);
-  const [status, setStatus] = useState<FetchState>('idle');
+  const [periods, setPeriods] = useState<PortfolioPerformancePeriod[]>(
+    initialPeriods ? sortPeriods(initialPeriods) : []
+  );
+  const [status, setStatus] = useState<FetchState>(() =>
+    initialPeriods && initialPeriods.length > 0 ? 'success' : 'idle'
+  );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const fetchPerformance = useCallback(async () => {
@@ -67,10 +72,17 @@ export function PeriodPerformanceTabs({ portfolioId }: PeriodPerformanceTabsProp
   }, [portfolioId, user]);
 
   useEffect(() => {
-    if (user?.uid) {
+    if (initialPeriods) {
+      setPeriods(sortPeriods(initialPeriods));
+      setStatus(initialPeriods.length > 0 ? 'success' : 'idle');
+    }
+  }, [initialPeriods]);
+
+  useEffect(() => {
+    if (user?.uid && status === 'idle') {
       fetchPerformance();
     }
-  }, [user, fetchPerformance]);
+  }, [user, status, fetchPerformance]);
 
   const defaultPeriodId = useMemo(() => {
     if (!periods.length) {

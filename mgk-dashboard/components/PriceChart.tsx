@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ChartDataPoint } from '@/types';
-import { formatPercent, formatDate } from '@/lib/utils/formatters';
+import { formatPercent, formatDate, getProfitTextClass } from '@/lib/utils/formatters';
 import { useCurrency } from '@/lib/contexts/CurrencyContext';
 import { ShoppingCart, Maximize2, Minimize2 } from 'lucide-react';
 
@@ -122,7 +122,7 @@ export function PriceChart({ data, purchasePoints = [], showPurchaseMarkers = fa
           <p className="text-sm font-medium mb-2">{formatDate(data.date, 'yyyy-MM-dd')}</p>
           <div className="space-y-1 text-sm">
             <p>주가: {formatAmount(data.price, 'USD')}</p>
-            <p className={data.returnRate >= 0 ? 'text-green-600' : 'text-red-600'}>
+            <p className={getProfitTextClass(data.returnRate, { zeroAsNeutral: true })}>
               수익률: {formatPercent(data.returnRate)}
             </p>
             <p>평가액: {formatAmount(data.totalValue, 'USD')}</p>

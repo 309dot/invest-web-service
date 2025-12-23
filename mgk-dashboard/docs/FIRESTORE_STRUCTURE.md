@@ -22,6 +22,7 @@ firestore/
 ├── newsItems/{newsId}                      # 뉴스 아이템
 ├── weeklyReports/{reportId}                # 주간 리포트
 ├── aiInsights/{insightId}                  # AI 인사이트
+├── priceCache/{cacheKey}                   # 시세 캐시 (심볼·타입별 스냅샷)
 └── appSettings/{settingId}                 # 앱 설정 (기존)
 ```
 
@@ -40,20 +41,6 @@ firestore/
   defaultPortfolioId?: string;  // 기본 포트폴리오 ID
   createdAt: Timestamp;
   lastLoginAt: Timestamp;
-}
-```
-
-#### 1-1. users/{userId}/settings/personalization
-
-개인화 대시보드 설정
-
-```typescript
-{
-  riskProfile: 'conservative' | 'balanced' | 'aggressive';
-  investmentGoal: 'growth' | 'income' | 'balanced' | 'capital-preservation';
-  focusAreas: string[];          // 우선 모니터링 영역
-  lastUpdated: string;           // ISO timestamp
-  updatedAt: Timestamp;          // Firestore system timestamp
 }
 ```
 
@@ -175,8 +162,7 @@ firestore/
   name: string;
   market: 'US' | 'KR' | 'GLOBAL';
   assetType: 'stock' | 'etf' | 'reit' | 'fund';
-  sector?: Sector;                // GICS 11개 섹터
-  sectorBreakdown?: Record<string, number>; // ETF 섹터 비중 (0-1)
+  sector?: 'information-technology' | 'health-care' | ...;
   currency: 'USD' | 'KRW';
   exchange?: string;            // NASDAQ, KOSPI
   description?: string;
@@ -226,6 +212,67 @@ firestore/
 - `userId` ASC, `generatedAt` DESC
 
 ## 마이그레이션 전략
+
+### priceCache/{cacheKey}
+
+실시간/일간 시세 데이터를 캐싱하기 위한 컬렉션입니다. `cacheKey`는 `symbol:market:resolution` 조합(예: `NVDA:US:intraday`)을 사용합니다.
+
+```typescript
+type PriceCacheResolution = 'intraday' | 'daily';
+
+interface PriceCacheEntry {
+  cacheKey: string;                 // symbol:market:resolution
+  symbol: string;                   // NVDA, 005930
+  market: 'US' | 'KR' | 'GLOBAL';
+  currency: 'USD' | 'KRW';
+  resolution: PriceCacheResolution; // intraday | daily
+  price: number;
+  open?: number;
+  high?: number;
+  low?: number;
+  previousClose?: number;
+  volume?: number;
+  source: 'alphavantage' | 'yahoo' | 'fallback';
+  sourceTimestamp: Timestamp;       // 공급자 기준 시간
+  cachedAt: Timestamp;              // Firestore에 저장한 시각
+  expireAt: Timestamp;              // TTL 용 필드 (Firestore 자동 삭제)
+  metadata?: {
+    exchange?: string;
+    timezone?: string;
+    decimals?: number;
+    remarks?: string;
+  };
+}
+```
+
+**저장/갱신 규칙**
+- 동일 `cacheKey`는 `set(..., { merge: true })`로 갱신하며 `cachedAt`, `expireAt`를 항상 최신으로 교체합니다.
+- `resolution === 'intraday'`인 경우 `expireAt = cachedAt + 10분`.
+- `resolution === 'daily'`인 경우 `expireAt = cachedAt + 12시간`.
+- Fallback(가격을 구하지 못한 경우)의 `expireAt`은 30분으로 짧게 설정하여 재시도를 유도합니다.
+
+**Firestore TTL 설정**
+- 콘솔에서 `priceCache` 컬렉션의 `expireAt` 필드를 TTL로 지정합니다.
+- TTL 삭제는 최대 24시간 지연될 수 있으므로, Cloud Functions에서 만료 값이 지난 문서를 읽을 때는 즉시 무시하도록 추가 검증합니다.
+
+**권장 인덱스**
+- `symbol` ASC, `resolution` ASC
+- `market` ASC, `cachedAt` DESC
+
+**사용 시나리오**
+1. 시세 API 호출 전 `priceCache`에서 최신 문서를 조회 (`cachedAt`이 만료되지 않았는지 확인).
+2. 존재하면 캐시 데이터를 반환하고 `priceSource = 'cached'`.
+3. 캐시가 없거나 만료되었으면 외부 API 호출 → 성공 시 `priceCache`에 저장 → 클라이언트에 최신 데이터 전달.
+4. API 호출 실패 시 최근 캐시 데이터를 fallback으로 제공하며, `metadata.remarks`에 오류 정보를 남겨 UI에서 "캐시 데이터 표시" 배지를 출력.
+
+**보안 규칙**
+- 읽기: 인증된 사용자 모두 허용 (시세 정보는 공유 가능).
+- 쓰기: Cloud Functions 또는 백엔드에서만 허용 (`allow write: if false` 후 Functions에서 Admin SDK 사용).
+
+**스토리지 비용 가이드**
+- 심볼 2,000개, intraday/daily 각각 1문서 → 약 4,000 문서.
+- 문서당 1KB 가정 시 총 4MB → Firestore 저장 비용에 거의 영향 없음.
+
 
 ### Phase 1: 새 구조 생성 (기존 데이터 유지)
 

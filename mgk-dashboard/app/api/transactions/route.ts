@@ -8,6 +8,7 @@ export const dynamic = 'force-dynamic';
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import type { Transaction } from '@/types';
 import {
   createTransaction,
   getPortfolioTransactions,
@@ -47,6 +48,9 @@ export async function POST(request: NextRequest) {
       exchangeRate,
       currency,
       executedAt,
+      status,
+      scheduledDate,
+      pending,
     } = body;
 
     if (!userId || userId === 'default_user') {
@@ -79,6 +83,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const allowedStatuses: Transaction['status'][] = ['pending', 'completed', 'failed', 'cancelled'];
+    const normalizedStatus: Transaction['status'] = (status ?? 'completed').toLowerCase();
+    if (!allowedStatuses.includes(normalizedStatus)) {
+      return NextResponse.json(
+        { error: 'status 값이 유효하지 않습니다. (pending/completed/failed/cancelled)' },
+        { status: 400 }
+      );
+    }
+
+    const normalizedPending = typeof pending === 'boolean' ? pending : normalizedStatus === 'pending';
+    const normalizedScheduledDate =
+      typeof scheduledDate === 'string' && scheduledDate.trim().length > 0
+        ? scheduledDate
+        : normalizedStatus === 'pending'
+        ? date
+        : undefined;
+
     const transactionId = await createTransaction(
       userId,
       portfolioId,
@@ -96,6 +117,9 @@ export async function POST(request: NextRequest) {
         exchangeRate,
         currency,
         executedAt,
+        status: normalizedStatus,
+        pending: normalizedPending,
+        scheduledDate: normalizedScheduledDate,
       }
     );
 
@@ -125,10 +149,12 @@ export async function GET(request: NextRequest) {
     const portfolioId = searchParams.get('portfolioId');
     const symbol = searchParams.get('symbol') || undefined;
     const type = searchParams.get('type') as 'buy' | 'sell' | undefined;
+    const statusParam = searchParams.get('status') || undefined;
     const limitParam = searchParams.get('limit');
     const startDate = searchParams.get('startDate') || undefined;
     const endDate = searchParams.get('endDate') || undefined;
     const includeStats = searchParams.get('includeStats') === 'true';
+    const methodParam = searchParams.get('purchaseMethod') || undefined;
 
     if (!portfolioId) {
       return NextResponse.json(
@@ -138,13 +164,48 @@ export async function GET(request: NextRequest) {
     }
 
     const limit = limitParam ? parseInt(limitParam) : undefined;
+    if (methodParam && methodParam !== 'all') {
+      if (methodParam !== 'auto' && methodParam !== 'manual') {
+        return NextResponse.json(
+          { error: 'purchaseMethod 파라미터가 유효하지 않습니다. (auto/manual)' },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (statusParam && statusParam !== 'all') {
+      if (!allowedStatuses.includes(statusParam as Transaction['status'])) {
+        return NextResponse.json(
+          { error: 'status 파라미터가 유효하지 않습니다. (pending/completed/failed/cancelled)' },
+          { status: 400 }
+        );
+      }
+    }
 
     const transactions = await getPortfolioTransactions(userId, portfolioId, {
       symbol,
       type,
+      status: statusParam && statusParam !== 'all' ? (statusParam as Transaction['status']) : undefined,
       limit,
       startDate,
       endDate,
+      purchaseMethod:
+        methodParam && methodParam !== 'all' ? (methodParam as Transaction['purchaseMethod']) : undefined,
+    });
+
+    const serializedTransactions = transactions.map((transaction) => {
+      const status: Transaction['status'] =
+        transaction.status ?? (transaction.pending ? 'pending' : 'completed');
+      const pending = transaction.pending ?? status === 'pending';
+      const scheduledDate =
+        transaction.scheduledDate ?? (status === 'pending' ? transaction.date : undefined);
+
+      return {
+        ...transaction,
+        status,
+        pending,
+        ...(scheduledDate ? { scheduledDate } : {}),
+      };
     });
 
     const positions = await getPortfolioPositions(userId, portfolioId);
@@ -200,15 +261,18 @@ export async function GET(request: NextRequest) {
       })
       .filter((item): item is NonNullable<typeof item> => item !== null);
 
-    const result: any = { transactions, upcomingAutoInvests };
+    const result: any = { transactions: serializedTransactions, upcomingAutoInvests };
 
     // 통계 포함
     if (includeStats) {
-      const stats = await calculateTransactionStats(
-        userId,
-        portfolioId,
-        startDate && endDate ? { startDate, endDate } : undefined
-      );
+      const stats = await calculateTransactionStats(userId, portfolioId, {
+        startDate: startDate || undefined,
+        endDate: endDate || undefined,
+        purchaseMethod:
+          methodParam && methodParam !== 'all'
+            ? (methodParam as Transaction['purchaseMethod'])
+            : undefined,
+      });
       result.stats = stats;
     }
 

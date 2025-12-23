@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
     const [analysis, positions, performance] = await Promise.all([
       analyzePortfolio(userId, portfolioId),
       getPortfolioPositions(userId, portfolioId),
-      getPortfolioPerformancePeriods(),
+      getPortfolioPerformancePeriods({ userId, portfolioId }).catch(() => []),
     ]);
 
     return NextResponse.json({

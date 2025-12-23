@@ -11,6 +11,22 @@ import type { Transaction } from '@/types';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
+const allowedStatuses: Transaction['status'][] = ['pending', 'completed', 'failed', 'cancelled'];
+
+function serializeTransaction(transaction: Transaction): Transaction {
+  const status = transaction.status ?? (transaction.pending ? 'pending' : 'completed');
+  const pending = transaction.pending ?? status === 'pending';
+  const scheduledDate =
+    transaction.scheduledDate ?? (status === 'pending' ? transaction.date : undefined);
+
+  return {
+    ...transaction,
+    status,
+    pending,
+    ...(scheduledDate ? { scheduledDate } : {}),
+  };
+}
+
 /**
  * GET /api/transactions/[id]
  * 개별 거래 조회
@@ -34,7 +50,7 @@ export async function GET(
       return NextResponse.json({ error: '거래를 찾을 수 없습니다.' }, { status: 404 });
     }
 
-    return NextResponse.json({ success: true, transaction });
+    return NextResponse.json({ success: true, transaction: serializeTransaction(transaction) });
   } catch (error) {
     console.error('Get transaction error:', error);
     return NextResponse.json(
@@ -76,7 +92,19 @@ export async function PUT(
       );
     }
 
-    const { shares, price, amount, date, memo, fee, tax, executedAt } = body;
+    const {
+      shares,
+      price,
+      amount,
+      date,
+      memo,
+      fee,
+      tax,
+      executedAt,
+      status,
+      pending,
+      scheduledDate,
+    } = body;
 
     const transactionRef = doc(
       db,
@@ -95,7 +123,52 @@ export async function PUT(
     if (memo !== undefined) updateData.memo = memo;
     if (fee !== undefined) updateData.fee = fee;
     if (tax !== undefined) updateData.tax = tax;
-    if (executedAt !== undefined) updateData.executedAt = executedAt;
+    if (executedAt !== undefined) {
+      updateData.executedAt = new Date(executedAt).toISOString();
+    }
+
+    if (status !== undefined) {
+      const normalizedStatus = String(status).toLowerCase();
+      if (!allowedStatuses.includes(normalizedStatus as Transaction['status'])) {
+        return NextResponse.json(
+          { error: 'status 값이 유효하지 않습니다. (pending/completed/failed/cancelled)' },
+          { status: 400 }
+        );
+      }
+      updateData.status = normalizedStatus as Transaction['status'];
+      if (pending === undefined) {
+        updateData.pending = normalizedStatus === 'pending';
+      }
+      if (normalizedStatus !== 'pending') {
+        updateData.scheduledDate = scheduledDate ?? null;
+      }
+    }
+
+    if (pending !== undefined) {
+      updateData.pending = Boolean(pending);
+      if (pending && status === undefined) {
+        updateData.status = 'pending';
+      }
+      if (!pending && (status === undefined || status !== 'pending')) {
+        updateData.scheduledDate = scheduledDate ?? null;
+      }
+    }
+
+    if (scheduledDate !== undefined) {
+      if (scheduledDate === null || scheduledDate === '') {
+        updateData.scheduledDate = null;
+      } else {
+        updateData.scheduledDate = String(scheduledDate);
+        if (updateData.status === undefined) {
+          updateData.status = 'pending';
+          updateData.pending = true;
+        }
+      }
+    }
+
+    if (updateData.pending === undefined && updateData.status !== undefined) {
+      updateData.pending = updateData.status === 'pending';
+    }
 
     // totalAmount 재계산
     if (amount !== undefined || fee !== undefined || tax !== undefined) {
@@ -117,7 +190,7 @@ export async function PUT(
     return NextResponse.json({
       success: true,
       message: '거래가 수정되었습니다.',
-      transaction: updatedTransaction,
+      transaction: updatedTransaction ? serializeTransaction(updatedTransaction) : null,
     });
   } catch (error) {
     console.error('Update transaction error:', error);
